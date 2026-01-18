@@ -1,0 +1,32 @@
+{
+  "app": {
+    "title": "My Application",
+    "welcome": "Welcome!"
+  },
+  "nav": {
+    "references": "References"
+  },
+  "settings": {
+    "title": "Settings",
+    "language": "Language",
+    "theme": "Theme",
+    "save": "Save settings"
+  },
+  "button": {
+    "save": "Save",
+    "cancel": "Cancel",
+    "delete": "Delete"
+  },
+  "theme": {
+    "title": "Theme",
+    "light": "Light",
+    "dark": "Dark"
+  },
+  "messages": {
+    "saved": "Settings saved successfully!",
+    "error": "An error occurred"
+  },
+  "import": {
+    "title": "Import"
+  }
+}

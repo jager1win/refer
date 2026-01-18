@@ -2,16 +2,28 @@
 name = "refer-ui"
 version = "0.1.0"
 edition = "2024"
+build = "build.rs"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 [dependencies]
-leptos = { version = "0.8", features = ["csr"] }
+leptos = { version = "0.8", features = ["csr", "nightly"] }
 wasm-bindgen = "0.2"
 wasm-bindgen-futures = "0.4"
 js-sys = "0.3"
 serde = { version = "1", features = ["derive"] }
 serde-wasm-bindgen = "0.6"
 console_error_panic_hook = "0.1.7"
+leptos_i18n = { version = "0.6", features = ["csr"] }
+leptos_meta = "0.8.5"
+log = "0.4.29"
+console_log = "1.0.0"
+
+[build-dependencies]
+leptos_i18n_build = { version = "0.6", features = ["csr"] }
+
+[package.metadata.leptos-i18n]
+default = "en"
+locales = ["en", "ru"]
 
 [workspace]
 members = ["src-tauri"]
