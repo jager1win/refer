@@ -1,8 +1,4 @@
 {
-  "app": {
-    "title": "My Application",
-    "welcome": "Welcome!"
-  },
   "nav": {
     "references": "References"
   },
@@ -28,5 +24,8 @@
   },
   "import": {
     "title": "Import"
+  },
+  "references": {
+    "title": "References"
   }
 }

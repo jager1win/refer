@@ -1,5 +1,5 @@
 use serde::{Deserialize, Serialize};
-use serde_json::{json, Value};
+use serde_json::Value;
 use std::fs;
 use std::path::PathBuf;
 use std::sync::Mutex;
@@ -42,7 +42,7 @@ async fn get_settings(app: tauri::AppHandle) -> Result<SettingsStore, String> {
         return Ok(SettingsStore::default());
     }
 
-    println!("{:?},{:?}",config_dir,settings_path);
+    println!("{:?},{:?}", config_dir, settings_path);
 
     let content = fs::read_to_string(&settings_path).map_err(|e| e.to_string())?;
     let json: Value = serde_json::from_str(&content).map_err(|e| e.to_string())?;
@@ -72,12 +72,21 @@ async fn set_settings(app: tauri::AppHandle, new: SettingsStore) -> Result<(), S
         fs::create_dir_all(parent).map_err(|e| e.to_string())?;
     }
 
-    print!("new s {:?}",new);
-
     let json_data = serde_json::to_string_pretty(&new).map_err(|e| e.to_string())?;
     fs::write(&settings_path, json_data).map_err(|e| e.to_string())?;
 
     Ok(())
+}
+
+#[tauri::command]
+async fn get_stat(app: tauri::AppHandle) -> Result<(String, u64, u32, Vec<String>), String> {
+    let doc_path: PathBuf = [app.path().document_dir().unwrap(), "refer".into()]
+        .iter()
+        .collect();
+    let t = get_db_path_info(doc_path.clone());
+    let p = doc_path.display().to_string();
+
+    Ok((p, t.0, t.1, t.2))
 }
 
 /*#[tauri::command]
@@ -98,19 +107,25 @@ pub fn run() {
             Ok(())
         })
         .plugin(tauri_plugin_opener::init())
-        .invoke_handler(tauri::generate_handler![get_settings, set_settings])
+        .invoke_handler(tauri::generate_handler![
+            get_settings,
+            set_settings,
+            get_stat
+        ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }
 
-fn set_stat_all(app: tauri::AppHandle,){
+fn set_stat_all(app: tauri::AppHandle) {
     let state = app.state::<Mutex<StatisticsState>>();
 
     // Lock the mutex to get mutable access:
     let mut state = state.lock().unwrap();
 
     // Modify the state:
-    let doc_path:PathBuf =  [app.path().document_dir().unwrap(), "refer".into()].iter().collect();
+    let doc_path: PathBuf = [app.path().document_dir().unwrap(), "refer".into()]
+        .iter()
+        .collect();
     state.db_path = doc_path.clone();
 
     let path_info = get_db_path_info(doc_path);
@@ -118,7 +133,7 @@ fn set_stat_all(app: tauri::AppHandle,){
     state.db_count = path_info.1;
     state.db_list = path_info.2;
 
-    println!("{:?}",state);
+    println!("set_stat_all {:?}", state);
 }
 
 /* return StatisticsState (db_path_size,db_count,db_list) */
@@ -166,6 +181,6 @@ fn get_db_path_info(p: PathBuf) -> (u64, u32, Vec<String>) {
     (total_size, count, names)
 }
 
-fn get_stat_one(db:String){
-    
-}
+/*fn get_stat_one(db:String){
+
+}*/
