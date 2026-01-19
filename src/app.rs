@@ -27,9 +27,9 @@ struct SettingsBack {
 #[component]
 pub fn App() -> impl IntoView {
     leptos_meta::provide_meta_context();
-    let (settings, set_settings) = signal::<AppSettings>(AppSettings {
-        theme: "dark".into(),
-        language: "ru".into(),
+    let (settings, set_settings) = signal(AppSettings {
+        theme: "light".into(),
+        language: "en".into(),
     });
     let (status, set_status) = signal(String::from(""));
 
@@ -37,19 +37,21 @@ pub fn App() -> impl IntoView {
 
     // init settings
     spawn_local(async move {
+        log::debug!("act: {:?}", settings.get());
         let js = invoke("get_settings", JsValue::NULL).await;
         match from_value::<AppSettings>(js) {
             Ok(s) => set_settings.set(s),
             Err(e) => set_status.set(format!("deserialize failed: {}", e)),
-        }
+        };
+        log::debug!("act: {:?}", settings.get());
     });
-    Effect::new(move |_| {
+    /*Effect::new(move |_| {
         settings.track();
         spawn_local(async move {
             let args = to_value(&SettingsBack {new: settings.get()}).unwrap();
             let _ = invoke("set_settings", args).await;
         });
-    });
+    });*/
     //log::debug!("act: {:?}", settings.get());
     view! {
         <I18nContextProvider>
@@ -86,18 +88,6 @@ pub fn App() -> impl IntoView {
 fn Settings(getter: ReadSignal<AppSettings>, setter: WriteSignal<AppSettings>) -> impl IntoView {
     let i18n = use_i18n();
     let all: &[Locale] = Locale::get_all();
-    let backend_locale = getter.get().language.trim().to_lowercase();
-
-    // Найти локаль по 2‑буквенному коду (с учетом возможных вариаций)
-    let selected = all
-        .iter()
-        .find(|l| l.to_string() == backend_locale)
-        .or_else(|| all.iter().find(|l| l.to_string() == "en"))
-        .or(all.first());
-
-    if let Some(&loc) = selected {
-        i18n.set_locale(loc);
-    }
 
     //let current = move || i18n.get_locale();
     let toggle_theme = move |_| {
@@ -107,57 +97,72 @@ fn Settings(getter: ReadSignal<AppSettings>, setter: WriteSignal<AppSettings>) -
             } else {
                 current.theme = "light".to_string();
             }
+            spawn_local(async move {
+                let args = to_value(&SettingsBack { new: getter.get() }).unwrap();
+                let _ = invoke("set_settings", args).await;
+            });
         });
     };
+
+    Effect::new(move |_|{
+        let lang_code = getter.get().language;
+        if let Some(&loc) = all.iter().find(|l| l.to_string() == lang_code)
+            .or_else(|| all.iter().find(|l| l.to_string() == "en"))
+            .or(all.first())
+        {
+            i18n.set_locale(loc);
+        }
+    });
 
     Effect::new(move |_| {
         let theme_value = getter.get().theme;
         let document = window().document().unwrap();
         let html_element = document.document_element().unwrap();
-
-        html_element
-            .set_attribute("data-theme", &theme_value)
-            .unwrap();
-        html_element.set_attribute("class", &theme_value).unwrap();
+        html_element.set_attribute("data-theme", &theme_value).unwrap();
     });
 
     //log::debug!("lang: {:?}", &all);
     //log::debug!("lang: {:?}", &current);
     view! {
-        <h2>{t!(i18n, settings.title)}</h2>
+            <h2>{t!(i18n, settings.title)}</h2>
 
-        <div class="locale-switcher">
-            {all.iter().map(move |&loc| {
-                let code = loc.as_str();
-                let is_active = move || getter.get().language == loc.to_string();
-                view! {
-                    <button
-                        class=move || if is_active() { "locale-btn active".to_string() } else { "locale-btn".to_string() }
-                        on:click=move |_| {
-                            spawn_local(async move {
-                                i18n.set_locale(loc);
-                                setter.update(|current|{
-                                    current.language = loc.as_str().to_string();
-                                })
-                            });
-                        }
-                    >
-                        {code}
-                    </button>
-                }
-            }).collect_view()}
-        </div>
+            <div class="locale-switcher">
+                {all.iter().map(move |&loc| {
+                    let code = loc.as_str();
+                    let is_active = move || getter.get().language == loc.to_string();
+                    view! {
+                        <button
+                            class=move || if is_active() { "locale-btn active".to_string() } else { "locale-btn".to_string() }
+                            on:click=move |_| {
+                                if !is_active(){
+                                    spawn_local(async move {
+                                        i18n.set_locale(loc);
+                                        setter.update(|current|{
+                                            current.language = loc.as_str().to_string();
+                                        });
+                                        let args = to_value(&SettingsBack { new: getter.get() }).unwrap();
+                                        let _ = invoke("set_settings", args).await;
+                                    });
+                                }
 
-        <h2>{t!(i18n, theme.title)}</h2>
+                            }
+                        >
+                            {code}
+                        </button>
+                    }
+                }).collect_view()}
+            </div>
 
-        <button on:click=toggle_theme class="theme-switcher" >
-            {move || match getter.get().theme.as_str() {
-                "light" => "🌙",
-                "dark" => "🌞",
-                _ => "🌞",
-            }}
-        </button>
-    }
+            <h2>{t!(i18n, theme.title)}</h2>
+
+            <button on:click=toggle_theme class="theme-switcher" >
+                {move || match getter.get().theme.as_str() {
+                    "light" => "🌙",
+                    "dark" => "🌞",
+                    _ => "🌞",
+                }}
+            </button>
+        }
 }
 
 #[component]

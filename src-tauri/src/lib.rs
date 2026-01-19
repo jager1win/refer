@@ -1,12 +1,9 @@
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
-use std::collections::HashMap;
 use std::fs;
 use std::path::PathBuf;
 use std::sync::Mutex;
-use tauri::Wry;
 use tauri::{Builder, Manager};
-use tauri_plugin_store::StoreExt;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 struct SettingsStore {
@@ -17,214 +14,158 @@ struct SettingsStore {
 impl Default for SettingsStore {
     fn default() -> Self {
         Self {
-            theme: "light".into(),
-            language: "en".into(),
+            theme: "light".to_string(),
+            language: "en".to_string(),
         }
     }
 }
 
-#[derive(Clone, Serialize, Deserialize)]
-struct AppStatistics {
-    pub settings_path: PathBuf,
+#[derive(Default, Debug, Clone, Serialize, Deserialize)]
+struct StatisticsState {
     pub db_path: PathBuf,
-    pub db_path_size: u32,
+    pub db_path_size: u64,
     pub db_count: u32,
-    pub db_names: Vec<String>,
+    pub db_list: Vec<String>,
 }
 
-#[derive(Clone, Serialize, Deserialize)]
-pub struct AppDb {
-    pub db_path: PathBuf,
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DbInfo {
+    pub db_size: u32,
 }
-
-// universal path to config
-fn settings_path(app: &tauri::AppHandle) -> PathBuf {
-    #[cfg(target_os = "android")]
-    {
-        // Android
-        let mut path = app.path().app_local_data_dir().unwrap();
-        path.push("settings.json");
-        path
-    }
-    #[cfg(not(target_os = "android"))]
-    {
-        // Linux/Windows
-        let mut path: PathBuf = app.path().app_config_dir().unwrap();
-        path.push("settings.json");
-        path
-    }
-}
-
-fn load_settings(app: &tauri::AppHandle) -> SettingsStore {
-    let path = settings_path(app);
-    match fs::read_to_string(&path) {
-        Ok(s) => serde_json::from_str::<SettingsStore>(&s).unwrap_or_default(),
-        Err(_) => {
-            // файл не найден — дефолт
-            SettingsStore::default()
-        }
-    }
-}
-
-fn save_settings(app: &tauri::AppHandle, state: &SettingsStore) {
-    if let Ok(s) = serde_json::to_string_pretty(state) {
-        /*if let Some(dir) = app.path().app_dir() {
-            // создаём папку, если нужно
-            let _ = std::fs::create_dir_all(&dir);
-        }*/
-        let _ = fs::write(settings_path(app), s); // игнорируем ошибку записи (можно логировать)
-    }
-}
-
-/*#[tauri::command]
-fn get_settings(state: tauri::State<'_, Mutex<SettingsState>>) -> SettingsState {
-    state.lock().unwrap().clone()
-}
-
-#[tauri::command]
-fn set_settings(
-    new: SettingsState,
-    state: tauri::State<'_, Mutex<SettingsState>>,
-    app: tauri::AppHandle,
-) {
-    {
-        let mut guard = state.lock().unwrap();
-        *guard = new.clone();
-    }
-    // асинхронно сохранить — тут просто синхронно (недолго для двух полей)
-    save_settings(&app, &new);
-}*/
 
 #[tauri::command]
 async fn get_settings(app: tauri::AppHandle) -> Result<SettingsStore, String> {
-    let store = app.store(".settings.json").map_err(|e| e.to_string())?;
+    let config_dir = app.path().app_config_dir().map_err(|e| e.to_string())?;
+    let settings_path = config_dir.join(".settings.json");
 
-    println!("{:?}",store.get("theme"));
-
-    // Читаем настройки или возвращаем дефолтные
-    let theme = match store.get("theme") {
-        Some(value) => value.as_str().unwrap_or("light").to_string(),
-        None => {store.set("theme", "light");"light".into()},
-    };
-//
-    let language = match store.get("language") {
-        Some(value) => value.as_str().unwrap_or("en").to_string(),
-        None => {store.set("language", "en");"en".into()},
-    };
-
-    match store.save() {
-        Ok(_) => {
-            println!("Settings saved successfully");
-        },
-        Err(e) => {
-            println!("Failed to save: {}", e);
-        }
+    if !config_dir.exists() {
+        return Ok(SettingsStore::default());
     }
+
+    println!("{:?},{:?}",config_dir,settings_path);
+
+    let content = fs::read_to_string(&settings_path).map_err(|e| e.to_string())?;
+    let json: Value = serde_json::from_str(&content).map_err(|e| e.to_string())?;
+
+    let theme = json
+        .get("theme")
+        .and_then(|v| v.as_str())
+        .unwrap_or("light")
+        .to_string();
+
+    let language = json
+        .get("language")
+        .and_then(|v| v.as_str())
+        .unwrap_or("en")
+        .to_string();
+    //let settings: SettingsStore = serde_json::from_value(json).unwrap_or_default();
 
     Ok(SettingsStore { theme, language })
 }
 
 #[tauri::command]
 async fn set_settings(app: tauri::AppHandle, new: SettingsStore) -> Result<(), String> {
-    let store = app.store(".settings.json").map_err(|e| e.to_string())?;
+    let config_dir = app.path().app_config_dir().map_err(|e| e.to_string())?;
+    let settings_path = config_dir.join(".settings.json");
 
-    store.set("theme", new.theme);
-    store.set("language", new.language);
-    store.save().map_err(|e| e.to_string())
-}
-
-// Learn more about Tauri commands at https://tauri.app/develop/calling-rust/
-/*#[tauri::command]
-async fn get_settings(app: tauri::AppHandle) -> Result<AppState, String> {
-    let app_dir = get_settings_path(&app);
-
-    let settings_path = app_dir.join("settings.json");
-
-    let mut default_settings = serde_json::json!({
-        "theme": "light",
-        "language": "en",
-    });
-
-    if !settings_path.exists() {
-        return create_default_settings(&app_dir, &settings_path, default_settings);
+    if let Some(parent) = settings_path.parent() {
+        fs::create_dir_all(parent).map_err(|e| e.to_string())?;
     }
 
-    match std::fs::read_to_string(&settings_path) {
-        Ok(content) => {
-            match serde_json::from_str::<serde_json::Value>(&content) {
-                Ok(settings) => {
-                    Ok(settings)
-                }
-                Err(_e) => {
-                    create_default_settings(&app_dir, &settings_path, default_settings)
-                }
-            }
-        }
-        Err(_e) => {
-            create_default_settings(&app_dir, &settings_path, default_settings)
-        }
-    }
-}
+    print!("new s {:?}",new);
 
-#[tauri::command]
-async fn save_settings(app: tauri::AppHandle, settings: Value) -> Result<(), String> {
-    let path = get_settings_path(&app);
+    let json_data = serde_json::to_string_pretty(&new).map_err(|e| e.to_string())?;
+    fs::write(&settings_path, json_data).map_err(|e| e.to_string())?;
 
-    // Создать директорию если нужно
-    if let Some(parent) = path.parent() {
-        fs::create_dir_all(parent).map_err(|e| format!("Failed to create directory: {}", e))?;
-    }
-
-    let content = serde_json::to_string_pretty(&settings)
-        .map_err(|e| format!("Failed to serialize settings: {}", e))?;
-
-    fs::write(path, content).map_err(|e| format!("Failed to write settings: {}", e))
-}
-
-#[tauri::command]
-async fn save_settings(settings: serde_json::Value, app: tauri::AppHandle) -> Result<(), String> {
-    let settings_path = get_settings_path(&app);
-
-    // Сохраняем настройки
-    std::fs::write(
-        &settings_path,
-        serde_json::to_string_pretty(&settings).unwrap()
-    ).map_err(|e| format!("Не удалось сохранить настройки: {}", e))?;
-
-    println!("Настройки сохранены в: {:?}", settings_path);
     Ok(())
+}
+
+/*#[tauri::command]
+async fn get_stat(app: tauri::AppHandle,state: State<'_, Mutex<StatisticsState>>) -> Result<StatisticsState, String>{
+    //let state = app.state::<Mutex<StatisticsState>>();
+    let state = state.lock();
+    let result:StatisticsState = set_stat1(app);
+    Ok(result)
 }*/
 
 //#[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     Builder::default()
         .setup(|app| {
-            // читаем настройки (или берем дефолт)
-            ////let initial = load_settings(app.handle());
-            // сохраняем управляемое состояние: Mutex<AppState>
-            ////app.manage(Mutex::new(initial));
+            app.manage(Mutex::new(StatisticsState::default()));
+            set_stat_all(app.handle().clone());
 
             Ok(())
         })
         .plugin(tauri_plugin_opener::init())
-        .plugin(tauri_plugin_store::Builder::new().build())
         .invoke_handler(tauri::generate_handler![get_settings, set_settings])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }
-/*
-fn create_default_settings(
-    app_dir: &std::path::Path,
-    settings_path: &std::path::Path,
-    default_settings: serde_json::Value
-) -> Result<serde_json::Value, String> {
-    std::fs::create_dir_all(app_dir)
-        .map_err(|e| format!("Failed to create directory: {}", e))?;
 
-    std::fs::write(
-        settings_path,
-        serde_json::to_string_pretty(&default_settings).unwrap()
-    ).map_err(|e| format!("Failed to create settings.json: {}", e))?;
+fn set_stat_all(app: tauri::AppHandle,){
+    let state = app.state::<Mutex<StatisticsState>>();
 
-    Ok(default_settings)
-}*/
+    // Lock the mutex to get mutable access:
+    let mut state = state.lock().unwrap();
+
+    // Modify the state:
+    let doc_path:PathBuf =  [app.path().document_dir().unwrap(), "refer".into()].iter().collect();
+    state.db_path = doc_path.clone();
+
+    let path_info = get_db_path_info(doc_path);
+    state.db_path_size = path_info.0;
+    state.db_count = path_info.1;
+    state.db_list = path_info.2;
+
+    println!("{:?}",state);
+}
+
+/* return StatisticsState (db_path_size,db_count,db_list) */
+fn get_db_path_info(p: PathBuf) -> (u64, u32, Vec<String>) {
+    let mut total_size: u64 = 0;
+    let mut count: u32 = 0;
+    let mut names: Vec<String> = Vec::new();
+
+    if !p.is_dir() {
+        return (0, 0, Vec::new());
+    }
+
+    let db_extensions = [".sqlite", ".sqlite3", ".db"];
+
+    // Рекурсивный обход с помощью стека (избегаем рекурсии глубиной > 1000)
+    let mut stack = vec![p];
+    while let Some(current) = stack.pop() {
+        if let Ok(entries) = fs::read_dir(&current) {
+            for entry in entries.flatten() {
+                let path = entry.path();
+                if path.is_dir() {
+                    stack.push(path);
+                } else {
+                    // Добавляем размер любого файла к общему объёму
+                    if let Ok(meta) = fs::metadata(&path) {
+                        total_size += meta.len();
+                    }
+
+                    // Проверяем расширение только для БД
+                    if let Some(ext) = path.extension().and_then(|e| e.to_str()) {
+                        let ext_lower = ext.to_lowercase();
+                        if db_extensions.contains(&ext_lower.as_str()) {
+                            count += 1;
+                            if let Some(name_os) = path.file_name() {
+                                // Безопасно конвертируем в String
+                                names.push(name_os.to_string_lossy().into_owned());
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    (total_size, count, names)
+}
+
+fn get_stat_one(db:String){
+    
+}
