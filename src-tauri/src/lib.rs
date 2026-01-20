@@ -24,7 +24,6 @@ impl Default for SettingsStore {
 struct StatisticsState {
     pub db_path: PathBuf,
     pub db_path_size: u64,
-    pub db_count: u32,
     pub db_list: Vec<String>,
 }
 
@@ -42,7 +41,7 @@ async fn get_settings(app: tauri::AppHandle) -> Result<SettingsStore, String> {
         return Ok(SettingsStore::default());
     }
 
-    println!("{:?},{:?}", config_dir, settings_path);
+    //println!("{:?},{:?}", config_dir, settings_path);
 
     let content = fs::read_to_string(&settings_path).map_err(|e| e.to_string())?;
     let json: Value = serde_json::from_str(&content).map_err(|e| e.to_string())?;
@@ -79,23 +78,12 @@ async fn set_settings(app: tauri::AppHandle, new: SettingsStore) -> Result<(), S
 }
 
 #[tauri::command]
-async fn get_stat(app: tauri::AppHandle) -> Result<(String, u64, u32, Vec<String>), String> {
-    let doc_path: PathBuf = [app.path().document_dir().unwrap(), "refer".into()]
-        .iter()
-        .collect();
-    let t = get_db_path_info(doc_path.clone());
-    let p = doc_path.display().to_string();
-
-    Ok((p, t.0, t.1, t.2))
-}
-
-/*#[tauri::command]
-async fn get_stat(app: tauri::AppHandle,state: State<'_, Mutex<StatisticsState>>) -> Result<StatisticsState, String>{
-    //let state = app.state::<Mutex<StatisticsState>>();
-    let state = state.lock();
-    let result:StatisticsState = set_stat1(app);
+async fn get_stat(app: tauri::AppHandle) -> Result<StatisticsState, String>{
+    let state = app.state::<Mutex<StatisticsState>>();
+    let state = state.lock().unwrap();
+    let result: StatisticsState = state.clone();
     Ok(result)
-}*/
+}
 
 //#[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
@@ -130,23 +118,21 @@ fn set_stat_all(app: tauri::AppHandle) {
 
     let path_info = get_db_path_info(doc_path);
     state.db_path_size = path_info.0;
-    state.db_count = path_info.1;
-    state.db_list = path_info.2;
+    state.db_list = path_info.1;
 
     println!("set_stat_all {:?}", state);
 }
 
 /* return StatisticsState (db_path_size,db_count,db_list) */
-fn get_db_path_info(p: PathBuf) -> (u64, u32, Vec<String>) {
+fn get_db_path_info(p: PathBuf) -> (u64, Vec<String>) {
     let mut total_size: u64 = 0;
-    let mut count: u32 = 0;
     let mut names: Vec<String> = Vec::new();
 
     if !p.is_dir() {
-        return (0, 0, Vec::new());
+        return (0, Vec::new());
     }
 
-    let db_extensions = [".sqlite", ".sqlite3", ".db"];
+    let db_extensions = ["sqlite", "sqlite3", "db"];
 
     // Рекурсивный обход с помощью стека (избегаем рекурсии глубиной > 1000)
     let mut stack = vec![p];
@@ -166,7 +152,6 @@ fn get_db_path_info(p: PathBuf) -> (u64, u32, Vec<String>) {
                     if let Some(ext) = path.extension().and_then(|e| e.to_str()) {
                         let ext_lower = ext.to_lowercase();
                         if db_extensions.contains(&ext_lower.as_str()) {
-                            count += 1;
                             if let Some(name_os) = path.file_name() {
                                 // Безопасно конвертируем в String
                                 names.push(name_os.to_string_lossy().into_owned());
@@ -178,7 +163,7 @@ fn get_db_path_info(p: PathBuf) -> (u64, u32, Vec<String>) {
         }
     }
 
-    (total_size, count, names)
+    (total_size, names)
 }
 
 /*fn get_stat_one(db:String){

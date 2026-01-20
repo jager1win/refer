@@ -1,3 +1,4 @@
+use leptos::attr::selected;
 use leptos::task::spawn_local;
 use leptos::{prelude::*};
 use serde::{Deserialize, Serialize};
@@ -28,7 +29,6 @@ struct SettingsBack {
 struct StatisticsState {
     pub db_path: String,
     pub db_path_size: u64,
-    pub db_count: u32,
     pub db_list: Vec<String>,
 }
 
@@ -40,7 +40,7 @@ pub fn App() -> impl IntoView {
         language: "en".into(),
     });
     let status = RwSignal::new(String::from(""));
-
+    let selected_ref = RwSignal::new(String::from(""));
     let active_tab = RwSignal::new(1);
 
     // init settings
@@ -61,8 +61,8 @@ pub fn App() -> impl IntoView {
                 >"⚙"</button>
                 <button
                     class:active={move || active_tab.get() == 1}
-                    on:click={move |_| active_tab.set(1)}
-                >{let i18n = use_i18n();t!(i18n, nav.references)} </button>
+                    on:click={move |_| {active_tab.set(1);selected_ref.set("".to_string())}}
+                >{let i18n = use_i18n();t!(i18n, nav.references)} {move || selected_ref.get()}</button>
                 <button
                     class:active={move || active_tab.get() == 2}
                     on:click={move |_| active_tab.set(2)}
@@ -74,7 +74,15 @@ pub fn App() -> impl IntoView {
                     <Settings getter=settings setter=set_settings/>
                 </div>
                 <div class="tab-content" class:active={move || active_tab.get() == 1}>
-                    <References />
+                    <Suspense fallback=move || view! { <p>{let i18n = use_i18n();t!(i18n, references.loading)}</p> } >
+                        {move || {
+                            let select = selected_ref.get().is_empty();
+                            if select{
+                                view!{<References selected=selected_ref />}.into_any()
+                            }else{
+                                view!{<Ref selected=selected_ref />}.into_any()
+                        }}}
+                    </Suspense>
                 </div>
                 <div class="tab-content" class:active={move || active_tab.get() == 2}>
                     <Import />
@@ -140,11 +148,10 @@ fn Settings(getter: ReadSignal<AppSettings>, setter: WriteSignal<AppSettings>) -
                                             setter.update(|current|{
                                                 current.language = loc.as_str().to_string();
                                             });
-                                            let args = to_value(&SettingsBack { new: getter.get() }).unwrap();
+                                            let args = to_value(&SettingsBack { new: getter.get_untracked() }).unwrap();
                                             let _ = invoke("set_settings", args).await;
                                         });
                                     }
-
                                 }
                             >
                                 {code}
@@ -167,9 +174,9 @@ fn Settings(getter: ReadSignal<AppSettings>, setter: WriteSignal<AppSettings>) -
 }
 
 #[component]
-fn References() -> impl IntoView {
+fn References(selected:RwSignal<String>) -> impl IntoView {
     let i18n = use_i18n();
-    let stat = RwSignal::new(StatisticsState { db_path: String::new(), db_path_size: 0, db_count: 0, db_list:Vec::new() });
+    let stat = RwSignal::new(StatisticsState { db_path: String::from("unavailable"), db_path_size: 0, db_list:Vec::new() });
     let status = RwSignal::new(String::from(""));
 
     spawn_local(async move {
@@ -181,16 +188,31 @@ fn References() -> impl IntoView {
     });
 
     view! {
-            <h3>Доступные базы</h3>
-
-            <h3>Статистика:</h3>
+            <h3>Доступные справочники:</h3>
             <ul>
-                <li>"Папка: " {move || stat.get().db_path}</li>
-                <li>"Размер: " {move || stat.get().db_path_size}</li>
-                <li>"Количество баз: " {move || stat.get().db_count}</li>
-                <li>"Список: " {move || stat.get().db_list}</li>
+                <For
+                    each=move || stat.get().db_list.clone()
+                    key=|item: &String| item.clone()
+                    children=move |item: String| view! { <li><button on:click=move |_| selected.set(item.clone()) >{item.clone()}</button></li> }
+                />
             </ul>
 
+            <h5>Статистика:</h5>
+            <ul>
+                <li>"Папка: " {move || stat.get().db_path}</li>
+                <li>"Размер: " {move || read_size(stat.get().db_path_size)}</li>
+                <li>"Количество баз: " {move || stat.get().db_list.len()}</li>
+            </ul>
+
+    }
+}
+
+#[component]
+fn Ref(selected:RwSignal<String>) -> impl IntoView {
+    view!{
+        <div class="ref">
+            <h3>"ref"{move || selected.get()}</h3>
+        </div>
     }
 }
 
@@ -199,7 +221,22 @@ fn Import() -> impl IntoView {
     let i18n = use_i18n();
 
     view! {
-            <h2>{t!(i18n, import.title)}</h2>
+            <h3>{t!(i18n, import.title)}</h3>
 
+    }
+}
+
+fn read_size(bytes: u64) -> String {
+    const KB: f64 = 1024.0;
+    let b = bytes as f64;
+    if b < KB * 10.0 {
+        // показывать в байтах до ~10 KiB как целое
+        format!("{} B", bytes)
+    } else if b < KB * KB {
+        // KiB с 1 знаком
+        format!("{:.1} KiB", b / KB)
+    } else {
+        // MiB с 1 знаком (и дальше можно дополнять GiB и т.д.)
+        format!("{:.1} MiB", b / (KB * KB))
     }
 }
