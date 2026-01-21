@@ -1,4 +1,3 @@
-use leptos::attr::selected;
 use leptos::task::spawn_local;
 use leptos::{prelude::*};
 use serde::{Deserialize, Serialize};
@@ -35,10 +34,8 @@ struct StatisticsState {
 #[component]
 pub fn App() -> impl IntoView {
     leptos_meta::provide_meta_context();
-    let (settings, set_settings) = signal(AppSettings {
-        theme: "light".into(),
-        language: "en".into(),
-    });
+    let settings = RwSignal::new(AppSettings {theme: "light".into(),language: "en".into()});
+    let stat = RwSignal::new(StatisticsState { db_path: String::from("unavailable"), db_path_size: 0, db_list:Vec::new() });
     let status = RwSignal::new(String::from(""));
     let selected_ref = RwSignal::new(String::from(""));
     let active_tab = RwSignal::new(1);
@@ -47,7 +44,16 @@ pub fn App() -> impl IntoView {
     spawn_local(async move {
         let js = invoke("get_settings", JsValue::NULL).await;
         match from_value::<AppSettings>(js) {
-            Ok(s) => set_settings.set(s),
+            Ok(s) => settings.set(s),
+            Err(e) => status.set(format!("deserialize failed: {}", e)),
+        };
+    });
+
+    // init statistics
+    spawn_local(async move {
+        let js = invoke("get_stat", JsValue::NULL).await;
+        match from_value::<StatisticsState>(js) {
+            Ok(s) => stat.set(s),
             Err(e) => status.set(format!("deserialize failed: {}", e)),
         };
     });
@@ -71,21 +77,21 @@ pub fn App() -> impl IntoView {
             <div class="hidden">{move || status.get()}</div>
             <main class="container">
                 <div class="tab-content" class:active={move || active_tab.get() == 0}>
-                    <Settings getter=settings setter=set_settings/>
+                    <Settings settings=settings/>
                 </div>
                 <div class="tab-content" class:active={move || active_tab.get() == 1}>
                     <Suspense fallback=move || view! { <p>{let i18n = use_i18n();t!(i18n, references.loading)}</p> } >
                         {move || {
                             let select = selected_ref.get().is_empty();
                             if select{
-                                view!{<References selected=selected_ref />}.into_any()
+                                view!{<References stat=stat selected=selected_ref />}.into_any()
                             }else{
                                 view!{<Ref selected=selected_ref />}.into_any()
                         }}}
                     </Suspense>
                 </div>
                 <div class="tab-content" class:active={move || active_tab.get() == 2}>
-                    <Import />
+                    <Import stat=stat/>
                 </div>
             </main>
         </I18nContextProvider>
@@ -93,27 +99,27 @@ pub fn App() -> impl IntoView {
 }
 
 #[component]
-fn Settings(getter: ReadSignal<AppSettings>, setter: WriteSignal<AppSettings>) -> impl IntoView {
+fn Settings(settings: RwSignal<AppSettings>) -> impl IntoView {
     let i18n = use_i18n();
     let all: &[Locale] = Locale::get_all();
 
     //let current = move || i18n.get_locale();
     let toggle_theme = move |_| {
-        setter.update(|current| {
+        settings.update(|current| {
             if current.theme == "light" {
                 current.theme = "dark".to_string();
             } else {
                 current.theme = "light".to_string();
             }
             spawn_local(async move {
-                let args = to_value(&SettingsBack { new: getter.get() }).unwrap();
+                let args = to_value(&SettingsBack { new: settings.get_untracked() }).unwrap();
                 let _ = invoke("set_settings", args).await;
             });
         });
     };
 
     Effect::new(move |_|{
-        let lang_code = getter.get().language;
+        let lang_code = settings.get().language;
         if let Some(&loc) = all.iter().find(|l| l.to_string() == lang_code)
             .or_else(|| all.iter().find(|l| l.to_string() == "en"))
             .or(all.first())
@@ -123,7 +129,7 @@ fn Settings(getter: ReadSignal<AppSettings>, setter: WriteSignal<AppSettings>) -
     });
 
     Effect::new(move |_| {
-        let theme_value = getter.get().theme;
+        let theme_value = settings.get().theme;
         let document = window().document().unwrap();
         let html_element = document.document_element().unwrap();
         html_element.set_attribute("data-theme", &theme_value).unwrap();
@@ -137,7 +143,7 @@ fn Settings(getter: ReadSignal<AppSettings>, setter: WriteSignal<AppSettings>) -
                 <div class="locale-switcher">
                     {all.iter().map(move |&loc| {
                         let code = loc.as_str();
-                        let is_active = move || getter.get().language == loc.to_string();
+                        let is_active = move || settings.get().language == loc.to_string();
                         view! {
                             <button
                                 class=move || if is_active() { "locale-btn active".to_string() } else { "locale-btn".to_string() }
@@ -145,10 +151,10 @@ fn Settings(getter: ReadSignal<AppSettings>, setter: WriteSignal<AppSettings>) -
                                     if !is_active(){
                                         spawn_local(async move {
                                             i18n.set_locale(loc);
-                                            setter.update(|current|{
+                                            settings.update(|current|{
                                                 current.language = loc.as_str().to_string();
                                             });
-                                            let args = to_value(&SettingsBack { new: getter.get_untracked() }).unwrap();
+                                            let args = to_value(&SettingsBack { new: settings.get_untracked() }).unwrap();
                                             let _ = invoke("set_settings", args).await;
                                         });
                                     }
@@ -163,7 +169,7 @@ fn Settings(getter: ReadSignal<AppSettings>, setter: WriteSignal<AppSettings>) -
             <p>
                 <h3>{t!(i18n, theme.title)}</h3>
                 <button on:click=toggle_theme class="theme-switcher" >
-                    {move || match getter.get().theme.as_str() {
+                    {move || match settings.get().theme.as_str() {
                         "light" => "🌙",
                         "dark" => "🌞",
                         _ => "🌞",
@@ -174,19 +180,8 @@ fn Settings(getter: ReadSignal<AppSettings>, setter: WriteSignal<AppSettings>) -
 }
 
 #[component]
-fn References(selected:RwSignal<String>) -> impl IntoView {
+fn References(stat: RwSignal<StatisticsState>, selected:RwSignal<String>) -> impl IntoView {
     let i18n = use_i18n();
-    let stat = RwSignal::new(StatisticsState { db_path: String::from("unavailable"), db_path_size: 0, db_list:Vec::new() });
-    let status = RwSignal::new(String::from(""));
-
-    spawn_local(async move {
-        let js = invoke("get_stat", JsValue::NULL).await;
-        match from_value::<StatisticsState>(js) {
-            Ok(s) => stat.set(s),
-            Err(e) => status.set(format!("deserialize failed: {}", e)),
-        };
-    });
-
     view! {
             <h3>Доступные справочники:</h3>
             <ul>
@@ -217,7 +212,7 @@ fn Ref(selected:RwSignal<String>) -> impl IntoView {
 }
 
 #[component]
-fn Import() -> impl IntoView {
+fn Import(stat:RwSignal<StatisticsState>) -> impl IntoView {
     let i18n = use_i18n();
 
     view! {
