@@ -72,7 +72,7 @@ pub fn App() -> impl IntoView {
                 <button
                     class:active={move || active_tab.get() == 2}
                     on:click={move |_| active_tab.set(2)}
-                >"📥"</button>
+                >"✚✎"</button>
             </nav>
             <div class="hidden">{move || status.get()}</div>
             <main class="container">
@@ -176,6 +176,7 @@ fn Settings(settings: RwSignal<AppSettings>) -> impl IntoView {
                     }}
                 </button>
             </p>
+            <p>"Заполнить блок - содержимое About"</p>
         }
 }
 
