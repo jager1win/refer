@@ -1,9 +1,11 @@
 [package]
 name = "refer"
-version = "0.1.0"
-description = "A Tauri App"
-authors = ["you"]
-edition = "2021"
+version = "1.0.0"
+description = "Reference Builder"
+authors = ["Yuriy (Jager) Lysov"]
+edition = "2024"
+license = "GPL-3.0"
+repository = "https://github.com/jager1win/refer"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
@@ -22,5 +24,10 @@ tauri = { version = "2", features = [] }
 tauri-plugin-opener = "2"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
-
-
+tauri-plugin-sql = { version = "2", features = ["sqlite"] }
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter", "fmt"] }
+tracing-appender = "0.2"
+chrono = "0.4"
+csv = "1"
+calamine = "0.32.0"

@@ -3,7 +3,9 @@ use serde_json::Value;
 use std::fs;
 use std::path::PathBuf;
 use std::sync::Mutex;
-use tauri::{Builder, Manager};
+use tauri::{Manager};
+
+const APP_EXTENSION: &str = "refer";
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 struct SettingsStore {
@@ -87,13 +89,14 @@ async fn get_stat(app: tauri::AppHandle) -> Result<StatisticsState, String>{
 
 //#[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
-    Builder::default()
+    tauri::Builder::default()
         .setup(|app| {
             app.manage(Mutex::new(StatisticsState::default()));
             set_stat_all(app.handle().clone());
 
             Ok(())
         })
+        .plugin(tauri_plugin_sql::Builder::new().build())
         .plugin(tauri_plugin_opener::init())
         .invoke_handler(tauri::generate_handler![
             get_settings,
@@ -104,6 +107,7 @@ pub fn run() {
         .expect("error while running tauri application");
 }
 
+// set stat to State
 fn set_stat_all(app: tauri::AppHandle) {
     let state = app.state::<Mutex<StatisticsState>>();
 
@@ -123,7 +127,7 @@ fn set_stat_all(app: tauri::AppHandle) {
     println!("set_stat_all {:?}", state);
 }
 
-/* return StatisticsState (db_path_size,db_count,db_list) */
+/* return StatisticsState (db_path_size,db_list) */
 fn get_db_path_info(p: PathBuf) -> (u64, Vec<String>) {
     let mut total_size: u64 = 0;
     let mut names: Vec<String> = Vec::new();
@@ -131,8 +135,6 @@ fn get_db_path_info(p: PathBuf) -> (u64, Vec<String>) {
     if !p.is_dir() {
         return (0, Vec::new());
     }
-
-    let db_extensions = ["sqlite", "sqlite3", "db"];
 
     // Рекурсивный обход с помощью стека (избегаем рекурсии глубиной > 1000)
     let mut stack = vec![p];
@@ -142,23 +144,19 @@ fn get_db_path_info(p: PathBuf) -> (u64, Vec<String>) {
                 let path = entry.path();
                 if path.is_dir() {
                     stack.push(path);
-                } else {
-                    // Добавляем размер любого файла к общему объёму
-                    if let Ok(meta) = fs::metadata(&path) {
-                        total_size += meta.len();
-                    }
+                    continue;
+                }
 
-                    // Проверяем расширение только для БД
-                    if let Some(ext) = path.extension().and_then(|e| e.to_str()) {
-                        let ext_lower = ext.to_lowercase();
-                        if db_extensions.contains(&ext_lower.as_str()) {
-                            if let Some(name_os) = path.file_name() {
-                                // Безопасно конвертируем в String
+                if let Ok(meta) = entry.metadata() {
+                    total_size += meta.len();
+                }
+
+                if let Some(ext_os) = path.extension()
+                    && let Some(ext) = ext_os.to_str()
+                        && ext.eq_ignore_ascii_case(APP_EXTENSION)
+                            && let Some(name_os) = path.file_name() {
                                 names.push(name_os.to_string_lossy().into_owned());
                             }
-                        }
-                    }
-                }
             }
         }
     }
@@ -169,3 +167,17 @@ fn get_db_path_info(p: PathBuf) -> (u64, Vec<String>) {
 /*fn get_stat_one(db:String){
 
 }*/
+
+/*
+Для других типов данных (если понадобится): а лучше проверить в путях
+
+// Конфигурация/настройки
+let config_dir = app.config_dir().unwrap().join("refer");
+
+// Временные файлы/кэш  
+let cache_dir = app.cache_dir().unwrap().join("refer");
+
+// Логи
+let log_dir = app.data_dir().unwrap().join("refer").join("logs");
+
+*/
