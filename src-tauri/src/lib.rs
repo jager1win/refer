@@ -1,14 +1,26 @@
 use serde::{Deserialize, Serialize};
-use serde_json::Value;
 use std::fs;
 use std::path::PathBuf;
 use std::sync::Mutex;
 use tauri::{Manager};
+pub mod sql;
+pub mod commands;
+use crate::sql::*;
+use crate::commands::*;
+use tracing_subscriber::{fmt, EnvFilter};
+use tracing_appender::rolling;
+use tracing::{debug, error, warn, info};
 
 const APP_EXTENSION: &str = "refer";
 
+/*
+    info!("Логирование инициализировано. Путь: {:?}", log_dir);
+    warn!("Логирование инициализировано. Путь: {:?}", log_dir);
+
+*/
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
-struct SettingsStore {
+pub struct SettingsStore {
     pub theme: String,
     pub language: String,
 }
@@ -23,7 +35,7 @@ impl Default for SettingsStore {
 }
 
 #[derive(Default, Debug, Clone, Serialize, Deserialize)]
-struct StatisticsState {
+pub struct StatisticsState {
     pub db_path: PathBuf,
     pub db_path_size: u64,
     pub db_list: Vec<String>,
@@ -34,63 +46,12 @@ pub struct DbInfo {
     pub db_size: u32,
 }
 
-#[tauri::command]
-async fn get_settings(app: tauri::AppHandle) -> Result<SettingsStore, String> {
-    let config_dir = app.path().app_config_dir().map_err(|e| e.to_string())?;
-    let settings_path = config_dir.join(".settings.json");
-
-    if !config_dir.exists() {
-        return Ok(SettingsStore::default());
-    }
-
-    //println!("{:?},{:?}", config_dir, settings_path);
-
-    let content = fs::read_to_string(&settings_path).map_err(|e| e.to_string())?;
-    let json: Value = serde_json::from_str(&content).map_err(|e| e.to_string())?;
-
-    let theme = json
-        .get("theme")
-        .and_then(|v| v.as_str())
-        .unwrap_or("light")
-        .to_string();
-
-    let language = json
-        .get("language")
-        .and_then(|v| v.as_str())
-        .unwrap_or("en")
-        .to_string();
-    //let settings: SettingsStore = serde_json::from_value(json).unwrap_or_default();
-
-    Ok(SettingsStore { theme, language })
-}
-
-#[tauri::command]
-async fn set_settings(app: tauri::AppHandle, new: SettingsStore) -> Result<(), String> {
-    let config_dir = app.path().app_config_dir().map_err(|e| e.to_string())?;
-    let settings_path = config_dir.join(".settings.json");
-
-    if let Some(parent) = settings_path.parent() {
-        fs::create_dir_all(parent).map_err(|e| e.to_string())?;
-    }
-
-    let json_data = serde_json::to_string_pretty(&new).map_err(|e| e.to_string())?;
-    fs::write(&settings_path, json_data).map_err(|e| e.to_string())?;
-
-    Ok(())
-}
-
-#[tauri::command]
-async fn get_stat(app: tauri::AppHandle) -> Result<StatisticsState, String>{
-    let state = app.state::<Mutex<StatisticsState>>();
-    let state = state.lock().unwrap();
-    let result: StatisticsState = state.clone();
-    Ok(result)
-}
 
 //#[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
         .setup(|app| {
+            init_tracing(app.handle())?;
             app.manage(Mutex::new(StatisticsState::default()));
             set_stat_all(app.handle().clone());
 
@@ -164,20 +125,31 @@ fn get_db_path_info(p: PathBuf) -> (u64, Vec<String>) {
     (total_size, names)
 }
 
-/*fn get_stat_one(db:String){
+pub fn get_log_path(app: tauri::AppHandle)->PathBuf{
+    app.path().app_log_dir().map_err(|e| e.to_string()).unwrap()
+}
 
-}*/
+pub fn get_temp_path(app: tauri::AppHandle)->PathBuf{
+    app.path().app_cache_dir().map_err(|e| e.to_string()).unwrap()
+}
 
-/*
-Для других типов данных (если понадобится): а лучше проверить в путях
+fn init_tracing(app: &tauri::AppHandle) -> Result<(), Box<dyn std::error::Error>> {
+    // 1. Получаем путь к директории логов, специфичной для приложения и ОС
+    let log_dir = app.path().app_log_dir()?;
+    std::fs::create_dir_all(&log_dir).ok();
 
-// Конфигурация/настройки
-let config_dir = app.config_dir().unwrap().join("refer");
+    // 2. Настраиваем запись в файл с ротацией
+    let log_appender = rolling::daily(&log_dir, "app.log");
+    let (non_blocking, _guard) = tracing_appender::non_blocking(log_appender);
 
-// Временные файлы/кэш  
-let cache_dir = app.cache_dir().unwrap().join("refer");
+    // 3. Создаем и устанавливаем подписчика для tracing
+    let subscriber = fmt::Subscriber::builder()
+        .with_env_filter(EnvFilter::new("info")) // Уровень из RUST_LOG
+        .with_writer(non_blocking)
+        .with_ansi(false) // Отключаем ANSI-коды для файла
+        .compact()
+        .finish();
 
-// Логи
-let log_dir = app.data_dir().unwrap().join("refer").join("logs");
-
-*/
+    tracing::subscriber::set_global_default(subscriber)?;
+    Ok(())
+}
