@@ -58,7 +58,7 @@ pub fn run() {
         .setup(|app| {
             init_tracing(app.handle())?;
             app.manage(Mutex::new(StatisticsState::default()));
-            set_stat_all(app.handle().clone());
+            set_stat_all(app.handle());
 
             Ok(())
         })
@@ -74,7 +74,7 @@ pub fn run() {
 }
 
 // set stat to State
-fn set_stat_all(app: tauri::AppHandle) {
+fn set_stat_all(app: &tauri::AppHandle) {
     let state = app.state::<Mutex<StatisticsState>>();
     // Lock the mutex to get mutable access:
     let mut state = state.lock().unwrap();
@@ -113,7 +113,13 @@ fn get_db_path_info(p: &Path) -> (u64, Vec<String>) {
         return (0, Vec::new());
     }
 
-    // Рекурсивный обход с помощью стека (избегаем рекурсии глубиной > 1000)
+    // Получаем каноничный путь для корректного вычисления относительных путей
+    let base_path = match p.canonicalize() {
+        Ok(path) => path,
+        Err(_) => p.to_path_buf(),
+    };
+
+    // Рекурсивный обход с помощью стека
     let mut stack = vec![p.to_path_buf()];
     while let Some(current) = stack.pop() {
         if let Ok(entries) = fs::read_dir(&current) {
@@ -128,12 +134,23 @@ fn get_db_path_info(p: &Path) -> (u64, Vec<String>) {
                     total_size += meta.len();
                 }
 
+                // Проверяем расширение файла
                 if let Some(ext_os) = path.extension()
                     && let Some(ext) = ext_os.to_str()
-                        && ext.eq_ignore_ascii_case(APP_EXT)
-                            && let Some(name_os) = path.file_name() {
-                                names.push(name_os.to_string_lossy().into_owned());
-                            }
+                    && ext.eq_ignore_ascii_case(APP_EXT)
+                {
+                    // Получаем относительный путь от базовой директории
+                    if let Ok(relative_path) = path.strip_prefix(&base_path) {
+                        // Преобразуем в строку с разделителями в стиле текущей ОС
+                        let path_str = relative_path.to_string_lossy().into_owned();
+                        names.push(path_str);
+                    } else {
+                        // Если не удалось получить относительный путь, используем имя файла
+                        if let Some(name_os) = path.file_name() {
+                            names.push(name_os.to_string_lossy().into_owned());
+                        }
+                    }
+                }
             }
         }
     }

@@ -53,6 +53,7 @@ pub async fn set_settings(app: tauri::AppHandle, new: SettingsStore) -> Result<(
 
 #[tauri::command]
 pub async fn get_stat(app: tauri::AppHandle) -> Result<StatisticsState, String>{
+    crate::set_stat_all(&app);
     let state = app.state::<Mutex<StatisticsState>>();
     let state = state.lock().unwrap();
     let result: StatisticsState = state.clone();
