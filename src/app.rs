@@ -29,25 +29,28 @@ struct StatisticsState {
     pub db_path: String,
     pub db_path_size: u64,
     pub db_list: Vec<String>,
+    pub log_path: String,
+    pub errors: Vec<String>
 }
 
 #[component]
 pub fn App() -> impl IntoView {
     leptos_meta::provide_meta_context();
     let settings = RwSignal::new(AppSettings {theme: "light".into(),language: "en".into()});
-    let stat = RwSignal::new(StatisticsState { db_path: String::from("unavailable"), db_path_size: 0, db_list:Vec::new() });
+    let stat = RwSignal::new(StatisticsState { db_path: String::from(""), db_path_size: 0, db_list:Vec::new(), log_path: String::from(""), errors:Vec::new()});
     let status = RwSignal::new(String::from(""));
     let selected_ref = RwSignal::new(String::from(""));
     let active_tab = RwSignal::new(1);
 
     // init settings
-    spawn_local(async move {
+    let upd_settings:() = spawn_local(async move {
         let js = invoke("get_settings", JsValue::NULL).await;
         match from_value::<AppSettings>(js) {
             Ok(s) => settings.set(s),
             Err(e) => status.set(format!("deserialize failed: {}", e)),
         };
     });
+    upd_settings;
 
     // init statistics
     spawn_local(async move {
@@ -72,7 +75,7 @@ pub fn App() -> impl IntoView {
                 <button
                     class:active={move || active_tab.get() == 2}
                     on:click={move |_| active_tab.set(2)}
-                >"✚✎"</button>
+                >"✎✚"</button>
             </nav>
             <div class="hidden">{move || status.get()}</div>
             <main class="container">
@@ -84,14 +87,14 @@ pub fn App() -> impl IntoView {
                         {move || {
                             let select = selected_ref.get().is_empty();
                             if select{
-                                view!{<References stat=stat selected=selected_ref />}.into_any()
+                                view!{<Refs stat=stat selected=selected_ref />}.into_any()
                             }else{
                                 view!{<Ref selected=selected_ref />}.into_any()
                         }}}
                     </Suspense>
                 </div>
                 <div class="tab-content" class:active={move || active_tab.get() == 2}>
-                    <Import stat=stat/>
+                    <Edit stat=stat/>
                 </div>
             </main>
         </I18nContextProvider>
@@ -181,7 +184,7 @@ fn Settings(settings: RwSignal<AppSettings>) -> impl IntoView {
 }
 
 #[component]
-fn References(stat: RwSignal<StatisticsState>, selected:RwSignal<String>) -> impl IntoView {
+fn Refs(stat: RwSignal<StatisticsState>, selected:RwSignal<String>) -> impl IntoView {
     let i18n = use_i18n();
     view! {
             <h3>Доступные справочники:</h3>
@@ -195,9 +198,19 @@ fn References(stat: RwSignal<StatisticsState>, selected:RwSignal<String>) -> imp
 
             <h5>Статистика:</h5>
             <ul>
-                <li>"Папка: " {move || stat.get().db_path}</li>
+                <li>"Папка баз: " {move || stat.get().db_path}</li>
                 <li>"Размер: " {move || read_size(stat.get().db_path_size)}</li>
                 <li>"Количество баз: " {move || stat.get().db_list.len()}</li>
+                <li>"Папка логов: " {move || stat.get().log_path}</li>
+                <li>
+                    <ul>
+                        <For
+                            each=move || stat.get().errors.clone()
+                            key=|item: &String| item.clone()
+                            children=move |item: String| view! { <li>{item.clone()}</li> }
+                        />
+                    </ul>
+                </li>
             </ul>
 
     }
@@ -213,14 +226,40 @@ fn Ref(selected:RwSignal<String>) -> impl IntoView {
 }
 
 #[component]
-fn Import(stat:RwSignal<StatisticsState>) -> impl IntoView {
+fn Edit(stat:RwSignal<StatisticsState>) -> impl IntoView {
     let i18n = use_i18n();
 
+
     view! {
-            <h3>{t!(i18n, import.title)}</h3>
+            <h3>{t!(i18n, edit.create_title)}</h3>
+            <ul>
+                <li><button>Создать пустой справочник</button></li>
+                <li><button>Создать справочник из таблицы(csv, excel, ods)</button></li>
+                <li><button>Создать справочник из sqlite</button></li>
+            </ul>
+
+            <h3>{t!(i18n, edit.edit_title)}</h3>
+            <ul>
+                <For
+                    each=move || stat.get().db_list.clone()
+                    key=|item: &String| item.clone()
+                    children=move |item: String| view! { <li><button /*on:click=move |_| selected.set(item.clone())*/ >{item.clone()}</button></li> }
+                />
+            </ul>
 
     }
 }
+
+#[component]
+fn CreateRef(){
+
+}
+
+#[component]
+fn EditRef(){
+
+}
+
 
 fn read_size(bytes: u64) -> String {
     const KB: f64 = 1024.0;
@@ -236,3 +275,9 @@ fn read_size(bytes: u64) -> String {
         format!("{:.1} MiB", b / (KB * KB))
     }
 }
+
+/*
+    "crate_title": "Create",
+    "edit_title": "Edit"
+
+*/

@@ -42,3 +42,5 @@
   background-color: #007bff;
   color: white;
 }
+
+li {list-style-type: none !important;}

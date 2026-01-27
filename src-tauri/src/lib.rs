@@ -1,6 +1,6 @@
 use serde::{Deserialize, Serialize};
-use std::fs;
-use std::path::PathBuf;
+use std::fs::{self, File};
+use std::path::{Path,PathBuf};
 use std::sync::Mutex;
 use tauri::{Manager};
 pub mod sql;
@@ -11,13 +11,16 @@ use tracing_subscriber::{fmt, EnvFilter};
 use tracing_appender::rolling;
 use tracing::{debug, error, warn, info};
 
-const APP_EXTENSION: &str = "refer";
+const APP_EXT: &str = "refer";
 
-/*
-    info!("Логирование инициализировано. Путь: {:?}", log_dir);
-    warn!("Логирование инициализировано. Путь: {:?}", log_dir);
+#[derive(serde::Serialize)]
+pub struct RError(pub String);
 
-*/
+impl RError {
+    pub fn new(code: &str) -> Self {
+        Self(code.to_string())
+    }
+}
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SettingsStore {
@@ -39,6 +42,8 @@ pub struct StatisticsState {
     pub db_path: PathBuf,
     pub db_path_size: u64,
     pub db_list: Vec<String>,
+    pub log_path: PathBuf,
+    pub errors: Vec<String>
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -71,25 +76,36 @@ pub fn run() {
 // set stat to State
 fn set_stat_all(app: tauri::AppHandle) {
     let state = app.state::<Mutex<StatisticsState>>();
-
     // Lock the mutex to get mutable access:
     let mut state = state.lock().unwrap();
 
-    // Modify the state:
-    let doc_path: PathBuf = [app.path().document_dir().unwrap(), "refer".into()]
-        .iter()
-        .collect();
-    state.db_path = doc_path.clone();
+    // set doc path & info
+    match app.path().document_dir() {
+        Ok(mut path) => {
+            path.push("refer");
+            state.db_path = path;
 
-    let path_info = get_db_path_info(doc_path);
-    state.db_path_size = path_info.0;
-    state.db_list = path_info.1;
+            let t = get_db_path_info(&state.db_path);
+            state.db_path_size = t.0;
+            state.db_list = t.1;
+        }
+        Err(_e) => {
+            state.errors.push("DOCUMENT_DIR_MISSING".to_string());
+        }
+    }
+    // set logs path
+    match app.path().app_log_dir() {
+        Ok(path) => state.log_path = path,
+        Err(_e) => {
+            state.errors.push("LOG_DIR_MISSING".to_string());
+        }
+    }
 
-    println!("set_stat_all {:?}", state);
+    println!("{:?}",state);
 }
 
 /* return StatisticsState (db_path_size,db_list) */
-fn get_db_path_info(p: PathBuf) -> (u64, Vec<String>) {
+fn get_db_path_info(p: &Path) -> (u64, Vec<String>) {
     let mut total_size: u64 = 0;
     let mut names: Vec<String> = Vec::new();
 
@@ -98,7 +114,7 @@ fn get_db_path_info(p: PathBuf) -> (u64, Vec<String>) {
     }
 
     // Рекурсивный обход с помощью стека (избегаем рекурсии глубиной > 1000)
-    let mut stack = vec![p];
+    let mut stack = vec![p.to_path_buf()];
     while let Some(current) = stack.pop() {
         if let Ok(entries) = fs::read_dir(&current) {
             for entry in entries.flatten() {
@@ -114,7 +130,7 @@ fn get_db_path_info(p: PathBuf) -> (u64, Vec<String>) {
 
                 if let Some(ext_os) = path.extension()
                     && let Some(ext) = ext_os.to_str()
-                        && ext.eq_ignore_ascii_case(APP_EXTENSION)
+                        && ext.eq_ignore_ascii_case(APP_EXT)
                             && let Some(name_os) = path.file_name() {
                                 names.push(name_os.to_string_lossy().into_owned());
                             }
@@ -125,14 +141,7 @@ fn get_db_path_info(p: PathBuf) -> (u64, Vec<String>) {
     (total_size, names)
 }
 
-pub fn get_log_path(app: tauri::AppHandle)->PathBuf{
-    app.path().app_log_dir().map_err(|e| e.to_string()).unwrap()
-}
-
-pub fn get_temp_path(app: tauri::AppHandle)->PathBuf{
-    app.path().app_cache_dir().map_err(|e| e.to_string()).unwrap()
-}
-
+// enable tracing::subscriber
 fn init_tracing(app: &tauri::AppHandle) -> Result<(), Box<dyn std::error::Error>> {
     // 1. Получаем путь к директории логов, специфичной для приложения и ОС
     let log_dir = app.path().app_log_dir()?;

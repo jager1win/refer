@@ -22,8 +22,9 @@
     "saved": "Settings saved successfully!",
     "error": "An error occurred"
   },
-  "import": {
-    "title": "Import"
+  "edit": {
+    "create_title": "Create",
+    "edit_title": "Edit"
   },
   "references": {
     "title": "References",
