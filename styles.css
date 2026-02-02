@@ -6,6 +6,7 @@
     display: grid;
     grid-template-areas: "tab";
     position: relative;
+    padding:0 1rem;
 }
 
 .tab-content {
@@ -42,5 +43,7 @@
   background-color: #007bff;
   color: white;
 }
-
+div.now{overflow-x: auto;padding:0 1rem;text-align: center;min-height:2rem}
+div.now p{ min-width: 0; white-space: nowrap;margin-bottom: 0.4rem;}
+div.now.error p{color:red;}
 li {list-style-type: none !important;}

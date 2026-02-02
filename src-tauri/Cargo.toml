@@ -21,13 +21,12 @@ tauri-build = { version = "2", features = [] }
 
 [dependencies]
 tauri = { version = "2", features = [] }
-tauri-plugin-opener = "2"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
-tauri-plugin-sql = { version = "2", features = ["sqlite"] }
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter", "fmt", "json"] }
 tracing-appender = "0.2"
 chrono = "0.4"
+rusqlite = { version = "0.38", features = ["bundled"] }
 csv = "1"
 calamine = "0.32.0"

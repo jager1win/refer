@@ -3,8 +3,12 @@ use tauri::Manager;
 use serde_json::Value;
 use std::sync::Mutex;
 
+use crate::APP_EXT;
 use crate::SettingsStore;
 use crate::StatisticsState;
+use tracing_subscriber::{fmt, EnvFilter};
+use tracing_appender::rolling;
+use tracing::{error,info};
 
 #[tauri::command]
 pub async fn get_settings(app: tauri::AppHandle) -> Result<SettingsStore, String> {
@@ -52,11 +56,22 @@ pub async fn set_settings(app: tauri::AppHandle, new: SettingsStore) -> Result<(
 }
 
 #[tauri::command]
-pub async fn get_stat(app: tauri::AppHandle) -> Result<StatisticsState, String>{
+pub async fn get_stat(app: tauri::AppHandle) -> Result<StatisticsState, String> {
     crate::set_stat_all(&app);
     let state = app.state::<Mutex<StatisticsState>>();
     let state = state.lock().unwrap();
     let result: StatisticsState = state.clone();
     Ok(result)
+}
+
+#[tauri::command]
+pub async fn del_ref(app: tauri::AppHandle, val: String) -> Result<String, String> {
+    let document_dir = app.path().document_dir().map_err(|e| e.to_string())?;
+    let reference_path = document_dir.join(APP_EXT).join(val);
+    println!("{:?}",&reference_path);
+    match fs::remove_file(reference_path){
+        Ok(i) => Ok({info!("reference_deleted: {:?}",i);String::from("reference_deleted")}),
+        Err(e) => Ok({error!("failed_reference_deleted: {}",e);"failed_reference_deleted".to_string()})
+    }
 }
 

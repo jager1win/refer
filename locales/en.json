@@ -18,10 +18,6 @@
     "light": "Light",
     "dark": "Dark"
   },
-  "messages": {
-    "saved": "Settings saved successfully!",
-    "error": "An error occurred"
-  },
   "edit": {
     "create_title": "Create",
     "edit_title": "Edit"
@@ -29,5 +25,13 @@
   "references": {
     "title": "References",
     "loading": "Loading..."
+  },
+  "ok": {
+    "del_ref": "Reference deleted"
+  },
+  "err": {
+    "del_ref": "Error with delete",
+    "err_unknown": "err unknown"
   }
+
 }

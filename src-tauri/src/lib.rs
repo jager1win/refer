@@ -1,26 +1,21 @@
 use serde::{Deserialize, Serialize};
 use std::fs::{self, File};
+use std::io::{self, Write};
 use std::path::{Path,PathBuf};
+use std::time::{SystemTime, UNIX_EPOCH};
 use std::sync::Mutex;
 use tauri::{Manager};
 pub mod sql;
 pub mod commands;
+pub mod errors;
 use crate::sql::*;
 use crate::commands::*;
 use tracing_subscriber::{fmt, EnvFilter};
 use tracing_appender::rolling;
 use tracing::{debug, error, warn, info};
 
-const APP_EXT: &str = "refer";
 
-#[derive(serde::Serialize)]
-pub struct RError(pub String);
-
-impl RError {
-    pub fn new(code: &str) -> Self {
-        Self(code.to_string())
-    }
-}
+pub const APP_EXT: &str = "refer";
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SettingsStore {
@@ -43,7 +38,6 @@ pub struct StatisticsState {
     pub db_path_size: u64,
     pub db_list: Vec<String>,
     pub log_path: PathBuf,
-    pub errors: Vec<String>
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -62,12 +56,11 @@ pub fn run() {
 
             Ok(())
         })
-        .plugin(tauri_plugin_sql::Builder::new().build())
-        .plugin(tauri_plugin_opener::init())
         .invoke_handler(tauri::generate_handler![
             get_settings,
             set_settings,
-            get_stat
+            get_stat,
+            del_ref,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
@@ -89,15 +82,15 @@ fn set_stat_all(app: &tauri::AppHandle) {
             state.db_path_size = t.0;
             state.db_list = t.1;
         }
-        Err(_e) => {
-            state.errors.push("DOCUMENT_DIR_MISSING".to_string());
+        Err(e) => {
+            error!("{}",e);
         }
     }
     // set logs path
     match app.path().app_log_dir() {
         Ok(path) => state.log_path = path,
-        Err(_e) => {
-            state.errors.push("LOG_DIR_MISSING".to_string());
+        Err(e) => {
+            error!("{}",e);
         }
     }
 
@@ -178,4 +171,49 @@ fn init_tracing(app: &tauri::AppHandle) -> Result<(), Box<dyn std::error::Error>
 
     tracing::subscriber::set_global_default(subscriber)?;
     Ok(())
+}
+
+pub fn check_writable_dir(mut dir: PathBuf) -> io::Result<()> {
+    // Нормализуем — убираем возможный конечный сепаратор
+    if dir.as_os_str().is_empty() {
+        return Err(io::Error::new(io::ErrorKind::InvalidInput, "empty path"));
+    }
+
+    // Если путь указывает на файл — ошибка
+    if dir.exists() && dir.is_file() {
+        return Err(io::Error::new(io::ErrorKind::AlreadyExists, "path is a file"));
+    }
+
+    // Попытка создать директорию рекурсивно, если её нет
+    if !dir.exists() && let Err(e) = fs::create_dir_all(&dir) {
+        return Err(io::Error::new(
+            e.kind(),
+            format!("failed to create directory {}: {}", dir.display(), e),
+        ));
+    }
+
+    // Сформировать уникальное имя временного файла
+    let ts = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|d| d.as_nanos())
+        .unwrap_or(0);
+    let filename = format!(".refer_write_test_{}.tmp", ts);
+    dir.push(filename);
+
+    // Попробовать создать файл с create_new чтобы не перезаписывать
+    let result = (|| -> io::Result<()> {
+        let mut f = File::options()
+            .create_new(true)
+            .write(true)
+            .open(&dir)?;
+        // небольшой write-проверочный буфер
+        f.write_all(b"ok")?;
+        f.sync_all().ok(); // игнорируем sync ошибки, но пытаемся
+        Ok(())
+    })();
+
+    // Стараться удалить файл, даже если создание/запись упали
+    let _ = fs::remove_file(&dir);
+
+    result
 }
