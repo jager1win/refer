@@ -1,13 +1,13 @@
-use std::fs;
+use std::fs::{self, OpenOptions};
+use std::fs::File;
+use std::io::{self, Read};
 use tauri::Manager;
 use serde_json::Value;
 use std::sync::Mutex;
 
-use crate::APP_EXT;
+use crate::{APP_EXT, LOG_GUARD};
 use crate::SettingsStore;
 use crate::StatisticsState;
-use tracing_subscriber::{fmt, EnvFilter};
-use tracing_appender::rolling;
 use tracing::{error,info};
 
 #[tauri::command]
@@ -57,7 +57,7 @@ pub async fn set_settings(app: tauri::AppHandle, new: SettingsStore) -> Result<(
 
 #[tauri::command]
 pub async fn get_stat(app: tauri::AppHandle) -> Result<StatisticsState, String> {
-    crate::set_stat_all(&app);
+    crate::update_stat_all(&app);
     let state = app.state::<Mutex<StatisticsState>>();
     let state = state.lock().unwrap();
     let result: StatisticsState = state.clone();
@@ -67,11 +67,59 @@ pub async fn get_stat(app: tauri::AppHandle) -> Result<StatisticsState, String> 
 #[tauri::command]
 pub async fn del_ref(app: tauri::AppHandle, val: String) -> Result<String, String> {
     let document_dir = app.path().document_dir().map_err(|e| e.to_string())?;
-    let reference_path = document_dir.join(APP_EXT).join(val);
-    println!("{:?}",&reference_path);
+    let reference_path = document_dir.join(APP_EXT).join(&val);
+
     match fs::remove_file(reference_path){
-        Ok(i) => Ok({info!("reference_deleted: {:?}",i);String::from("reference_deleted")}),
-        Err(e) => Ok({error!("failed_reference_deleted: {}",e);"failed_reference_deleted".to_string()})
+        Ok(_i) => Ok({info!("reference deleted: {}",val);String::from("reference_deleted")}),
+        Err(e) => Ok({error!("failed reference deleted: {}",e);"failed_reference_deleted".to_string()})
     }
 }
 
+/// Команда для получения содержимого лог-файла
+#[tauri::command]
+pub fn get_log(app: tauri::AppHandle) -> Result<String, String> {
+    let state = app.state::<Mutex<StatisticsState>>();
+    let state = state.lock().unwrap();
+    
+    let log_path = &state.log_path;
+    
+    // Проверяем, существует ли файл логов
+    if !log_path.exists() {
+        return Err("Log file does not exist".to_string());
+    }
+    
+    // Читаем содержимое файла
+    let mut file = match File::open(log_path) {
+        Ok(file) => file,
+        Err(e) => return Err(format!("Failed to open log file: {}", e)),
+    };
+    
+    let mut contents = String::new();
+    match file.read_to_string(&mut contents) {
+        Ok(_) => Ok(contents),
+        Err(e) => Err(format!("Failed to read log file: {}", e)),
+    }
+}
+
+/// Команда для очистки лог-файла (без перезапуска приложения)
+#[tauri::command]
+pub fn clear_log(app: tauri::AppHandle) -> Result<String, String> {
+    let state = app.state::<Mutex<StatisticsState>>();
+    let state = state.lock().unwrap();
+    
+    let log_path = &state.log_path;
+    
+    // Проверяем, существует ли файл логов
+    if !log_path.exists() {
+        return Err("Log file does not exist".to_string());
+    }
+    
+    // Пытаемся очистить файл
+    match fs::write(log_path, "") {
+        Ok(_) => Ok("Log file cleared successfully".to_string()),
+        Err(e) if e.kind() == io::ErrorKind::PermissionDenied => {
+            Ok("Note: Log file may be locked by another application. It will be cleared on next app restart.".to_string())
+        }
+        Err(e) => Err(format!("Failed to clear log file: {}", e)),
+    }
+}

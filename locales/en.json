@@ -3,20 +3,14 @@
     "references": "References"
   },
   "settings": {
-    "title": "Settings",
+    "title": "App settings",
     "language": "Language",
-    "theme": "Theme",
-    "save": "Save settings"
+    "theme": "Dark/Light theme"
   },
   "button": {
     "save": "Save",
     "cancel": "Cancel",
     "delete": "Delete"
-  },
-  "theme": {
-    "title": "Theme",
-    "light": "Light",
-    "dark": "Dark"
   },
   "edit": {
     "create_title": "Create",
@@ -24,7 +18,15 @@
   },
   "references": {
     "title": "References",
-    "loading": "Loading..."
+    "ready": "Ready",
+    "loading": "Loading...",
+    "show_logs": "Show logs",
+    "clear_logs": "Clear Logs",
+    "path_ref": "Path to the folder",
+    "path_ref_access": "Access to the refer folder",
+    "number": "Number of databases",
+    "size": "Folder size",
+    "log_path": "Log file path"
   },
   "ok": {
     "del_ref": "Reference deleted"
