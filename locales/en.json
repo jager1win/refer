@@ -13,8 +13,14 @@
     "delete": "Delete"
   },
   "edit": {
-    "create_title": "Create",
-    "edit_title": "Edit"
+    "test": "test"
+  },
+  "create": {
+    "title": "Create",
+    "main_error": "You cannot create references because there are problems accessing the application folder",
+    "empty_ref": "Empty reference",
+    "ref_from_table": "Reference from table (csv, excel, ods)",
+    "ref_from_db": "Reference from sqlite"
   },
   "references": {
     "title": "References",

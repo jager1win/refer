@@ -3,7 +3,7 @@ use leptos::task::spawn_local;
 use serde::{Deserialize, Serialize};
 use serde_wasm_bindgen::{from_value, to_value};
 use wasm_bindgen::prelude::*;
-use once_cell::sync::OnceCell;
+
 include!(concat!(env!("OUT_DIR"), "/i18n/mod.rs"));
 use i18n::*;
 
@@ -76,7 +76,7 @@ pub fn App() -> impl IntoView {
         edit_ref.set(false);
         set_now(now,"".to_string());
     };
-
+    
     view! {
         <I18nContextProvider>
             <nav class="top-nav">
@@ -99,6 +99,7 @@ pub fn App() -> impl IntoView {
                         active_tab.set(1);
                     }
                 >
+                    "📚 "
                     {
                         let i18n = use_i18n();
                         t!(i18n, nav.references)
@@ -133,13 +134,28 @@ pub fn App() -> impl IntoView {
 fn Now() -> impl IntoView {
     let i18n = use_i18n();
     let now: RwSignal<String> = use_context::<RwSignal<String>>().expect("now not found");
-    // once run
-    if now.get_untracked().is_empty() {
-        let ready = tu_string!(i18n, references.ready).to_string();
-        set_now(now, ready);
-    }
+    let stat: RwSignal<StatisticsState> = use_context::<RwSignal<StatisticsState>>().expect("stat not found");
+    let patterns = ["fail", "error"];
+
+    Effect::new(move |_| {
+        log::info!("Stat : {:?}", stat.get());
+        let stat_check = stat.get();
+        if !stat_check.db_path_ok.is_empty(){
+            match stat_check.db_path_ok{
+                val if val == "Ok" => {
+                    let ready = tu_string!(i18n, references.ready).to_string();
+                    set_now(now, ready)
+                },
+                e => set_now(now, e)
+            }
+        }
+    });
+
     view! {
-        <div class="grid now " class:error=move || now.get().to_lowercase().contains("fail")>
+        <div
+            class="grid now"
+            class:error=move || patterns.iter().any(|p| now.get().to_lowercase().contains(p))
+        >
             <p class="">{move || now.get()}</p>
         </div>
     }
@@ -278,6 +294,7 @@ fn Refs() -> impl IntoView {
     let stat: RwSignal<StatisticsState> = use_context::<RwSignal<StatisticsState>>().expect("stat not found");
     let selected_ref: RwSignal<Option<String>> = use_context().expect("selected not found");
     let now: RwSignal<String> = use_context::<RwSignal<String>>().expect("now not found");
+    let patterns = ["fail", "error"];
     upd_stat(stat,now);
 
     view! {
@@ -298,17 +315,19 @@ fn Refs() -> impl IntoView {
             />
         </div>
 
-        <div class="grid2">
+        <div class="grid2 stat_table">
             <ins>{tu!(i18n, references.path_ref)}": "</ins>
-            <span><small>{move || stat.get().db_path}</small></span>
+            <span>{move || stat.get().db_path}</span>
             <ins>{tu!(i18n, references.path_ref_access)}": "</ins>
-            <span>{move || stat.get().db_path_ok}</span>
+            <span class:error=move || {
+                patterns.iter().any(|p| stat.get().db_path_ok.to_lowercase().contains(p))
+            }>{move || stat.get().db_path_ok}</span>
             <ins>{tu!(i18n, references.number)}": "</ins>
             <span>{move || stat.get().db_list.len()}</span>
             <ins>{tu!(i18n, references.size)}": "</ins>
             <span>{move || read_size(stat.get().db_path_size)}</span>
             <ins>{tu!(i18n, references.log_path)}": "</ins>
-            <span><small>{move || stat.get().log_path}</small></span>
+            <span>{move || stat.get().log_path}</span>
         </div>
         <LogViewer />
     }
@@ -365,7 +384,7 @@ fn Edit() -> impl IntoView {
         });
     };
     view! {
-        <h3>{t!(i18n, edit.edit_title)}</h3>
+        <h3>{tu!(i18n, edit.test)}</h3>
 
         <button on:click=move |_| {
             edit_ref.set(false)
@@ -379,6 +398,8 @@ fn Create() -> impl IntoView {
     use leptos::html::Input;
     use leptos::ev::SubmitEvent;
     let i18n = use_i18n();
+    let stat: RwSignal<StatisticsState> = use_context::<RwSignal<StatisticsState>>().expect("stat not found");
+    let now: RwSignal<String> = use_context::<RwSignal<String>>().expect("now not found");
 
     let input_el: NodeRef<Input> = NodeRef::new();
     let on_submit = move |ev: SubmitEvent| {
@@ -389,24 +410,36 @@ fn Create() -> impl IntoView {
             invoke("my_cmd", args).await;
         });*/
     };
+
     view! {
-        <h3>{t!(i18n, edit.create_title)}</h3>
-        <details name="sql">
-            <summary>"Пустой справочник"</summary>
-            // on_submit defined below
-            <form on:submit=on_submit>
-                <input type="text" value="" node_ref=input_el />
-                <input type="submit" value="" />
-            </form>
-        </details>
-        <details name="sql">
-            <summary>"Справочник из таблицы(csv, excel, ods)"</summary>
-            <div class="form">"form2"</div>
-        </details>
-        <details name="sql">
-            <summary>"Справочник из sqlite"</summary>
-            <div class="form">"form3"</div>
-        </details>
+        <Show
+            when=move || stat.get().db_path_ok == "Ok"
+            fallback=move || {
+                view! {
+                    <p>{tu!(i18n, create.main_error)}":"</p>
+                    <span>{move || stat.get().db_path}</span>
+                    <span class="error">{move || stat.get().db_path_ok}</span>
+                }
+            }
+        >
+            <h3>{tu!(i18n, create.title)}</h3>
+            <details name="sql">
+                <summary>{tu!(i18n, create.empty_ref)}</summary>
+                // on_submit defined below
+                <form on:submit=on_submit>
+                    <input type="text" value="" node_ref=input_el />
+                    <input type="submit" value="" />
+                </form>
+            </details>
+            <details name="sql">
+                <summary>{tu!(i18n, create.ref_from_table)}</summary>
+                <div class="form">"form2"</div>
+            </details>
+            <details name="sql">
+                <summary>{tu!(i18n, create.ref_from_db)}</summary>
+                <div class="form">"form3"</div>
+            </details>
+        </Show>
     }
 }
 
