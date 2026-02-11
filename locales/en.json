@@ -1,45 +1,50 @@
 {
-  "nav": {
-    "references": "References"
+  "all": {
+    "reference":  "Reference",
+    "references": "References",
+    "err_unknown": "unknown error"
   },
   "settings": {
     "title": "App settings",
     "language": "Language",
-    "theme": "Dark/Light theme"
-  },
-  "button": {
-    "save": "Save",
-    "cancel": "Cancel",
-    "delete": "Delete"
+    "theme": "Dark/Light"
   },
   "edit": {
-    "test": "test"
+    "test": "test",
+    "ok_del_ref": "Reference deleted",
+    "er_del_ref": "Failed delete reference"
   },
   "create": {
     "title": "Create",
     "main_error": "You cannot create references because there are problems accessing the application folder",
-    "empty_ref": "Empty reference",
-    "ref_from_table": "Reference from table (csv, excel, ods)",
-    "ref_from_db": "Reference from sqlite"
+    "ref_from_empty": "Empty",
+    "ref_from_table": "Spreadsheet",
+    "ref_from_db": "SQLite",
+    "ok_create": "Reference created",
+    "er_create": "Failed creating reference",
+    "example": "Generate example reference in '/example'",
+    "example_replace": "Existing refer will be overwritten",
+    "example_desc_1": "example_desc_1",
+    "example_desc_2": "example_desc_2",
+    "example_desc_3": "example_desc_3",
+    "fname": "Name",
+    "fsqlite": "SQLite file",
+    "ftable": "Spreadsheet file",
+    "fheader": "Header",
+    "ttp_path": "You can use subfolders (e.g. tmp/my_refer)",
+    "ttp_header": "Use first row as column names",
+    "ttp_table": ".csv, .xls, .xlsx, .ods | single sheet",
+    "ttp_sqlite": ".sqlite, .sqlite3, .db | single table"
   },
   "references": {
-    "title": "References",
     "ready": "Ready",
     "loading": "Loading...",
     "show_logs": "Show logs",
     "clear_logs": "Clear Logs",
-    "path_ref": "Path to the folder",
-    "path_ref_access": "Access to the refer folder",
-    "number": "Number of databases",
+    "path_ref": "Path to refer folder",
+    "path_ref_access": "Access to refer folder",
+    "number": "Number of references",
     "size": "Folder size",
     "log_path": "Log file path"
-  },
-  "ok": {
-    "del_ref": "Reference deleted"
-  },
-  "err": {
-    "del_ref": "Error with delete",
-    "err_unknown": "err unknown"
   }
-
 }

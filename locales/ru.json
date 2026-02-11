@@ -1,44 +1,50 @@
 {
-  "nav": {
-    "references": "Справочники"
+  "all": {
+    "reference": "Справочник",
+    "references": "Справочники",
+    "err_unknown": "неизвестная ошибка"
   },
   "settings": {
     "title": "Настройки приложения",
     "language": "Язык",
-    "theme": "Темная/Светлая тема"
-  },
-  "button": {
-    "save": "Сохранить",
-    "cancel": "Отмена",
-    "delete": "Удалить"
+    "theme": "Темная/Светлая"
   },
   "edit": {
-    "test": "тест"
+    "test": "тест",
+    "ok_del_ref": "Справочник удален",
+    "er_del_ref": "Ошибка удаления"
   },
   "create": {
     "title": "Создать",
     "main_error": "Вы не можете создавать справочники так как есть проблемы с доступом к папке приложения",
-    "empty_ref": "Пустой справочник",
-    "ref_from_table": "Справочник из таблицы(csv, excel, ods)",
-    "ref_from_db": "Справочник из sqlite"
-  },
+    "ref_from_empty": "Пустой",
+    "ref_from_table": "Таблица",
+    "ref_from_db": "SQLite",
+    "ok_create": "Справочник создан",
+    "er_create": "Ошибка создания справочника",
+    "example": "Сгенерировать пример справочника в '/example'",
+    "example_replace": "Существующий справочник будет перезаписан",
+    "example_desc_1": "example_desc_1",
+    "example_desc_2": "example_desc_2",
+    "example_desc_3": "example_desc_3",
+    "fname": "Имя",
+    "fsqlite": "Файл SQLite",
+    "ftable": "Файл таблицы",
+    "fheader": "Заголовок",
+    "ttp_path": "Можно указать подпапку (например, tmp/my_refer)",
+    "ttp_header": "Первая строка — названия столбцов",
+    "ttp_table": ".csv, .xls, .xlsx, .ods | один лист",
+    "ttp_sqlite": ".sqlite, .sqlite3, .db | одна таблица"
+   },
   "references": {
-    "title": "Справочники",
     "ready": "Готов",
     "loading": "Загрузка...",
     "show_logs": "Показать логи",
     "clear_logs": "Очистить логи",
-    "path_ref": "Путь к папке",
-    "path_ref_access": "Доступ к папке",
+    "path_ref": "Путь к папке refer",
+    "path_ref_access": "Доступ к папке refer",
     "number": "Количество справочников",
     "size": "Размер папки",
     "log_path": "Путь к файлу логов"
-  },
-  "ok": {
-    "del_ref": "Справочник удален"
-  },
-  "err": {
-    "err_unknown": "неизвестная ошибка",
-    "del_ref": "Ошибка при удалении файла"
   }
 }

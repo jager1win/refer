@@ -1,6 +1,7 @@
 use std::fs::{self, OpenOptions};
 use std::fs::File;
 use std::io::{self, Read};
+use serde::{Deserialize, Serialize};
 use tauri::Manager;
 use serde_json::Value;
 use std::sync::Mutex;
@@ -9,6 +10,16 @@ use crate::{APP_EXT, LOG_GUARD};
 use crate::SettingsStore;
 use crate::StatisticsState;
 use tracing::{error,info};
+
+#[derive(Serialize, Deserialize)]
+pub struct CreateForm {
+    mode: String,                    // "empty", "sheet", "sqlite"
+    db_name: String,                 // имя БД
+    csv_delim: String,               // разделитель CSV
+    has_header: bool,                // есть заголовок
+    file_extension: Option<String>,  // расширение файла
+    file_data: Option<Vec<u8>>,      // содержимое файла
+}
 
 #[tauri::command]
 pub async fn get_settings(app: tauri::AppHandle) -> Result<SettingsStore, String> {
@@ -122,4 +133,10 @@ pub fn clear_log(app: tauri::AppHandle) -> Result<String, String> {
         }
         Err(e) => Err(format!("Failed to clear log file: {}", e)),
     }
+}
+
+#[tauri::command]
+pub fn create(app: tauri::AppHandle, val: CreateForm) -> Result<String, String> {
+    Ok(String::from("eee"))
+
 }

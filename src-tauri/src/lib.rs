@@ -49,7 +49,7 @@ pub struct DbInfo {
 // Храним WorkerGuard, чтобы логи не терялись при выходе
 static LOG_GUARD: std::sync::OnceLock<WorkerGuard> = std::sync::OnceLock::new();
 
-//#[cfg_attr(mobile, tauri::mobile_entry_point)]
+#[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
         .setup(|app| {
@@ -65,7 +65,8 @@ pub fn run() {
             get_stat,
             del_ref,
             get_log,
-            clear_log
+            clear_log,
+            create
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

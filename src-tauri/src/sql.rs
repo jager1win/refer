@@ -19,3 +19,4 @@ impl DbState {
     Ok(Self { conn: Mutex::new(conn) })
   }
 }
+
