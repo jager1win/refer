@@ -55,8 +55,8 @@ li {list-style-type: none !important;}
 .grid2{display: grid;grid-auto-columns: 1fr; grid-template-columns: 1fr 1fr;align-items: baseline;}
 .grida{display: grid;gap: 1rem;grid-template-columns: repeat(auto-fit, minmax(min(30vw, 150px), 1fr));width: 100%;overflow: hidden;align-items: center;}
 .gridl{display: grid;grid-auto-columns: 1fr; grid-template-columns: 1fr 2fr;gap: 1rem;align-items: center;}
-div.now{overflow-x: auto;padding:0 1rem;text-align: center;min-height:2rem}
-div.now p{ min-width: 0; white-space: nowrap;margin-bottom: 0.4rem;}
+div.now{overflow-x: auto;text-align: center;height:3rem;position:relative;}
+div.now p{ min-width: 0; white-space: nowrap;padding: 0.4rem;margin:0;margin-top: 0.4rem;}
 div.now.error p, span.error, small.error{color:red;}
 .log-controls{display:flex;justify-content: space-around;}
 .log-content code{padding:0.4rem .8rem;overflow-x: auto;width: 100%;white-space: pre-line;}
@@ -68,9 +68,11 @@ button:not(.navb){padding:0.4rem}
 .stat_table span{overflow-wrap: anywhere; word-break: break-word;white-space: normal;}
 .flex{display:flex;flex: auto;}
 .m0{margin:0;}
-.err_send{display: inline-block; width: 100%; min-height:1rem;color:red;text-align: center;}
+.err_send{display: inline-block; width: 100%; min-height:1rem;color:#AD6400;text-align: center;}
 .required {color: red; margin-left: 0.25rem;}
 .w1{width: 1rem!important;}
 .form_new input[type=text]{height: 2rem;}
 .ml1, [data-tooltip]{margin-left: 1rem;}
 input.csv_deli{width: 2rem!important;padding: 0.4rem!important;}
+.sp_close{cursor:pointer;position: absolute;top:0.4rem;right: 0.4rem;padding:0.4rem}
+.hidden{display:none}

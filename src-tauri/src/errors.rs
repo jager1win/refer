@@ -1,20 +1,30 @@
 use serde::Serialize;
+use tracing::error;
 
-#[derive(Serialize)]
-pub struct RError(pub String);
+#[derive(Serialize, Debug)]
+pub struct RError( pub &'static str);
 
 impl RError {
-    pub fn new(code: &str) -> Self {Self(code.to_string()) }
+    pub const fn new(code: &'static str) -> Self {Self(code)}
 }
 
 impl From<std::io::Error> for RError {
-  fn from(_: std::io::Error) -> Self { RError::new("IO_ERROR") }
+    fn from(e: std::io::Error) -> Self {
+        error!(error = %e, "io error");
+        RError::new("err_io")
+    }
 }
 
 impl From<rusqlite::Error> for RError {
-  fn from(_: rusqlite::Error) -> Self { RError::new("SQL_ERROR") }
+    fn from(e: rusqlite::Error) -> Self {
+        error!(error = %e, "sql error");
+        RError::new("err_sqlite")
+    }
 }
 
 impl From<csv::Error> for RError {
-  fn from(_: csv::Error) -> Self { RError::new("CSV_ERROR") }
+    fn from(e: csv::Error) -> Self {
+        error!(error = %e, "csv error");
+        RError::new("err_csv")
+    }
 }

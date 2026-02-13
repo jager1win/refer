@@ -8,7 +8,6 @@ use tauri::Manager;
 pub mod sql;
 pub mod commands;
 pub mod errors;
-use crate::sql::*;
 use crate::commands::*;
 use tracing_subscriber::{fmt, EnvFilter};
 use tracing_appender::non_blocking::WorkerGuard;
@@ -33,10 +32,10 @@ impl Default for SettingsStore {
 
 #[derive(Default, Debug, Clone, Serialize, Deserialize)]
 pub struct StatisticsState {
-    pub db_path: PathBuf,
-    pub db_path_size: u64,
-    pub db_list: Vec<String>,
-    pub log_path: PathBuf,
+    pub db_path: PathBuf,  // путь где хранятся базы
+    pub db_path_size: u64, // размер всех баз
+    pub db_list: Vec<String>, // список имен баз включая пути от папки refer
+    pub log_path: PathBuf,  // файл логов куда пишет tracing
     pub db_path_ok: String, // Пустое если еще не проверяли, "Ok" если всё хорошо, иначе сообщение об ошибке
     pub initialized: bool,  // Флаг, что инициализация уже выполнена
 }

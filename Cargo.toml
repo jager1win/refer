@@ -29,3 +29,8 @@ locales = ["en", "ru"]
 
 [workspace]
 members = ["src-tauri"]
+
+[profile.release]
+opt-level = "z"  # Maximum optimization by size
+lto = true      # Aggressive optimization at the linking stage
+panic = "abort"  # Remove panic processing (reduces size)

@@ -39,7 +39,6 @@ struct StatisticsState {
 struct CreateForm {
     mode: String,                    // "empty", "sheet", "sqlite"
     db_name: String,                 // имя БД
-    csv_delim: String,               // разделитель CSV
     has_header: bool,                // есть заголовок
     file_extension: Option<String>,  // расширение файла
     file_data: Option<Vec<u8>>,      // содержимое файла
@@ -72,7 +71,7 @@ pub fn App() -> impl IntoView {
         match from_value::<AppSettings>(js) {
             Ok(s) => settings.set(s),
             Err(e) => {
-                set_now(now, format!("{} {}", "Failed init settings:", e));
+                now.set(format!("{} {}", "Failed init settings:", e));
             }
         };
     });
@@ -125,10 +124,17 @@ pub fn App() -> impl IntoView {
             </button>
         </nav>
         <div
-            class="grid now"
+            class="now"
             class:error=move || er_pat.iter().any(|p| now.get().to_lowercase().contains(p))
         >
-            <p class="">{move || now.get()}</p>
+            <p>{move || now.get()}</p>
+            <span
+                class="sp_close"
+                class:hidden=move || now.get().is_empty()
+                on:click=move |_| now.set("".to_string())
+            >
+                "x"
+            </span>
         </div>
         <main class="main">
             <div class="tab-content" class:active=move || active_tab.get() == 0>
@@ -346,6 +352,7 @@ fn Edit() -> impl IntoView {
     let selected_ref: RwSignal<Option<String>> = use_context().expect("selected not found");
     let edit_ref: RwSignal<bool> = use_context::<RwSignal<bool>>().expect("edit not found");
     let now: RwSignal<String> = use_context::<RwSignal<String>>().expect("now not found");
+    let stat: RwSignal<StatisticsState> = use_context::<RwSignal<StatisticsState>>().expect("stat not found");
 
     let del_ref = move |name: String| {
         spawn_local(async move {
@@ -354,13 +361,13 @@ fn Edit() -> impl IntoView {
             
             match from_value::<String>(js) {
                 Ok(_s) => {
-                    set_now(now, format!("{}: {}", tu_string!(i18n, edit.ok_del_ref), &name));
+                    now.set(format!("{}: {}", tu_string!(i18n, edit.ok_del_ref), &name));
                     selected_ref.set(None::<String>);
                     edit_ref.set(false);
-                    //upd_stat(stat,now);
+                    upd_stat(stat,now);
                 },
                 Err(e) => {
-                    set_now(now, format!("{}: {} - {}", tu_string!(i18n, edit.er_del_ref), &name, e));
+                    now.set(format!("{}: {} - {}", tu_string!(i18n, edit.er_del_ref), &name, e));
                 }
             }
         });
@@ -378,13 +385,11 @@ fn Edit() -> impl IntoView {
 #[component]
 fn Create() -> impl IntoView {
     use leptos::ev::SubmitEvent;
-    //use web_sys::{HtmlFormElement,HtmlInputElement, FormData}; // Импорт напрямую из web_sys
-
     let i18n = use_i18n();
     let selected_ref: RwSignal<Option<String>> = use_context().expect("selected not found");
     let stat: RwSignal<StatisticsState> = use_context::<RwSignal<StatisticsState>>().expect("stat not found");
     let now: RwSignal<String> = use_context::<RwSignal<String>>().expect("now not found");
-    let err_send: RwSignal<String> = RwSignal::new("".to_string());
+    let err_form: RwSignal<String> = RwSignal::new("".to_string());
     let active_tab: RwSignal<i32> = use_context().expect("active_tab not found");
     // mode: "empty" | "sheet" | "sqlite"
     let mode = RwSignal::new("empty".to_string());
@@ -396,64 +401,65 @@ fn Create() -> impl IntoView {
         
         let Some(form) = form_ref.get() else { return };
         
-        // Создаём структуру
+        // 1. СОБИРАЕМ ДАННЫЕ
         let mut form_data = CreateForm { mode: mode.get(), ..Default::default() };
         
-        // Собираем текстовые поля
         let elements = form.elements();
-        
         for i in 0..elements.length() {
             if let Some(element) = elements.item(i)
                 && let Some(input) = element.dyn_ref::<web_sys::HtmlInputElement>() {
                     match input.name().as_str() {
                         "db_name" => form_data.db_name = input.value(),
-                        "csv_delim" => form_data.csv_delim = input.value(),
                         "has_header" => form_data.has_header = input.checked(),
                         _ => {}
                     }
                 }
         }
 
-        // Проверяем обязательные поля
+        // 2. ПРОВЕРЯЕМ БАЗОВОЕ
         if form_data.db_name.is_empty() {
-            log::error!("Имя базы данных обязательно");
+            err_form.set(format!("🖉 {}", t_string!(i18n, create.fname)));
             return;
         }
-        
-        // Получаем файл для чтения ВНУТРИ spawn_local
-        let file_to_read = if form_data.mode != "empty" {
-            let file_input = form.query_selector("input[type='file']")
+
+        // 3. РАБОТА С ФАЙЛОМ (только для sheet/sqlite)
+        let selected_file = if form_data.mode != "empty" {
+            // Выбираем селектор в зависимости от режима
+            let selector = match form_data.mode.as_str() {
+                "sheet" => "#sheet_file",
+                "sqlite" => "#sqlite_file",
+                _ => "",
+            };
+            
+            // Получаем файл - селектор 100% валидный для своего режима
+            let file_input = form
+                .query_selector(selector)
                 .ok()
                 .flatten()
-                .and_then(|el| el.dyn_into::<web_sys::HtmlInputElement>().ok());
+                .and_then(|el| el.dyn_into::<web_sys::HtmlInputElement>().ok())
+                .unwrap();
             
-            if let Some(file_input) = file_input {
-                if let Some(file_list) = file_input.files() {
-                    if file_list.length() > 0 {
-                        file_list.item(0)
-                    } else {
-                        None
+            // Получаем первый файл
+            let file = match file_input.files().and_then(|f| f.get(0)) {
+                Some(f) => f,
+                None => {
+                    match form_data.mode.as_str() {
+                        "sheet" => err_form.set(format!("👉 {}", t_string!(i18n, create.ftable))),
+                        "sqlite" => err_form.set(format!("👉 {}", t_string!(i18n, create.fsqlite))),
+                        _ => {}
                     }
-                } else {
-                    None
+                    return;
                 }
-            } else {
-                None
-            }
-        } else {
-            None
-        };
-        
-        // Проверка расширения файла
-        if let Some(file) = &file_to_read {
-            let file_name = file.name();
-            let extension = get_file_extension(&file_name).to_lowercase();
+            };
+            
+            // Проверяем расширение
+            let extension = get_file_extension(&file.name()).to_lowercase();
             
             match form_data.mode.as_str() {
                 "sheet" => {
                     let allowed = ["csv", "xls", "xlsx", "ods"];
                     if !allowed.contains(&extension.as_str()) {
-                        log::error!("Недопустимый формат файла. Разрешены: csv, xls, xlsx, ods");
+                        err_form.set(format!("!!! {} = {}", t_string!(i18n, create.ftable), t_string!(i18n, create.ttp_table)));
                         return;
                     }
                     form_data.file_extension = Some(extension);
@@ -461,60 +467,113 @@ fn Create() -> impl IntoView {
                 "sqlite" => {
                     let allowed = ["sqlite", "sqlite3", "db"];
                     if !allowed.contains(&extension.as_str()) {
-                        log::error!("Недопустимый формат файла. Разрешены: sqlite, sqlite3, db");
+                        err_form.set(format!("!!! {} = {}", t_string!(i18n, create.fsqlite),  t_string!(i18n, create.ttp_sqlite)));
                         return;
                     }
                     form_data.file_extension = Some(extension);
                 }
                 _ => {}
             }
-        }
-        
-        // Все проверки пройдены - запускаем spawn_local
+            
+            Some(file)
+        } else {
+            None
+        };
+
+        // 4. ЕСЛИ file_extension None - у нас уже выше return,
+        //    значит файл есть и расширение корректное
         spawn_local(async move {
-            // Читаем файл внутри async блока
-            if let Some(file) = file_to_read {
+            let mut final_data = form_data.clone();
+            
+            if let Some(file) = selected_file {
                 match read_file_as_bytes(&file).await {
-                    Ok(bytes) => form_data.file_data = Some(bytes),
+                    Ok(bytes) => final_data.file_data = Some(bytes),
                     Err(e) => {
-                        log::error!("Ошибка чтения файла: {}", e);
-                        set_now(now, format!("{}: {} - {}", 
+                        now.set(format!("{}: {} - {}", 
                             tu_string!(i18n, create.er_create), 
-                            &form_data.db_name, 
+                            final_data.db_name, 
                             e));
                         return;
                     }
                 }
             }
             
-            log::info!("📦 Отправляем: {:?}", form_data);
+            log::info!("📦 Отправляем: {:?}", final_data);
             
-            let args = to_value(&CreateFormBack { val: form_data.clone() }).unwrap();
+            let args = to_value(&CreateFormBack { val: final_data }).unwrap();
             let js = invoke("create", args).await;
             match from_value::<String>(js) {
-                Ok(_s) => set_now(now,format!("{}: {}", tu_string!(i18n, create.ok_create), &form_data.db_name)),
-                Err(e) => set_now(now,format!("{}: {} - {}", tu_string!(i18n, create.er_create), &form_data.db_name,e))
+                Ok(_s) => now.set(format!("{}: {}", 
+                    tu_string!(i18n, create.ok_create), 
+                    form_data.db_name)),
+                Err(e) => now.set(format!("{}: {} - {}", 
+                    tu_string!(i18n, create.er_create), 
+                    form_data.db_name, 
+                    e))
             }
         });
     };
 
     let create_ex = move |name:&str| {
-        let form_data = CreateForm { mode: "example".to_string(), ..Default::default() };
+        let form_data = CreateForm { mode: "example".to_string(), db_name: name.to_string(), ..Default::default() };
         let name = name.to_string();
-        spawn_local(async move {
+        /*spawn_local(async move {
             let args = to_value(&CreateFormBack { val: form_data }).unwrap();
             let js = invoke("create", args).await;
-            match from_value::<String>(js) {
-                Ok(_s) => {
+            let result: Result<String, String> = from_value(js).map_err(|e| format!("deserialize failed: {e}"));
+            log::debug!("{:?}", &result);
+            match result {
+                Ok(_) => {
+                    log::info!("create_ex: {}", &name);
                     set_now(now,format!("{}: {}", tu_string!(i18n, create.ok_create), &name));
-                    selected_ref.set(Some("abook.refer".to_string()));
-                    active_tab.set(1);
-                },
+                    //selected_ref.set(Some("abook.refer".to_string()));
+                    //active_tab.set(1);
+                }
                 Err(e) => set_now(now,format!("{}: {} - {}", tu_string!(i18n, create.er_create), &name,e))
             }
+        });*/
+        spawn_local(async move {
+            let args = to_value(&CreateFormBack { val: form_data }).unwrap();
+            let js: JsValue = invoke("create", args).await;
+            log::info!("invoke returned (raw): {:?}", js);
+
+            // Сначала попробуем распарсить как Result<String,String>
+            if let Ok(parsed) = from_value::<Result<String, String>>(js.clone()) {
+                log::info!("invoke returned (raw)2: {:?}", js);
+                match parsed {
+                    Ok(_) => {
+                        log::info!("create_ex: {}", &name);
+                        now.set(format!("{}: {}", tu_string!(i18n, create.ok_create), &name));
+                    }
+                    Err(e) => {
+                        now.set(format!("{}: {} - {}", tu_string!(i18n, create.er_create), &name, e));
+                    }
+                }
+            }
+
+            // Если не удалось распарсить — invoke бросил исключение JsValue.
+            // Попробуем получить человекочитаемую строку.
+            /*let msg = if js.is_string() {
+                js.as_string().unwrap_or_else(|| "Unknown error".into())
+            } else {
+                js_sys::JSON::stringify(&js)
+                    .ok()
+                    .and_then(|s| s.as_string())
+                    .or_else(|| js.as_string())
+                    .unwrap_or_else(|| "Unknown error".into())
+            };
+
+            set_now(now, format!("{}: {} - {}", tu_string!(i18n, create.er_create), &name, msg));*/
         });
     };
 
+    Effect::new(move |_| {
+        err_form.track();
+        set_timeout(
+            move || err_form.set("".to_string()),
+            std::time::Duration::from_millis(6000)
+        );
+    });
     view! {
         <Show
             when=move || stat.get().db_path_ok == "Ok"
@@ -526,8 +585,8 @@ fn Create() -> impl IntoView {
                 }
             }
         >
-            <span class="err_send">{move || err_send.get()}</span>
-            <form class="form_new" on:submit=submit node_ref=form_ref>
+            <span class="err_send">{move || err_form.get()}</span>
+            <form class="form_new" on:submit=submit node_ref=form_ref novalidate>
                 <fieldset class="grida">
                     <label>
                         <input
@@ -587,7 +646,7 @@ fn Create() -> impl IntoView {
                                         </span>
                                     </label>
                                     <input
-                                        id="file"
+                                        id="sheet_file"
                                         type="file"
                                         name="file"
                                         accept=".csv,.xls,.xlsx,.ods"
@@ -671,10 +730,10 @@ fn LogViewer() -> impl IntoView {
                 Ok(log_content) => {
                     logs.set(Some(log_content));
                     loading.set(false);
-                    set_now(now,"Logs uploaded".to_string());
+                    now.set("Logs uploaded".to_string());
                 }
                 Err(e) => {
-                    set_now(now,format!("Failed to load logs: {}", e));
+                    now.set(format!("Failed to load logs: {}", e));
                     logs.set(None);
                     loading.set(false);
                 }
@@ -688,10 +747,10 @@ fn LogViewer() -> impl IntoView {
             let js = invoke("clear_log", JsValue::NULL).await;
             match from_value::<String>(js){
                 Ok(_) => {
-                    set_now(now,"Logs deleted".to_string());
+                    now.set("Logs deleted".to_string());
                 }
                 Err(e) => {
-                    set_now(now,format!("Failed to load logs: {}", e));
+                    now.set(format!("Failed to load logs: {}", e));
                 }
             }
         });
@@ -741,14 +800,6 @@ fn upd_stat(stat: RwSignal<StatisticsState>, now: RwSignal<String>) {
             Err(e) => now.set(format!("Err: {}", e)),
         };
     });
-}
-
-fn set_now(now: RwSignal<String>, message: String){
-    now.set(message);
-    set_timeout(
-        move || now.set("".to_string()),
-        std::time::Duration::from_millis(4000)
-    );
 }
 
 fn remove_refer_ext(mut s: String) -> String {

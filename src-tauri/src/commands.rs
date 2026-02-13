@@ -1,24 +1,26 @@
 use std::fs::{self, OpenOptions};
 use std::fs::File;
 use std::io::{self, Read};
+use std::path::{Path, PathBuf, Component};
 use serde::{Deserialize, Serialize};
 use tauri::Manager;
 use serde_json::Value;
 use std::sync::Mutex;
 
+use crate::errors::RError;
 use crate::{APP_EXT, LOG_GUARD};
 use crate::SettingsStore;
 use crate::StatisticsState;
+use crate::sql::*;
 use tracing::{error,info};
 
 #[derive(Serialize, Deserialize)]
 pub struct CreateForm {
-    mode: String,                    // "empty", "sheet", "sqlite"
-    db_name: String,                 // имя БД
-    csv_delim: String,               // разделитель CSV
-    has_header: bool,                // есть заголовок
-    file_extension: Option<String>,  // расширение файла
-    file_data: Option<Vec<u8>>,      // содержимое файла
+    mode: String, // "empty", "sheet", "sqlite"
+    db_name: String,
+    has_header: bool,
+    file_extension: Option<String>,
+    file_data: Option<Vec<u8>>,
 }
 
 #[tauri::command]
@@ -136,7 +138,69 @@ pub fn clear_log(app: tauri::AppHandle) -> Result<String, String> {
 }
 
 #[tauri::command]
-pub fn create(app: tauri::AppHandle, val: CreateForm) -> Result<String, String> {
-    Ok(String::from("eee"))
+pub fn create(val: CreateForm, app: tauri::AppHandle) -> Result<String, String> {
+    let state = app.state::<Mutex<StatisticsState>>();
+    let state = state.lock().unwrap();
 
+    let root = state.db_path.clone();
+    let mut pb:PathBuf = PathBuf::new();
+    match build_refer_path(&root, &val.db_name) {
+        Some(v) => {println!("value: {:?}", v); pb.push(v);},
+        None => return Ok(format!("Failed to create path: {:?}", &val.db_name)),
+    }
+
+    match val.mode.as_str() {
+        "example" => {
+            match create_example_database(&pb){
+                Ok(()) => Ok("".to_string()),
+                Err(e) => Ok(format!("Failed to create: {:?}", e)),
+            }
+        },
+        "empty" => {
+            match create_empty_database(&pb){
+                Ok(()) => Ok("".to_string()),
+                Err(e) => Ok(format!("Failed to create: {:?}", e)),
+            }
+        },
+        &_ => todo!()
+    }
+}
+
+pub fn build_refer_path(root: &Path, incoming: &str) -> Option<PathBuf> {
+    let p = Path::new(incoming);
+
+    if p.is_absolute() {
+        error!("incoming path is absolute: {}", incoming);
+        return None;
+    }
+
+    for comp in p.components() {
+        match comp {
+            Component::ParentDir => {
+                error!("incoming path contains parent-dir (`..`): {}", incoming);
+                return None;
+            }
+            Component::Prefix(_) | Component::RootDir => {
+                error!("incoming path contains absolute/prefix component: {}", incoming);
+                return None;
+            }
+            _ => {}
+        }
+    }
+
+    // Собираем полный путь
+    let mut full = root.join(p);
+
+    // Получаем имя файла, добавляем расширение ".refer"
+    match full.file_name().and_then(|n| n.to_str()) {
+        Some(name) => {
+            let new_name = format!("{}.refer", name);
+            full.set_file_name(new_name);
+            Some(full)
+        }
+        None => {
+            error!("incoming path has no valid filename (non-UTF8?): {}", incoming);
+            None
+        }
+    }
 }

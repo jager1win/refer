@@ -29,4 +29,4 @@ tracing-appender = "0.2"
 chrono = "0.4"
 rusqlite = { version = "0.38", features = ["bundled"] }
 csv = "1"
-calamine = "0.32.0"
+calamine = "0.33.0"
