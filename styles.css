@@ -8,7 +8,6 @@
     overflow:hidden;
     justify-items: stretch; 
     padding:0 1rem 0.2rem;
-
 }
 /*.main *{min-height: 0; min-width: 0; max-height: 100%; overflow: auto;width: 100%; }*/
 .tab-content {
@@ -45,10 +44,11 @@
   min-width: 0; /* важно для корректного сжатия */
 }
 
-/* Стили для активной кнопки (если нужно) */
-.top-nav button.active {
-  background-color: #007bff;
-  color: white;
+button.active {
+  filter: brightness(1.5);
+}
+button.active span{
+  filter: brightness(0.8);
 }
 h1,h2,h3,h4,h5,.center{text-align: center;}
 li {list-style-type: none !important;}
@@ -76,3 +76,27 @@ button:not(.navb){padding:0.4rem}
 input.csv_deli{width: 2rem!important;padding: 0.4rem!important;}
 .sp_close{cursor:pointer;position: absolute;top:0.4rem;right: 0.4rem;padding:0.4rem}
 .hidden{display:none}
+
+
+/* Possible color choices: 
+amber, blue, cyan, fuchsia, green, grey, indigo, jade, lime, orange, pink, 
+pumpkin, purple, red, sand, slate, violet, yellow, zinc.*/
+.amber{background-color: #977000;}
+.blue{background-color: blue;}
+.cyan{background-color: cyan;}
+.fuchsia{background-color: fuchsia;}
+.green{background-color: green;}
+.grey{background-color: grey;}
+.indigo{background-color: indigo;}
+.jade{background-color: #00895A;}
+.lime{background-color: lime;}
+.orange{background-color: orange;}
+.pink{background-color: pink;}
+.pumpkin{background-color: #AD6400;}
+.purple{background-color: purple;}
+.red{background-color: red}
+.sand{background-color: #7B776B;}
+.slate{background-color: #687899;}
+.violet{background-color: violet;}
+.yellow{background-color: yellow;}
+.zinc{background-color: #6F7887;}

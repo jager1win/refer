@@ -1,3 +1,4 @@
+use std::path::PathBuf;
 use leptos::{prelude::*};
 use leptos::task::spawn_local;
 use serde::{Deserialize, Serialize};
@@ -15,6 +16,7 @@ extern "C" {
 struct AppSettings {
     theme: String,
     language: String,
+    color: String
 }
 
 #[derive(Serialize)]
@@ -28,17 +30,28 @@ struct ToBack { val: String }
 
 #[derive(Default, Debug, Clone, Serialize, Deserialize)]
 struct StatisticsState {
-    pub db_path: String,
+    pub db_path: PathBuf,
     pub db_path_size: u64,
-    pub db_list: Vec<String>,
+    pub db_list: Vec<PathBuf>,
     pub log_path: String,
     pub db_path_ok: String,
+    
+}
+
+impl StatisticsState {
+    pub fn update<F>(&mut self, f: F) -> &mut Self
+    where
+        F: FnOnce(&mut Self)
+    {
+        f(self);
+        self
+    }
 }
 
 #[derive(Serialize, Deserialize, Clone, Default, Debug)]
 struct CreateForm {
     mode: String,                    // "empty", "sheet", "sqlite"
-    db_name: String,                 // имя БД
+    db_name: PathBuf,                 // имя БД
     has_header: bool,                // есть заголовок
     file_extension: Option<String>,  // расширение файла
     file_data: Option<Vec<u8>>,      // содержимое файла
@@ -49,7 +62,7 @@ struct CreateFormBack { val: CreateForm }
 
 #[component]
 pub fn App() -> impl IntoView {
-    let settings: RwSignal<AppSettings> = RwSignal::new(AppSettings {theme: "light".into(),language: "en".into()});
+    let settings: RwSignal<AppSettings> = RwSignal::new(AppSettings {theme: "light".into(),language: "en".into(),color: "azure".into()});
     let stat: RwSignal<StatisticsState> = RwSignal::new(StatisticsState::default());
     let selected_ref:RwSignal<Option<String>>  = RwSignal::new(None::<String>);
     let edit_ref: RwSignal<bool> = RwSignal::new(false);
@@ -105,11 +118,7 @@ pub fn App() -> impl IntoView {
                 }
             >
                 "📚 "
-                {
-                    let i18n = use_i18n();
-                    t!(i18n, all.references)
-                }
-                {move || selected_ref.get()}
+                <span>{let i18n = use_i18n();t!(i18n, all.references)}</span>             
             </button>
             <button
                 class="navb"
@@ -172,8 +181,11 @@ fn Settings() -> impl IntoView {
     let i18n = use_i18n();
     let all: &[Locale] = Locale::get_all();
     let settings: RwSignal<AppSettings> = use_context::<RwSignal<AppSettings>>().expect("settings not found");
+    let colors = ["amber", "blue", "cyan", "fuchsia", "green", "grey", "indigo", "jade", "lime", "orange", "pink", "pumpkin", "purple", "red", "sand", "slate", "violet", "yellow", "zinc"];
+    /* Possible color choices: 
+    amber, blue, cyan, fuchsia, green, grey, indigo, jade, lime, orange, pink, 
+    pumpkin, purple, red, sand, slate, violet, yellow, zinc.*/
 
-    //let current = move || i18n.get_locale();
     let toggle_theme = move |_| {
         settings.update(|current| {
             if current.theme == "light" {
@@ -181,6 +193,16 @@ fn Settings() -> impl IntoView {
             } else {
                 current.theme = "light".to_string();
             }
+            spawn_local(async move {
+                let args = to_value(&SettingsBack {new: settings.get_untracked()}).unwrap();
+                let _ = invoke("set_settings", args).await;
+            });
+        });
+    };
+
+    let set_color = move |color:&str| {
+        settings.update(|current| {
+            current.color = color.to_string();
             spawn_local(async move {
                 let args = to_value(&SettingsBack {new: settings.get_untracked()}).unwrap();
                 let _ = invoke("set_settings", args).await;
@@ -202,10 +224,14 @@ fn Settings() -> impl IntoView {
 
     Effect::new(move |_| {
         let theme_value = settings.get().theme;
+        let color_value = settings.get().color;
         let document = window().document().unwrap();
         let html_element = document.document_element().unwrap();
         html_element
             .set_attribute("data-theme", &theme_value)
+            .unwrap();
+        html_element
+            .set_attribute("data-color", &color_value)
             .unwrap();
     });
 
@@ -259,6 +285,25 @@ fn Settings() -> impl IntoView {
                 </span>
             </div>
 
+            <div class="color-switcher gridl">
+                <span>{t!(i18n, settings.color)}</span>
+                <span class="ar_color">
+                    {colors
+                        .iter()
+                        .map(move |&color| {
+                            view! {
+                                <button
+                                    class=move || {
+                                        if settings.get().color == color {format!("{} active", color)} else { color.to_string() }
+                                    }
+                                    on:click=move |_| set_color(color)
+                                />
+                            }
+                        })
+                        .collect_view()}
+                </span>
+            </div>
+
             <div class="gridl">
                 <div>
                     <span>{t!(i18n, settings.theme)}</span>
@@ -273,7 +318,7 @@ fn Settings() -> impl IntoView {
                     </button>
                 </div>
             </div>
-            <p>"Заполнить блок - содержимое About"</p>
+            <p>"Создано с помощью Rust, Tauri, Leptos, Picocss. Заполнить блок - содержимое About"</p>
         </div>
     }
 }
@@ -297,13 +342,13 @@ fn Refs() -> impl IntoView {
             <For
                 each=move || stat.get().db_list.clone()
                 key=|item| item.clone()
-                children=move |item: String| {
+                children=move |item: PathBuf| {
                     view! {
                         <button
                             class="rlist"
-                            on:click=move |_| { selected_ref.set(Some(item.clone())) }
+                            on:click=move |_| { selected_ref.set(Some(item.clone().display().to_string())) }
                         >
-                            {remove_refer_ext(item.clone())}
+                            {remove_refer_ext(item.clone().display().to_string())}
                         </button>
                     }
                 }
@@ -312,7 +357,7 @@ fn Refs() -> impl IntoView {
 
         <div class="grid2 stat_table">
             <ins>{t!(i18n, references.path_ref)}": "</ins>
-            <span>{move || stat.get().db_path}</span>
+            <span>{move || stat.get().db_path.display().to_string()}</span>
             <ins>{t!(i18n, references.path_ref_access)}": "</ins>
             <span class:error=move || {
                 patterns.iter().any(|p| stat.get().db_path_ok.to_lowercase().contains(p))
@@ -409,18 +454,32 @@ fn Create() -> impl IntoView {
             if let Some(element) = elements.item(i)
                 && let Some(input) = element.dyn_ref::<web_sys::HtmlInputElement>() {
                     match input.name().as_str() {
-                        "db_name" => form_data.db_name = input.value(),
+                        "db_name" => form_data.db_name = input.value().into(),
                         "has_header" => form_data.has_header = input.checked(),
                         _ => {}
                     }
                 }
         }
 
-        // 2. ПРОВЕРЯЕМ БАЗОВОЕ
-        if form_data.db_name.is_empty() {
+        log::debug!("stat in create: {:?}", stat.get());
+
+        // 2. проверка - поле имя файла
+        if form_data.db_name.as_os_str().is_empty() {
             err_form.set(format!("🖉 {}", t_string!(i18n, create.fname)));
             return;
         }
+        
+        if stat.get().db_list.contains(&form_data.db_name) {// if exist
+            err_form.set(format!("🖉 {}", t_string!(i18n, create.fname)));
+            return;
+        }
+
+        match validate_relative_refer_path(&form_data.db_name){// check simbols
+            Ok(()) => log::debug!("validate: ok"),
+            Err(()) => { err_form.set(format!("🖉 {}", t_string!(i18n, create.fname)));return;}
+        };
+
+
 
         // 3. РАБОТА С ФАЙЛОМ (только для sheet/sqlite)
         let selected_file = if form_data.mode != "empty" {
@@ -491,7 +550,7 @@ fn Create() -> impl IntoView {
                     Err(e) => {
                         now.set(format!("{}: {} - {}", 
                             tu_string!(i18n, create.er_create), 
-                            final_data.db_name, 
+                            final_data.db_name.to_string_lossy(), 
                             e));
                         return;
                     }
@@ -504,18 +563,15 @@ fn Create() -> impl IntoView {
             let js = invoke("create", args).await;
             match from_value::<String>(js) {
                 Ok(_s) => now.set(format!("{}: {}", 
-                    tu_string!(i18n, create.ok_create), 
-                    form_data.db_name)),
+                    tu_string!(i18n, create.ok_create), form_data.db_name.to_string_lossy())),
                 Err(e) => now.set(format!("{}: {} - {}", 
-                    tu_string!(i18n, create.er_create), 
-                    form_data.db_name, 
-                    e))
+                    tu_string!(i18n, create.er_create), form_data.db_name.to_string_lossy(), e))
             }
         });
     };
 
     let create_ex = move |name:&str| {
-        let form_data = CreateForm { mode: "example".to_string(), db_name: name.to_string(), ..Default::default() };
+        let form_data = CreateForm { mode: "example".to_string(), db_name: name.into(), ..Default::default() };
         let name = name.to_string();
         /*spawn_local(async move {
             let args = to_value(&CreateFormBack { val: form_data }).unwrap();
@@ -580,7 +636,7 @@ fn Create() -> impl IntoView {
             fallback=move || {
                 view! {
                     <p>{tu!(i18n, create.main_error)}":"</p>
-                    <span>{move || stat.get().db_path}</span>
+                    <span>{move || stat.get().db_path.display().to_string()}</span>
                     <span class="error">{move || stat.get().db_path_ok}</span>
                 }
             }
@@ -714,6 +770,30 @@ fn Create() -> impl IntoView {
     }
 }
 
+pub fn validate_relative_refer_path(p: &PathBuf) -> Result<(), ()> {
+    let s = p.to_string_lossy();
+
+    // не должен начинаться или заканчиваться на '/'
+    if s.starts_with('/') || s.ends_with('/') {
+        return Err(());
+    }
+    // запрещаем ':' и обратный слеш
+    if s.contains(':') || s.contains('\\') || s.contains("//"){
+        return Err(());
+    }
+
+    // каждый компонент не пустой, не "..", без управляющих символов и длина 1..=255
+    for comp in s.split('/') {
+        if comp.is_empty() { return Err(()); }
+        if comp == ".." { return Err(()); }
+        if comp.chars().any(|c| c.is_control()) { return Err(()); }
+        let len = comp.chars().count();
+        if len == 0 || len > 255 { return Err(()); }
+    }
+
+    Ok(())
+}
+
 #[component]
 fn LogViewer() -> impl IntoView {
     let now: RwSignal<String> = use_context::<RwSignal<String>>().expect("now not found");
@@ -827,6 +907,11 @@ async fn read_file_as_bytes(file: &web_sys::File) -> Result<Vec<u8>, String> {
     let uint8_array = js_sys::Uint8Array::new(&array_buffer);
     Ok(uint8_array.to_vec())
 }
+
+fn ensure_utf8_path(p: &std::path::Path) -> Result<&str, &'static str> {
+    p.to_str().ok_or("Имя файла содержит недопустимые (не UTF-8) символы.")
+}
+
 // app.rs или отдельный модуль helpers.rs
 /*
     /*Effect::new(move |_| {
