@@ -181,10 +181,8 @@ fn Settings() -> impl IntoView {
     let i18n = use_i18n();
     let all: &[Locale] = Locale::get_all();
     let settings: RwSignal<AppSettings> = use_context::<RwSignal<AppSettings>>().expect("settings not found");
-    let colors = ["amber", "blue", "cyan", "fuchsia", "green", "grey", "indigo", "jade", "lime", "orange", "pink", "pumpkin", "purple", "red", "sand", "slate", "violet", "yellow", "zinc"];
-    /* Possible color choices: 
-    amber, blue, cyan, fuchsia, green, grey, indigo, jade, lime, orange, pink, 
-    pumpkin, purple, red, sand, slate, violet, yellow, zinc.*/
+    let colors = ["orange", "lime", "green", "cyan", "blue", "indigo", "purple", "fuchsia", "pink", "rose", "slate", "zinc", "taupe", "mauve", "mist", "olive"];
+    /* Possible color choices: orange, lime, green, cyan, blue, indigo, purple, fuchsia, pink, rose, slate, zinc, taupe, mauve, mist, olive*/
 
     let toggle_theme = move |_| {
         settings.update(|current| {

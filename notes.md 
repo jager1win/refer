@@ -5,4 +5,24 @@ debug версия:
 adb install -r /home/jager/Development/rust/refer/src-tauri/gen/android/app/build/outputs/apk/arm64/debug/app-arm64-debug.apk
 
 
-
+/* universal color scheme
+[data-color="ccc"][data-theme=light]{
+  color-scheme: light;
+  --pico-background-color: ccc-50;
+  --pico-color: ccc-950;
+  --pico-primary: ccc-500;
+  --pico-primary-background: ccc-500;
+}
+[data-color="ccc"][data-theme=dark]{
+  color-scheme: dark;
+  --pico-background-color: ccc-950;
+  --pico-color: ccc-50;
+  --pico-primary: ccc-500;
+  --pico-primary-background: ccc-500;
+}
+tw colors: 
+orange
+lime, green
+cyan, blue
+indigo, purple, fuchsia, pink, rose,
+slate, zinc, taupe, mauve, mist, olive */
