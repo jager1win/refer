@@ -55,7 +55,7 @@ pub fn App() -> impl IntoView {
     let stat: RwSignal<StatisticsState> = RwSignal::new(StatisticsState::default());
     let selected_ref:RwSignal<Option<String>>  = RwSignal::new(None::<String>);
     let edit_ref: RwSignal<bool> = RwSignal::new(false);
-    let active_tab: RwSignal<i32> = RwSignal::new(2);
+    let active_tab: RwSignal<i32> = RwSignal::new(1);
     let now: RwSignal<String> = RwSignal::new(String::from(""));
     let er_pat = ["fail", "error"];
 
@@ -243,8 +243,8 @@ fn Settings() -> impl IntoView {
     //log::debug!("lang: {:?}", &all);
     //log::debug!("lang: {:?}", &current);
     view! {
-        <div class="settings_block">
-            <h3>{t!(i18n, settings.title)}</h3>
+        <div class="settings_block gr">
+            <h5>{t!(i18n, settings.title)}</h5>
 
             <div class="locale-switcher gridl">
                 <span>{t!(i18n, settings.language)}</span>
@@ -323,6 +323,8 @@ fn Settings() -> impl IntoView {
                     </button>
                 </div>
             </div>
+        </div>
+        <div class="settings_block gr">
             <p>"Создано с помощью Rust, Tauri, Leptos, Picocss. Заполнить блок - содержимое About"</p>
         </div>
     }
@@ -343,24 +345,27 @@ fn Refs() -> impl IntoView {
 
 
     view! {
-        <div class="refs-list grida">
+        <div class="refs-list grid2 gr">
             <For
                 each=move || stat.get().db_list.clone()
                 key=|item| item.clone()
                 children=move |item: PathBuf| {
+                    let item_1 = item.clone();
                     view! {
-                        <button
-                            class="rlist"
-                            on:click=move |_| { selected_ref.set(Some(item.clone().display().to_string())) }
-                        >
-                            {remove_refer_ext(item.clone().display().to_string())}
-                        </button>
+                        <div class="db_line">
+                            <button
+                                class="rlist"
+                                on:click=move |_| { selected_ref.set(Some(item_1.clone().display().to_string())) }
+                            >"🛈"</button>
+                            <h6 on:click=move |_| { selected_ref.set(Some(item.clone().display().to_string())) }>{remove_refer_ext(item.clone().display().to_string())}</h6>
+                            <span class="hidden"></span>
+                        </div>
                     }
                 }
             />
         </div>
 
-        <div class="grid2 stat_table">
+        <div class="grid2 stat_table gr">
             <ins>{t!(i18n, references.path_ref)}": "</ins>
             <span>{move || stat.get().db_path.display().to_string()}</span>
             <ins>{t!(i18n, references.path_ref_access)}": "</ins>
@@ -404,24 +409,6 @@ fn Edit() -> impl IntoView {
     let now: RwSignal<String> = use_context::<RwSignal<String>>().expect("now not found");
     let stat: RwSignal<StatisticsState> = use_context::<RwSignal<StatisticsState>>().expect("stat not found");
 
-    /*let del_ref = move |name: String| {
-        spawn_local(async move {
-            let args = to_value(&ToBack { val: name.clone()}).unwrap();
-            let js = invoke("del_ref", args).await;
-            
-            match from_value::<String>(js) {
-                Ok(_s) => {
-                    now.set(format!("{}: {}", tu_string!(i18n, edit.ok_del_ref), &name));
-                    selected_ref.set(None::<String>);
-                    edit_ref.set(false);
-                    upd_stat(stat,now);
-                },
-                Err(e) => {
-                    now.set(format!("{}: {} - {}", tu_string!(i18n, edit.er_del_ref), &name, e));
-                }
-            }
-        });
-    };*/
     let del_ref = move |name: String| {
         spawn_local(async move {
             let args = to_value(&ToBack { val: name.clone()}).unwrap();
@@ -461,7 +448,7 @@ fn Create() -> impl IntoView {
     // mode: "empty" | "sheet" | "sqlite"
     let mode = RwSignal::new("empty".to_string());
     let form_ref = NodeRef::<leptos::html::Form>::new();
-
+    // send create
     let submit = move |ev: SubmitEvent| {
         ev.prevent_default();
 
@@ -482,8 +469,6 @@ fn Create() -> impl IntoView {
                 }
         }
 
-        log::debug!("stat in create: {:?}", stat.get());
-
         // 2. проверка - поле имя файла
         // is empty
         if form_data.db_name.as_os_str().is_empty() {
@@ -499,7 +484,6 @@ fn Create() -> impl IntoView {
 
         // if exist
         if !form_data.db_name.to_string_lossy().ends_with(".refer") {
-            log::debug!("add .refer");
             let _ = form_data.db_name.set_extension("refer");
         }
        
@@ -582,8 +566,6 @@ fn Create() -> impl IntoView {
                 }
             }
             
-            log::info!("📦 Отправляем: {:?}", final_data);
-            
             let args = to_value(&CreateFormBack { val: final_data }).unwrap();
             match invoke("create", args).await {
                 Ok(_s) => now.set(format!("{}: {}", 
@@ -596,7 +578,7 @@ fn Create() -> impl IntoView {
         });
         form.reset();
     };
-
+    // send create examle
     let create_ex = move |name:&PathBuf| {
         let form_data = CreateForm { mode: "example".to_string(), db_name: name.to_path_buf(), ..Default::default() };
         let name_string = remove_refer_ext(name.display().to_string());
@@ -605,12 +587,10 @@ fn Create() -> impl IntoView {
             //let result: Result<(), String> = from_value(js).map_err(|e| format!("deserialize failed: {e}"));
             match invoke("create", args).await {
                 Ok(_js) => {
-                    log::info!("create_ex: {}", &name_string);
                     now.set(format!("{}: {}", tu_string!(i18n, create.ok_create), &name_string));
                 }
                 Err(js) => {
                     let error_msg = from_value::<String>(js).unwrap_or_else(|_| "Unknown error".into());
-                    log::info!("fail create_ex: {}", &name_string);
                     now.set(format!("{}: {} - {}", tu_string!(i18n, create.er_create), &name_string, error_msg));
                 }
             }
@@ -635,130 +615,135 @@ fn Create() -> impl IntoView {
                 }
             }
         >
-            <span class="err_send">{move || err_form.get()}</span>
-            <form class="form_new" on:submit=submit node_ref=form_ref novalidate>
-                <fieldset class="grida">
-                    <label>
-                        <input
-                            type="radio"
-                            name="mode"
-                            value="empty"
-                            checked=move || mode.get() == "empty"
-                            on:change=move |_| mode.set("empty".to_string())
-                        />
-                        {tu!(i18n, create.ref_from_empty)}
-                    </label>
-                    <label>
-                        <input
-                            type="radio"
-                            name="mode"
-                            value="sheet"
-                            checked=move || mode.get() == "sheet"
-                            on:change=move |_| mode.set("sheet".to_string())
-                        />
-                        {tu!(i18n, create.ref_from_table)}
-                    </label>
-                    <label>
-                        <input
-                            type="radio"
-                            name="mode"
-                            value="sqlite"
-                            checked=move || mode.get() == "sqlite"
-                            on:change=move |_| mode.set("sqlite".to_string())
-                        />
-                        {tu!(i18n, create.ref_from_db)}
-                    </label>
-                </fieldset>
+            <div class="gr">
+                <span class="err_send">{move || err_form.get()}</span>
+                <form class="form_new" on:submit=submit node_ref=form_ref novalidate>
+                    <fieldset class="grida">
+                        <label>
+                            <input
+                                type="radio"
+                                name="mode"
+                                value="empty"
+                                checked=move || mode.get() == "empty"
+                                on:change=move |_| mode.set("empty".to_string())
+                            />
+                            {tu!(i18n, create.ref_from_empty)}
+                        </label>
+                        <label>
+                            <input
+                                type="radio"
+                                name="mode"
+                                value="sheet"
+                                checked=move || mode.get() == "sheet"
+                                on:change=move |_| mode.set("sheet".to_string())
+                            />
+                            {tu!(i18n, create.ref_from_table)}
+                        </label>
+                        <label>
+                            <input
+                                type="radio"
+                                name="mode"
+                                value="sqlite"
+                                checked=move || mode.get() == "sqlite"
+                                on:change=move |_| mode.set("sqlite".to_string())
+                            />
+                            {tu!(i18n, create.ref_from_db)}
+                        </label>
+                    </fieldset>
 
-                <div class="block gridl">
-                    <label>
-                        {t!(i18n, create.fname)}
-                        <span data-placement="right" data-tooltip=t_string!(i18n, create.ttp_path)>
-                            "?"
-                        </span>
-                    </label>
+                    <div class="block gridl">
+                        <label>
+                            {t!(i18n, create.fname)}
+                            <span data-placement="right" data-tooltip=t_string!(i18n, create.ttp_path)>
+                                "?"
+                            </span>
+                        </label>
 
-                    <input type="text" name="db_name" placeholder="my_refer" required />
-                </div>
+                        <input type="text" name="db_name" placeholder="my_refer" required />
+                    </div>
 
-                {move || {
-                    match mode.get().as_str() {
-                        "sheet" => {
-                            view! {
-                                <div class="gridl">
-                                    <label for="file">
-                                        {t!(i18n, create.ftable)}
-                                        <span
-                                            data-placement="right"
-                                            data-tooltip=t_string!(i18n, create.ttp_table)
-                                        >
-                                            "?"
-                                        </span>
-                                    </label>
-                                    <input
-                                        id="sheet_file"
-                                        type="file"
-                                        name="file"
-                                        accept=".csv,.xls,.xlsx,.ods"
-                                        required
-                                    />
-                                </div>
-                                <div class="gridl">
-                                    <label>
-                                        {t!(i18n, create.fheader)}
-                                        <span
-                                            data-placement="right"
-                                            data-tooltip=t_string!(i18n, create.ttp_header)
-                                        >
-                                            "?"
-                                        </span>
-                                    </label>
-                                    <input type="checkbox" class="" name="has_header" />
-                                </div>
+                    {move || {
+                        match mode.get().as_str() {
+                            "sheet" => {
+                                view! {
+                                    <div class="gridl">
+                                        <label for="file">
+                                            {t!(i18n, create.ftable)}
+                                            <span
+                                                data-placement="right"
+                                                data-tooltip=t_string!(i18n, create.ttp_table)
+                                            >
+                                                "?"
+                                            </span>
+                                        </label>
+                                        <input
+                                            id="sheet_file"
+                                            type="file"
+                                            name="file"
+                                            accept=".csv,.xls,.xlsx,.ods"
+                                            required
+                                        />
+                                    </div>
+                                    <div class="gridl">
+                                        <label>
+                                            {t!(i18n, create.fheader)}
+                                            <span
+                                                data-placement="right"
+                                                data-tooltip=t_string!(i18n, create.ttp_header)
+                                            >
+                                                "?"
+                                            </span>
+                                        </label>
+                                        <input type="checkbox" class="" name="has_header" />
+                                    </div>
+                                }
+                                    .into_any()
                             }
-                                .into_any()
-                        }
-                        "sqlite" => {
-                            view! {
-                                <div class="gridl">
-                                    <label for="sqlite_file">
-                                        {t!(i18n, create.fsqlite)}
-                                        <span
-                                            data-placement="right"
-                                            data-tooltip=t_string!(i18n, create.ttp_sqlite)
-                                        >
-                                            "?"
-                                        </span>
-                                    </label>
-                                    <input
-                                        id="sqlite_file"
-                                        type="file"
-                                        name="file"
-                                        accept=".sqlite,.sqlite3,.db"
-                                        required
-                                    />
-                                </div>
+                            "sqlite" => {
+                                view! {
+                                    <div class="gridl">
+                                        <label for="sqlite_file">
+                                            {t!(i18n, create.fsqlite)}
+                                            <span
+                                                data-placement="right"
+                                                data-tooltip=t_string!(i18n, create.ttp_sqlite)
+                                            >
+                                                "?"
+                                            </span>
+                                        </label>
+                                        <input
+                                            id="sqlite_file"
+                                            type="file"
+                                            name="file"
+                                            accept=".sqlite,.sqlite3,.db"
+                                            required
+                                        />
+                                    </div>
+                                }
+                                    .into_any()
                             }
-                                .into_any()
+                            _ => view! { <div></div> }.into_any(),
                         }
-                        _ => view! { <div></div> }.into_any(),
-                    }
-                }}
+                    }}
 
-                <div class="actions">
-                    <button type="submit">{t!(i18n, create.title)}</button>
+                    <div class="actions">
+                        <button type="submit">{t!(i18n, create.title)}</button>
+                    </div>
+                </form>
+            </div>
+
+            <div class="gr">
+                <h5>{t!(i18n, create.example)}</h5>
+                <p class="center">{t!(i18n, create.example_replace)}</p>
+                <div class="test_create gridl">
+                    <button on:click=move |_| create_ex(&PathBuf::from("example/ballistics.refer"))>"Ballistics Data"
+                    </button>
+                    <span>{t!(i18n, create.example_desc_1)}</span>
+                    <button on:click=move |_| create_ex(&PathBuf::from("example/222.refer"))>"222"</button>
+                    <span>{t!(i18n, create.example_desc_2)}</span>
+                    <button on:click=move |_| create_ex(&PathBuf::from("example/333.refer"))>"333"</button>
+                    <span>{t!(i18n, create.example_desc_3)}</span>
                 </div>
-            </form>
-            <hr />
-            <h5>{t!(i18n, create.example)}</h5>
-            <p class="center">{t!(i18n, create.example_replace)}</p>
-            <div class="test_create gridl">
-                <button on:click=move |_| create_ex(&PathBuf::from("example/ballistics.refer"))>"Ballistics Data"</button>
-                <span>{t!(i18n, create.example_desc_1)}</span>
-                <button on:click=move |_| create_ex(&PathBuf::from("example/222.refer"))>"222"</button>
-                <span>{t!(i18n, create.example_desc_2)}</span>
-                <button on:click=move |_| create_ex(&PathBuf::from("example/333.refer"))>"333"</button>
-                <span>{t!(i18n, create.example_desc_3)}</span>
             </div>
         </Show>
     }
@@ -832,7 +817,7 @@ fn LogViewer() -> impl IntoView {
     };
 
     view! {
-        <div class="log-viewer">
+        <div class="log-viewer gr">
             <div class="log-controls">
                 <button on:click=load_logs disabled=move || loading.get() class="btn btn-primary">
                     {move || match loading.get() {
@@ -846,7 +831,7 @@ fn LogViewer() -> impl IntoView {
             </div>
 
             <div class="log-content">
-                <code>{move || logs.get().unwrap_or_default()}</code>
+                <code>{move || logs.get()}</code>
             </div>
         </div>
     }
