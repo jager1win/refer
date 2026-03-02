@@ -26,3 +26,33 @@ lime, green
 cyan, blue
 indigo, purple, fuchsia, pink, rose,
 slate, zinc, taupe, mauve, mist, olive */
+
+```rust
+
+
+#[wasm_bindgen]
+extern "C" {
+    #[wasm_bindgen(js_namespace = ["window", "__TAURI__", "core"], catch)]
+    async fn invoke(cmd: &str, args: JsValue) -> Result<JsValue, JsValue>;
+}
+
+spawn_local(async move {
+    let args = to_value(&CreateFormBack { val: form_data }).unwrap();
+    
+    // Теперь здесь Result из-за атрибута catch
+    match invoke("create", args).await {
+        Ok(js) => {
+            let res = from_value::<String>(js).unwrap_or_default();
+            log::info!("Success: {}", res);
+            now.set(format!("{}: {}", tu_string!(i18n, create.ok_create), &name_string));
+        }
+        Err(e) => {
+            // Tauri прокидывает строку ошибки в JS exception, ловим её здесь
+            let error_msg = from_value::<String>(js).unwrap_or_else(|_| "Unknown error".into());
+            log::error!("Error: {}", error_msg);
+            now.set(format!("{}: {} - {}", tu_string!(i18n, create.er_create), &name_string, error_msg));
+        }
+    }
+});
+
+```

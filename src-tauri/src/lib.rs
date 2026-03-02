@@ -5,6 +5,7 @@ use std::path::{Path, PathBuf};
 use std::time::{SystemTime, UNIX_EPOCH};
 use std::sync::Mutex;
 use tauri::Manager;
+use rusqlite::Connection;
 pub mod sql;
 pub mod commands;
 pub mod errors;
@@ -19,6 +20,7 @@ pub const APP_EXT: &str = "refer";
 pub struct SettingsStore {
     pub theme: String,
     pub language: String,
+    pub color: String
 }
 
 impl Default for SettingsStore {
@@ -26,6 +28,7 @@ impl Default for SettingsStore {
         Self {
             theme: "light".to_string(),
             language: "en".to_string(),
+            color: "azure".to_string()
         }
     }
 }
@@ -34,15 +37,17 @@ impl Default for SettingsStore {
 pub struct StatisticsState {
     pub db_path: PathBuf,  // путь где хранятся базы
     pub db_path_size: u64, // размер всех баз
-    pub db_list: Vec<String>, // список имен баз включая пути от папки refer
+    pub db_list: Vec<PathBuf>, // список имен баз включая пути от папки refer
     pub log_path: PathBuf,  // файл логов куда пишет tracing
     pub db_path_ok: String, // Пустое если еще не проверяли, "Ok" если всё хорошо, иначе сообщение об ошибке
+    pub db_selected: Option<PathBuf>,
     pub initialized: bool,  // Флаг, что инициализация уже выполнена
+
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct DbInfo {
-    pub db_size: u32,
+#[derive(Default)]
+pub struct DbConnection {
+    pub conn: Option<Connection>, 
 }
 
 // Храним WorkerGuard, чтобы логи не терялись при выходе
@@ -54,6 +59,7 @@ pub fn run() {
         .setup(|app| {
             init_tracing(app.handle())?;
             app.manage(Mutex::new(StatisticsState::default()));
+            app.manage(Mutex::new(DbConnection::default()));
             // Только инициализация при запуске, без вызова set_stat_all
             init_stat_all(app.handle())?;
             Ok(())
@@ -141,9 +147,9 @@ pub fn update_stat_all(app: &tauri::AppHandle) {
 }
 
 /* return StatisticsState (db_path_size,db_list) */
-fn get_db_path_info(p: &Path) -> (u64, Vec<String>) {
+fn get_db_path_info(p: &Path) -> (u64, Vec<PathBuf>) {
     let mut total_size: u64 = 0;
-    let mut names: Vec<String> = Vec::new();
+    let mut names: Vec<PathBuf> = Vec::new();
 
     if !p.is_dir() {
         return (0, Vec::new());
@@ -183,12 +189,12 @@ fn get_db_path_info(p: &Path) -> (u64, Vec<String>) {
                     // Получаем относительный путь от базовой директории
                     if let Ok(relative_path) = path.strip_prefix(&base_path) {
                         // Преобразуем в строку с разделителями в стиле текущей ОС
-                        let path_str = relative_path.to_string_lossy().into_owned();
-                        names.push(path_str);
+                        //let path_str = relative_path.to_string_lossy().into_owned();
+                        names.push(PathBuf::from(relative_path));
                     } else {
                         // Если не удалось получить относительный путь, используем имя файла
                         if let Some(name_os) = path.file_name() {
-                            names.push(name_os.to_string_lossy().into_owned());
+                            names.push(PathBuf::from(&name_os));
                         }
                     }
                 }
@@ -249,7 +255,7 @@ fn check_writable_dir(dir: &Path) -> String {
     // Проверяем, существует ли директория
     if !dir.exists() {
         // Пытаемся создать
-        if let Err(e) = fs::create_dir_all(&dir) {
+        if let Err(e) = fs::create_dir_all(dir) {
             return format!("Failed to create directory: {}", e);
         }
     } else if dir.is_file() {

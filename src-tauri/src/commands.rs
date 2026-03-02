@@ -1,4 +1,4 @@
-use std::fs::{self, OpenOptions};
+use std::fs::{self};
 use std::fs::File;
 use std::io::{self, Read};
 use std::path::{Path, PathBuf, Component};
@@ -7,20 +7,18 @@ use tauri::Manager;
 use serde_json::Value;
 use std::sync::Mutex;
 
-use crate::errors::RError;
-use crate::{APP_EXT, LOG_GUARD};
-use crate::SettingsStore;
-use crate::StatisticsState;
 use crate::sql::*;
+
+use crate::{APP_EXT,SettingsStore,StatisticsState};
 use tracing::{error,info};
 
-#[derive(Serialize, Deserialize)]
+#[derive(Debug,Serialize, Deserialize)]
 pub struct CreateForm {
-    mode: String, // "empty", "sheet", "sqlite"
-    db_name: String,
-    has_header: bool,
-    file_extension: Option<String>,
-    file_data: Option<Vec<u8>>,
+    pub mode: String, // "empty", "sheet", "sqlite"
+    pub db_name: PathBuf,
+    pub has_header: bool,
+    pub file_extension: Option<String>,
+    pub file_data: Option<Vec<u8>>,
 }
 
 #[tauri::command]
@@ -48,9 +46,15 @@ pub async fn get_settings(app: tauri::AppHandle) -> Result<SettingsStore, String
         .and_then(|v| v.as_str())
         .unwrap_or("en")
         .to_string();
+
+    let color = json
+        .get("color")
+        .and_then(|v| v.as_str())
+        .unwrap_or("azure")
+        .to_string();
     //let settings: SettingsStore = serde_json::from_value(json).unwrap_or_default();
 
-    Ok(SettingsStore { theme, language })
+    Ok(SettingsStore { theme, language, color })
 }
 
 #[tauri::command]
@@ -141,66 +145,126 @@ pub fn clear_log(app: tauri::AppHandle) -> Result<String, String> {
 pub fn create(val: CreateForm, app: tauri::AppHandle) -> Result<String, String> {
     let state = app.state::<Mutex<StatisticsState>>();
     let state = state.lock().unwrap();
-
     let root = state.db_path.clone();
-    let mut pb:PathBuf = PathBuf::new();
-    match build_refer_path(&root, &val.db_name) {
-        Some(v) => {println!("value: {:?}", v); pb.push(v);},
-        None => return Ok(format!("Failed to create path: {:?}", &val.db_name)),
-    }
 
+    //println!("val: {:?}", val);
     match val.mode.as_str() {
-        "example" => {
-            match create_example_database(&pb){
-                Ok(()) => Ok("".to_string()),
-                Err(e) => Ok(format!("Failed to create: {:?}", e)),
-            }
-        },
         "empty" => {
-            match create_empty_database(&pb){
-                Ok(()) => Ok("".to_string()),
-                Err(e) => Ok(format!("Failed to create: {:?}", e)),
+            match build_and_create_refer_path(&root, &val.db_name,false){
+                Ok(p) =>  match create_empty_database(&p){
+                    Ok(()) => {
+                        info!("Empty database created: {:?}", p);
+                        Ok(String::from("ok"))
+                    }
+                    Err(e) => {
+                        error!("Failed to create empty db: {}", e);
+                        Err(format!("Failed to create db: {}", e))
+                    }
+                },
+                Err(e) => {
+                    error!("Failed to create path: {}", e);
+                    Err(format!("Failed to create path: {:?}", e))
+                }
             }
         },
-        &_ => todo!()
+        "example" => {            
+            let demo_name = val.db_name.file_stem()
+                .and_then(|n| n.to_str())
+                .unwrap_or("")
+                .to_string();
+            match build_and_create_refer_path(&root, &val.db_name,true){
+                Ok(p) =>  match create_example_database(&demo_name,&p){
+                    Ok(()) => {
+                        info!("Demo database '{}' created: {:?}", demo_name, p);
+                        Ok(String::from("ok"))
+                    },
+                    Err(e) => {
+                        error!("Failed to create demo db '{}': {}", demo_name, e);
+                        Err(format!("Failed to create demo db: {}", e))
+                    }
+                },
+                Err(e) => {
+                    error!("Failed to create path: {}", e);
+                    Err(format!("Failed to create path: {:?}", e))
+                }
+            }
+        },
+        "from_file" => {
+            match build_and_create_refer_path(&root, &val.db_name,false){
+                Ok(p) =>  match create_from_file(&p, &val){
+                    Ok(()) => Ok(String::from("ok")),
+                    Err(e) => Err(format!("Failed to create db: {:?}", e))
+                },
+                Err(e) => {
+                    error!("Failed to create path: {}", e);
+                    Err(format!("Failed to create path: {:?}", e))
+                }
+            }
+        },
+        _ => Err(format!("Unknown operation: {}", val.mode))
     }
 }
 
-pub fn build_refer_path(root: &Path, incoming: &str) -> Option<PathBuf> {
-    let p = Path::new(incoming);
-
+pub fn build_and_create_refer_path(root: &Path, p: &Path, example:bool) -> Result<PathBuf, io::Error> {
+    // Reject absolute on target platform or any prefix/root components
     if p.is_absolute() {
-        error!("incoming path is absolute: {}", incoming);
-        return None;
+        return Err(io::Error::new(io::ErrorKind::InvalidInput, "incoming path is absolute"));
     }
 
     for comp in p.components() {
         match comp {
             Component::ParentDir => {
-                error!("incoming path contains parent-dir (`..`): {}", incoming);
-                return None;
+                return Err(io::Error::new(io::ErrorKind::InvalidInput, "parent-dir (`..`) not allowed"));
             }
             Component::Prefix(_) | Component::RootDir => {
-                error!("incoming path contains absolute/prefix component: {}", incoming);
-                return None;
+                return Err(io::Error::new(io::ErrorKind::InvalidInput, "absolute/prefix component not allowed"));
+            }
+            Component::Normal(os) => {
+                // Доп. проверка: запретить пустые имена или недопустимые байты
+                if os.is_empty() {
+                    return Err(io::Error::new(io::ErrorKind::InvalidInput, "empty path component"));
+                }
             }
             _ => {}
         }
     }
 
-    // Собираем полный путь
-    let mut full = root.join(p);
+    // Собираем полный путь и нормализуем слэши косвенно (Path на Unix/Windows)
+    let full = root.join(p);
 
-    // Получаем имя файла, добавляем расширение ".refer"
-    match full.file_name().and_then(|n| n.to_str()) {
-        Some(name) => {
-            let new_name = format!("{}.refer", name);
-            full.set_file_name(new_name);
-            Some(full)
-        }
-        None => {
-            error!("incoming path has no valid filename (non-UTF8?): {}", incoming);
-            None
-        }
+    // Создаём директории, если нужно (безопасно, только внутри root)
+    if let Some(parent) = full.parent() {
+        std::fs::create_dir_all(parent)?;
+    }
+
+    if example{ let _ = try_remove(&full); }
+
+    // Попробуем атомарно создать файл, не перезаписывая существующий
+    let _f = fs::OpenOptions::new()
+        .write(true)
+        .create_new(true) // если файл уже есть — ошибка
+        .open(&full)?;
+
+    Ok(full)
+}
+
+fn try_remove(path: &std::path::Path) -> io::Result<()> {
+    match fs::remove_file(path) {
+        Ok(()) => Ok(()),
+        Err(e) if e.kind() == io::ErrorKind::NotFound => Ok(()), // нет файла — нормально
+        Err(e) => Err(e),
     }
 }
+
+/*let mut path = root.join(String::from("example"));
+let _ = std::fs::create_dir_all(&path);
+println!("pb: {:?}", &path);
+let file_name = format!("{}.refer", val.db_name.to_string_lossy());
+path = path.join(file_name);
+println!("pb1: {:?}", &path);
+let dd = try_remove(&path);
+println!("pb2: {:?}", &dd);
+match create_example_database(val.db_name.to_string_lossy().to_string(), path){
+    Ok(()) => Ok("".to_string()),
+    Err(e) => Err(format!("Failed to create: {:?}", e)),
+}*/

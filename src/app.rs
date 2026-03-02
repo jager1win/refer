@@ -1,4 +1,4 @@
-use std::path::PathBuf;
+use std::path::{PathBuf,Path};
 use leptos::{prelude::*};
 use leptos::task::spawn_local;
 use serde::{Deserialize, Serialize};
@@ -8,11 +8,11 @@ use crate::i18n::*;
 
 #[wasm_bindgen]
 extern "C" {
-    #[wasm_bindgen(js_namespace = ["window", "__TAURI__", "core"])]
-    async fn invoke(cmd: &str, args: JsValue) -> JsValue;
+    #[wasm_bindgen(js_namespace = ["window", "__TAURI__", "core"], catch)]
+    async fn invoke(cmd: &str, args: JsValue) -> Result<JsValue, JsValue>;
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Default,Debug, Clone, Serialize, Deserialize)]
 struct AppSettings {
     theme: String,
     language: String,
@@ -23,7 +23,6 @@ struct AppSettings {
 struct SettingsBack {
     new: AppSettings,
 }
-
 
 #[derive(Serialize)]
 struct ToBack { val: String }
@@ -36,16 +35,6 @@ struct StatisticsState {
     pub log_path: String,
     pub db_path_ok: String,
     
-}
-
-impl StatisticsState {
-    pub fn update<F>(&mut self, f: F) -> &mut Self
-    where
-        F: FnOnce(&mut Self)
-    {
-        f(self);
-        self
-    }
 }
 
 #[derive(Serialize, Deserialize, Clone, Default, Debug)]
@@ -80,11 +69,14 @@ pub fn App() -> impl IntoView {
 
     // set settings from file
     spawn_local(async move {
-        let js = invoke("get_settings", JsValue::NULL).await;
-        match from_value::<AppSettings>(js) {
-            Ok(s) => settings.set(s),
-            Err(e) => {
-                now.set(format!("{} {}", "Failed init settings:", e));
+        match invoke("get_settings", JsValue::NULL).await {
+            Ok(js) => {
+                let s = from_value::<AppSettings>(js).unwrap_or_default();
+                settings.set(s);
+            }
+            Err(js) => {
+                let error_msg = from_value::<String>(js).unwrap_or_else(|_| "Unknown error".into());
+                now.set(format!("{} {}", "Failed init settings:", error_msg));
             }
         };
     });
@@ -95,7 +87,22 @@ pub fn App() -> impl IntoView {
         selected_ref.set(None::<String>);
         edit_ref.set(false);
     };
-    
+    Effect::new(move |_| {
+        let cur = now.get();
+        let contains_bad = er_pat.iter().any(|p| cur.to_lowercase().contains(p));
+        if !contains_bad {
+            let cur_clone = cur.clone();
+            set_timeout(
+                move || {
+
+                    if now.get() == cur_clone {
+                        now.set("".to_string());
+                    }
+                },
+                std::time::Duration::from_millis(6000),
+            );
+        }
+    });
     view! {
         <nav class="top-nav">
             <button
@@ -397,7 +404,7 @@ fn Edit() -> impl IntoView {
     let now: RwSignal<String> = use_context::<RwSignal<String>>().expect("now not found");
     let stat: RwSignal<StatisticsState> = use_context::<RwSignal<StatisticsState>>().expect("stat not found");
 
-    let del_ref = move |name: String| {
+    /*let del_ref = move |name: String| {
         spawn_local(async move {
             let args = to_value(&ToBack { val: name.clone()}).unwrap();
             let js = invoke("del_ref", args).await;
@@ -411,6 +418,23 @@ fn Edit() -> impl IntoView {
                 },
                 Err(e) => {
                     now.set(format!("{}: {} - {}", tu_string!(i18n, edit.er_del_ref), &name, e));
+                }
+            }
+        });
+    };*/
+    let del_ref = move |name: String| {
+        spawn_local(async move {
+            let args = to_value(&ToBack { val: name.clone()}).unwrap();
+            match invoke("del_ref", args).await {
+                Ok(_s) => {
+                    now.set(format!("{}: {}", tu_string!(i18n, edit.ok_del_ref), &name));
+                    selected_ref.set(None::<String>);
+                    edit_ref.set(false);
+                    upd_stat(stat,now);
+                },
+                Err(js) => {
+                    let error_msg = from_value::<String>(js).unwrap_or_else(|_| "Unknown error".into());
+                    now.set(format!("{}: {} - {}", tu_string!(i18n, edit.er_del_ref), &name, error_msg));
                 }
             }
         });
@@ -437,11 +461,10 @@ fn Create() -> impl IntoView {
     // mode: "empty" | "sheet" | "sqlite"
     let mode = RwSignal::new("empty".to_string());
     let form_ref = NodeRef::<leptos::html::Form>::new();
-    let ex_names = ["shrinkflation", "222", "333"];
 
     let submit = move |ev: SubmitEvent| {
         ev.prevent_default();
-        
+
         let Some(form) = form_ref.get() else { return };
         
         // 1. СОБИРАЕМ ДАННЫЕ
@@ -462,22 +485,28 @@ fn Create() -> impl IntoView {
         log::debug!("stat in create: {:?}", stat.get());
 
         // 2. проверка - поле имя файла
+        // is empty
         if form_data.db_name.as_os_str().is_empty() {
             err_form.set(format!("🖉 {}", t_string!(i18n, create.fname)));
             return;
         }
-        
-        if stat.get().db_list.contains(&form_data.db_name) {// if exist
-            err_form.set(format!("🖉 {}", t_string!(i18n, create.fname)));
-            return;
-        }
 
-        match validate_relative_refer_path(&form_data.db_name){// check simbols
-            Ok(()) => log::debug!("validate: ok"),
+        // check simbols
+        match validate_relative_refer_path(&form_data.db_name){
+            Ok(()) => log::debug!("simbols: ok"),
             Err(()) => { err_form.set(format!("🖉 {}", t_string!(i18n, create.fname)));return;}
         };
 
-
+        // if exist
+        if !form_data.db_name.to_string_lossy().ends_with(".refer") {
+            log::debug!("add .refer");
+            let _ = form_data.db_name.set_extension("refer");
+        }
+       
+        if stat.get().db_list.contains(&form_data.db_name) {
+            err_form.set(format!("🖉 !exist {}", t_string!(i18n, create.fname)));
+            return;
+        }
 
         // 3. РАБОТА С ФАЙЛОМ (только для sheet/sqlite)
         let selected_file = if form_data.mode != "empty" {
@@ -537,8 +566,6 @@ fn Create() -> impl IntoView {
             None
         };
 
-        // 4. ЕСЛИ file_extension None - у нас уже выше return,
-        //    значит файл есть и расширение корректное
         spawn_local(async move {
             let mut final_data = form_data.clone();
             
@@ -558,66 +585,35 @@ fn Create() -> impl IntoView {
             log::info!("📦 Отправляем: {:?}", final_data);
             
             let args = to_value(&CreateFormBack { val: final_data }).unwrap();
-            let js = invoke("create", args).await;
-            match from_value::<String>(js) {
+            match invoke("create", args).await {
                 Ok(_s) => now.set(format!("{}: {}", 
                     tu_string!(i18n, create.ok_create), form_data.db_name.to_string_lossy())),
-                Err(e) => now.set(format!("{}: {} - {}", 
-                    tu_string!(i18n, create.er_create), form_data.db_name.to_string_lossy(), e))
+                Err(js) => {
+                    let error_msg = from_value::<String>(js).unwrap_or_else(|_| "Unknown error".into());
+                    now.set(format!("{}: {} - {}", tu_string!(i18n, create.er_create), form_data.db_name.to_string_lossy(), error_msg))
+                }
             }
         });
+        form.reset();
     };
 
-    let create_ex = move |name:&str| {
-        let form_data = CreateForm { mode: "example".to_string(), db_name: name.into(), ..Default::default() };
-        let name = name.to_string();
-        /*spawn_local(async move {
-            let args = to_value(&CreateFormBack { val: form_data }).unwrap();
-            let js = invoke("create", args).await;
-            let result: Result<String, String> = from_value(js).map_err(|e| format!("deserialize failed: {e}"));
-            log::debug!("{:?}", &result);
-            match result {
-                Ok(_) => {
-                    log::info!("create_ex: {}", &name);
-                    set_now(now,format!("{}: {}", tu_string!(i18n, create.ok_create), &name));
-                    //selected_ref.set(Some("abook.refer".to_string()));
-                    //active_tab.set(1);
-                }
-                Err(e) => set_now(now,format!("{}: {} - {}", tu_string!(i18n, create.er_create), &name,e))
-            }
-        });*/
+    let create_ex = move |name:&PathBuf| {
+        let form_data = CreateForm { mode: "example".to_string(), db_name: name.to_path_buf(), ..Default::default() };
+        let name_string = remove_refer_ext(name.display().to_string());
         spawn_local(async move {
             let args = to_value(&CreateFormBack { val: form_data }).unwrap();
-            let js: JsValue = invoke("create", args).await;
-            log::info!("invoke returned (raw): {:?}", js);
-
-            // Сначала попробуем распарсить как Result<String,String>
-            if let Ok(parsed) = from_value::<Result<String, String>>(js.clone()) {
-                log::info!("invoke returned (raw)2: {:?}", js);
-                match parsed {
-                    Ok(_) => {
-                        log::info!("create_ex: {}", &name);
-                        now.set(format!("{}: {}", tu_string!(i18n, create.ok_create), &name));
-                    }
-                    Err(e) => {
-                        now.set(format!("{}: {} - {}", tu_string!(i18n, create.er_create), &name, e));
-                    }
+            //let result: Result<(), String> = from_value(js).map_err(|e| format!("deserialize failed: {e}"));
+            match invoke("create", args).await {
+                Ok(_js) => {
+                    log::info!("create_ex: {}", &name_string);
+                    now.set(format!("{}: {}", tu_string!(i18n, create.ok_create), &name_string));
+                }
+                Err(js) => {
+                    let error_msg = from_value::<String>(js).unwrap_or_else(|_| "Unknown error".into());
+                    log::info!("fail create_ex: {}", &name_string);
+                    now.set(format!("{}: {} - {}", tu_string!(i18n, create.er_create), &name_string, error_msg));
                 }
             }
-
-            // Если не удалось распарсить — invoke бросил исключение JsValue.
-            // Попробуем получить человекочитаемую строку.
-            /*let msg = if js.is_string() {
-                js.as_string().unwrap_or_else(|| "Unknown error".into())
-            } else {
-                js_sys::JSON::stringify(&js)
-                    .ok()
-                    .and_then(|s| s.as_string())
-                    .or_else(|| js.as_string())
-                    .unwrap_or_else(|| "Unknown error".into())
-            };
-
-            set_now(now, format!("{}: {} - {}", tu_string!(i18n, create.er_create), &name, msg));*/
         });
     };
 
@@ -757,18 +753,18 @@ fn Create() -> impl IntoView {
             <h5>{t!(i18n, create.example)}</h5>
             <p class="center">{t!(i18n, create.example_replace)}</p>
             <div class="test_create gridl">
-                <button on:click=move |_| create_ex(ex_names[0])>{ex_names[0]}</button>
+                <button on:click=move |_| create_ex(&PathBuf::from("example/ballistics.refer"))>"Ballistics Data"</button>
                 <span>{t!(i18n, create.example_desc_1)}</span>
-                <button on:click=move |_| create_ex(ex_names[1])>{ex_names[1]}</button>
+                <button on:click=move |_| create_ex(&PathBuf::from("example/222.refer"))>"222"</button>
                 <span>{t!(i18n, create.example_desc_2)}</span>
-                <button on:click=move |_| create_ex(ex_names[2])>{ex_names[2]}</button>
+                <button on:click=move |_| create_ex(&PathBuf::from("example/333.refer"))>"333"</button>
                 <span>{t!(i18n, create.example_desc_3)}</span>
             </div>
         </Show>
     }
 }
 
-pub fn validate_relative_refer_path(p: &PathBuf) -> Result<(), ()> {
+pub fn validate_relative_refer_path(p: &Path) -> Result<(), ()> {
     let s = p.to_string_lossy();
 
     // не должен начинаться или заканчиваться на '/'
@@ -803,15 +799,16 @@ fn LogViewer() -> impl IntoView {
         loading.set(true);
         
         spawn_local(async move {
-            let js = invoke("get_log", JsValue::NULL).await;
-            match from_value::<String>(js){
-                Ok(log_content) => {
-                    logs.set(Some(log_content));
+            match invoke("get_log", JsValue::NULL).await{
+                Ok(js) => {
+                    let res = from_value::<String>(js).unwrap_or_default();
+                    logs.set(Some(res));
                     loading.set(false);
                     now.set("Logs uploaded".to_string());
                 }
-                Err(e) => {
-                    now.set(format!("Failed to load logs: {}", e));
+                Err(js) => {
+                    let error_msg = from_value::<String>(js).unwrap_or_else(|_| "Unknown error".into());
+                    now.set(format!("Failed to load logs: {}", error_msg));
                     logs.set(None);
                     loading.set(false);
                 }
@@ -822,13 +819,13 @@ fn LogViewer() -> impl IntoView {
     let clear_logs = move |_| {
         logs.set(None);
         spawn_local(async move {
-            let js = invoke("clear_log", JsValue::NULL).await;
-            match from_value::<String>(js){
+            match invoke("clear_log", JsValue::NULL).await{
                 Ok(_) => {
                     now.set("Logs deleted".to_string());
                 }
-                Err(e) => {
-                    now.set(format!("Failed to load logs: {}", e));
+                Err(js) => {
+                    let error_msg = from_value::<String>(js).unwrap_or_else(|_| "Unknown error".into());
+                    now.set(format!("Failed to load logs: {}", error_msg));
                 }
             }
         });
@@ -872,10 +869,15 @@ fn read_size(bytes: u64) -> String {
 
 fn upd_stat(stat: RwSignal<StatisticsState>, now: RwSignal<String>) {
     spawn_local(async move {
-        let js = invoke("get_stat", JsValue::NULL).await;
-        match from_value::<StatisticsState>(js) {
-            Ok(new_stat) => stat.set(new_stat),
-            Err(e) => now.set(format!("Err: {}", e)),
+        match invoke("get_stat", JsValue::NULL).await{
+            Ok(js) => {
+                let res = from_value::<StatisticsState>(js).unwrap_or_default();
+                stat.set(res);
+            }
+            Err(js) => {
+                let error_msg = from_value::<String>(js).unwrap_or_else(|_| "Unknown error".into());
+                now.set(format!("Err: {}", error_msg));
+            }
         };
     });
 }
@@ -906,9 +908,9 @@ async fn read_file_as_bytes(file: &web_sys::File) -> Result<Vec<u8>, String> {
     Ok(uint8_array.to_vec())
 }
 
-fn ensure_utf8_path(p: &std::path::Path) -> Result<&str, &'static str> {
+/*fn ensure_utf8_path(p: &std::path::Path) -> Result<&str, &'static str> {
     p.to_str().ok_or("Имя файла содержит недопустимые (не UTF-8) символы.")
-}
+}*/
 
 // app.rs или отдельный модуль helpers.rs
 /*
@@ -972,3 +974,19 @@ fn key_convert(r: &str) -> String {
 
 
 */
+// remove_refer_ext(item.clone().display().to_string())
+/*spawn_local(async move {
+    let args = to_value(&CreateFormBack { val: form_data }).unwrap();
+    let js = invoke("create", args).await;
+    let result: Result<String, String> = from_value(js).map_err(|e| format!("deserialize failed: {e}"));
+    log::debug!("{:?}", &result);
+    match result {
+        Ok(_) => {
+            log::info!("create_ex: {}", &name);
+            set_now(now,format!("{}: {}", tu_string!(i18n, create.ok_create), &name));
+            //selected_ref.set(Some("abook.refer".to_string()));
+            //active_tab.set(1);
+        }
+        Err(e) => set_now(now,format!("{}: {} - {}", tu_string!(i18n, create.er_create), &name,e))
+    }
+});*/

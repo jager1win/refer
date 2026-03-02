@@ -1,111 +1,274 @@
-use crate::StatisticsState;
-use std::{fs,io};
-use tracing::{error,info};
-use rusqlite::{Connection, Result, Error};
+use rusqlite::{Connection, Result as SqlResult, params};
 use std::path::{Path, PathBuf};
+use serde_json::json;
 
-// Единая функция создания любой новой базы
-pub fn create_empty_database(full_path: &Path) -> Result<(), Error> {
-    // Создаем родительскую директорию, если её нет
-    if let Some(parent) = full_path.parent() {
-        fs::create_dir_all(parent)
-            .map_err(|e| rusqlite::Error::SqliteFailure(
-                rusqlite::ffi::Error::new(1), 
-                Some(format!("Cannot create directory: {}", e))
-            ))?;
-    }
+use crate::commands::CreateForm;
+
+// ==================== Базовые операции с БД ====================
+
+// Создание пустой базы
+pub fn create_empty_database(path: &PathBuf) -> SqlResult<()> {
+    let conn = Connection::open(path)?;
     
-    // Проверяем, что файл не существует (не перезаписываем случайно)
-    if full_path.exists() {
-        return Err(rusqlite::Error::SqliteFailure(
-            rusqlite::ffi::Error::new(19), // SQLITE_CONSTRAINT
-            Some(format!("Database already exists: {}", full_path.display()))
-        ));
-    }
-    
-    let conn = Connection::open(full_path)?;
-    
-    // 1. Таблица items - только служебные поля + данные
+    // Таблица data - только ID
     conn.execute(
-        "CREATE TABLE items (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            name TEXT NOT NULL UNIQUE,  -- единственное поле по умолчанию
-            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        "CREATE TABLE data (
+            id INTEGER PRIMARY KEY AUTOINCREMENT
         )",
         [],
     )?;
     
-    // 2. Триггер для автообновления updated_at
+    // Таблица meta - вся информация в формате ключ-значение
     conn.execute(
-        "CREATE TRIGGER update_items_timestamp 
-         AFTER UPDATE ON items
-         BEGIN
-            UPDATE items SET updated_at = CURRENT_TIMESTAMP 
-            WHERE id = NEW.id;
-         END;",
-        [],
-    )?;
-
-    // 3. Таблица ctrl - метаданные о колонках
-    conn.execute(
-        "CREATE TABLE ctrl (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            field_name TEXT NOT NULL UNIQUE,  -- техническое имя (f0, f1... или для name - 'name')
-            display_name TEXT NOT NULL,       -- 'Название', 'Высота' и т.д.
-            field_type TEXT DEFAULT 'text',   -- text, integer, real, computed
-            is_system BOOLEAN DEFAULT 0,      -- системное поле (id, timestamps)
-            is_editable BOOLEAN DEFAULT 1,
-            display_order INTEGER,
-            visible BOOLEAN DEFAULT 1,
-            description TEXT,
-            -- для вычисляемых полей
-            expression TEXT,
-            result_type TEXT DEFAULT 'text',
-            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-        )",
-        [],
-    )?;
-    
-    // 4. Добавляем метаданные для системных полей
-    conn.execute(
-        "INSERT INTO ctrl (field_name, display_name, field_type, is_system, is_editable, display_order) VALUES
-         ('id', 'ID', 'integer', 1, 0, 0),
-         ('name', 'Название', 'text', 0, 1, 1),
-         ('created_at', 'Дата создания', 'datetime', 1, 0, 2),
-         ('updated_at', 'Дата изменения', 'datetime', 1, 0, 3)",
-        [],
-    )?;
-
-    // 5. Таблица для описания справочника
-    conn.execute(
-        "CREATE TABLE db_info (
+        "CREATE TABLE meta (
             key TEXT PRIMARY KEY,
-            value TEXT
+            value TEXT NOT NULL
         )",
         [],
     )?;
     
-    // Сохраняем оригинальное имя файла без пути в db_info
-    let file_name = full_path.file_stem()
-        .and_then(|s| s.to_str())
-        .unwrap_or("Новый справочник");
+    // Базовая meta для пустой базы
+    let now = chrono::Local::now().to_rfc3339();
     
     conn.execute(
-        "INSERT INTO db_info (key, value) VALUES 
-         ('name', ?1),
-         ('file_path', ?2),
-         ('description', ''),
-         ('version', '1.0')",
-        rusqlite::params![file_name, full_path.to_string_lossy()],
+        "INSERT INTO meta (key, value) VALUES 
+         ('table_name', ?1),
+         ('table_description', ?2),
+         ('field_names', ?3),
+         ('field_types', ?4),
+         ('operations', ?5),
+         ('created_at', ?6)",
+        params![
+            "",                    // table_name - пустое, юзер сам заполнит
+            "",                    // table_description - пустое
+            "{}",                  // field_names - пустой JSON объект
+            "{}",                  // field_types - пустой JSON объект
+            "[]",                  // operations - пустой JSON массив
+            &now,
+        ],
     )?;
     
     Ok(())
 }
 
-pub fn create_example_database(path:&PathBuf) -> Result<(), Error> {
-
-    create_empty_database(&path);
-
+pub fn create_from_file(path: &PathBuf, val: &CreateForm)->SqlResult<()>{
     Ok(())
+}
+
+// Добавление поля в существующую базу
+pub fn add_field(
+    conn: &Connection,
+    field_index: usize,
+    display_name: Option<&str>,
+    field_type: &str,
+) -> SqlResult<String> {
+    let field_name = format!("f_{}", field_index);
+    
+    // Добавляем колонку в data
+    let sql = format!("ALTER TABLE data ADD COLUMN {} {}", field_name, 
+        match field_type {
+            "number" | "real" => "REAL",
+            "integer" => "INTEGER",
+            _ => "TEXT",
+        }
+    );
+    conn.execute(&sql, [])?;
+    
+    // Обновляем field_names в meta
+    let names_json: String = conn.query_row(
+        "SELECT value FROM meta WHERE key = 'field_names'",
+        [],
+        |row| row.get(0),
+    )?;
+    
+    let mut names: serde_json::Value = serde_json::from_str(&names_json).unwrap_or(json!({}));
+    if let Some(obj) = names.as_object_mut() {
+        let name = display_name.unwrap_or(&format!("Field {}", field_index)).to_string();
+        obj.insert(field_name.clone(), json!(name));
+    }
+    
+    conn.execute(
+        "UPDATE meta SET value = ?1 WHERE key = 'field_names'",
+        params![names.to_string()],
+    )?;
+    
+    // Обновляем field_types в meta
+    let types_json: String = conn.query_row(
+        "SELECT value FROM meta WHERE key = 'field_types'",
+        [],
+        |row| row.get(0),
+    )?;
+    
+    let mut types: serde_json::Value = serde_json::from_str(&types_json).unwrap_or(json!({}));
+    if let Some(obj) = types.as_object_mut() {
+        obj.insert(field_name.clone(), json!(field_type));
+    }
+    
+    conn.execute(
+        "UPDATE meta SET value = ?1 WHERE key = 'field_types'",
+        params![types.to_string()],
+    )?;
+    
+    Ok(field_name)
+}
+
+// Импорт CSV данных (общая функция)
+pub fn import_csv(
+    conn: &Connection,
+    csv_data: &str,
+    has_header: bool,
+) -> SqlResult<Vec<String>> {
+    let mut lines = csv_data.lines();
+    let mut field_names = Vec::new();
+    
+    // Обработка заголовка
+    let headers: Vec<&str> = if has_header {
+        if let Some(header_line) = lines.next() {
+            header_line.split(',').collect()
+        } else {
+            Vec::new()
+        }
+    } else {
+        // Если нет заголовка, создаем заглушки
+        let first_line = lines.clone().next().unwrap_or("");
+        let col_count = first_line.split(',').count();
+        (0..col_count).map(|i| Box::leak(format!("Field_{}", i+1).into_boxed_str()) as &str).collect()
+    };
+    
+    // Создаем поля
+    for (i, header) in headers.iter().enumerate() {
+        // Пытаемся определить тип поля по первому значению
+        let first_line = lines.clone().next().unwrap_or("");
+        let first_value = first_line.split(',').nth(i).unwrap_or("");
+        let field_type = if first_value.parse::<f64>().is_ok() { "number" } else { "text" };
+        
+        let field_name = add_field(conn, i, Some(header), field_type)?;
+        field_names.push(field_name);
+    }
+    
+    // Импортируем данные
+    for line in lines {
+        let values: Vec<&str> = line.split(',').collect();
+        
+        conn.execute("INSERT INTO data DEFAULT VALUES", [])?;
+        let record_id = conn.last_insert_rowid();
+        
+        for (i, value) in values.iter().enumerate() {
+            if i < field_names.len() {
+                let sql = format!("UPDATE data SET {} = ?1 WHERE id = ?2", field_names[i]);
+                conn.execute(&sql, params![value, record_id])?;
+            }
+        }
+    }
+    
+    Ok(field_names)
+}
+
+// Добавление операции
+pub fn add_operation(
+    conn: &Connection,
+    name: &str,
+    expression: &str,
+    description: Option<&str>,
+) -> SqlResult<()> {
+    let ops_json: String = conn.query_row(
+        "SELECT value FROM meta WHERE key = 'operations'",
+        [],
+        |row| row.get(0),
+    )?;
+    
+    let mut ops: serde_json::Value = serde_json::from_str(&ops_json).unwrap_or(json!([]));
+    
+    if let Some(arr) = ops.as_array_mut() {
+        arr.push(json!({
+            "name": name,
+            "expression": expression,
+            "description": description.unwrap_or(""),
+            "created_at": chrono::Local::now().to_rfc3339(),
+        }));
+    }
+    
+    conn.execute(
+        "UPDATE meta SET value = ?1 WHERE key = 'operations'",
+        params![ops.to_string()],
+    )?;
+    
+    Ok(())
+}
+
+// ==================== Создание конкретных демо-баз ====================
+
+// Данные для баллистики
+const BALLISTICS_CSV: &str = "caliber,bullet_mass_g,muzzle_velocity,bc_g1,cross_section_cm2
+.308 Winchester,11.3,800,0.475,0.48
+.338 Lapua Mag,16.2,900,0.648,0.57
+7.62x54R LPS,9.6,830,0.420,0.48
+5.45x39 7N6,3.4,900,0.347,0.23
+.223 Remington,4.0,930,0.304,0.25
+6.5 Creedmoor,8.9,860,0.520,0.34
+.300 Win Mag,11.7,880,0.590,0.42
+9x19 Parabellum,8.0,360,0.150,0.12
+.45 ACP,15.0,260,0.180,0.16
+12 gauge slug,28.0,480,0.210,2.15";
+
+pub fn create_ballistics_database(path: &PathBuf) -> SqlResult<()> {
+    // Создаем пустую базу
+    create_empty_database(path)?;
+    
+    let conn = Connection::open(path)?;
+    
+    // Обновляем table_name и table_description
+    conn.execute(
+        "UPDATE meta SET value = ?1 WHERE key = 'table_name'",
+        params!["Ballistics Data"],
+    )?;
+    
+    conn.execute(
+        "UPDATE meta SET value = ?1 WHERE key = 'table_description'",
+        params!["Ballistic trajectory calculator demo data"],
+    )?;
+    
+    // Импортируем CSV с заголовком
+    import_csv(&conn, BALLISTICS_CSV, true)?;
+    
+    // Добавляем операции
+    add_operation(
+        &conn,
+        "Energy (J)",
+        "f_1 * f_2 * f_2 / 2000",  // bullet_mass_g * velocity^2 / 2000
+        Some("Kinetic energy in Joules"),
+    )?;
+    
+    add_operation(
+        &conn,
+        "Sectional Density",
+        "f_1 / (f_4 * 1000)",  // mass / cross_section_cm2 * 1000
+        Some("Bullet mass / cross-sectional area"),
+    )?;
+    
+    Ok(())
+}
+
+// Заглушки для будущих демо-баз
+pub fn create_recipes_database(path: &PathBuf) -> SqlResult<()> {
+    // TODO: реализовать
+    Ok(())
+}
+
+pub fn create_inventory_database(path: &PathBuf) -> SqlResult<()> {
+    // TODO: реализовать
+    Ok(())
+}
+
+// Основная функция создания демо-базы по имени
+pub fn create_example_database(name: &str, path: &PathBuf) -> SqlResult<()> {
+    match name {
+        "ballistics" => create_ballistics_database(path),
+        "recipes" => create_recipes_database(path),
+        "inventory" => create_inventory_database(path),
+        _ => Err(rusqlite::Error::SqliteFailure(
+            rusqlite::ffi::Error::new(1),
+            Some(format!("Unknown demo database: {}", name)),
+        )),
+    }
 }
