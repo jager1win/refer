@@ -28,7 +28,7 @@ impl Default for SettingsStore {
         Self {
             theme: "light".to_string(),
             language: "en".to_string(),
-            color: "azure".to_string()
+            color: "blue".to_string()
         }
     }
 }
@@ -40,15 +40,12 @@ pub struct StatisticsState {
     pub db_list: Vec<PathBuf>, // список имен баз включая пути от папки refer
     pub log_path: PathBuf,  // файл логов куда пишет tracing
     pub db_path_ok: String, // Пустое если еще не проверяли, "Ok" если всё хорошо, иначе сообщение об ошибке
-    pub db_selected: Option<PathBuf>,
     pub initialized: bool,  // Флаг, что инициализация уже выполнена
-
 }
 
 #[derive(Default)]
-pub struct DbConnection {
-    pub conn: Option<Connection>, 
-}
+pub struct DbState(pub Mutex<Option<Connection>>);
+
 
 // Храним WorkerGuard, чтобы логи не терялись при выходе
 static LOG_GUARD: std::sync::OnceLock<WorkerGuard> = std::sync::OnceLock::new();
@@ -59,7 +56,7 @@ pub fn run() {
         .setup(|app| {
             init_tracing(app.handle())?;
             app.manage(Mutex::new(StatisticsState::default()));
-            app.manage(Mutex::new(DbConnection::default()));
+            app.manage(DbState(Mutex::new(None)));
             // Только инициализация при запуске, без вызова set_stat_all
             init_stat_all(app.handle())?;
             Ok(())
@@ -207,6 +204,16 @@ fn get_db_path_info(p: &Path) -> (u64, Vec<PathBuf>) {
 
 // enable tracing::subscriber
 fn init_tracing(app: &tauri::AppHandle) -> Result<(), Box<dyn std::error::Error>> {
+    use tracing_subscriber::fmt::time::FormatTime;
+
+    struct MyTime;
+
+    impl FormatTime for MyTime {
+        fn format_time(&self, w: &mut tracing_subscriber::fmt::format::Writer<'_>) -> std::fmt::Result {
+            let now = chrono::Local::now();
+            write!(w, "{}", now.format("%Y-%m-%dT%H:%M:%S%.3f"))
+        }
+    }
     // 1. Получаем путь к директории логов, специфичной для приложения и ОС
     let log_dir = app.path().app_log_dir()?;
     std::fs::create_dir_all(&log_dir).ok();
@@ -231,11 +238,12 @@ fn init_tracing(app: &tauri::AppHandle) -> Result<(), Box<dyn std::error::Error>
     let filter = EnvFilter::try_from_default_env()
         .or_else(|_| EnvFilter::try_new("info"))
         .unwrap_or_else(|_| EnvFilter::new("info"));
-    
+
     // 8. Создаем и устанавливаем подписчика
     let subscriber = fmt::Subscriber::builder()
         .with_env_filter(filter)
         .with_writer(non_blocking)
+        .with_timer(MyTime)
         .with_ansi(false) // Отключаем ANSI-коды для файла
         .compact()
         .finish();
@@ -243,8 +251,7 @@ fn init_tracing(app: &tauri::AppHandle) -> Result<(), Box<dyn std::error::Error>
     tracing::subscriber::set_global_default(subscriber)?;
     
     // 9. Записываем заголовок с информацией о запуске
-    let now = chrono::Local::now();
-    info!("=== Refer App started at {} ===", now.format("%Y-%m-%d %H:%M:%S"));
+    info!("= Refer App started =");
     
     Ok(())
 }

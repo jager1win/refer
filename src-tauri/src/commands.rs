@@ -50,7 +50,7 @@ pub async fn get_settings(app: tauri::AppHandle) -> Result<SettingsStore, String
     let color = json
         .get("color")
         .and_then(|v| v.as_str())
-        .unwrap_or("azure")
+        .unwrap_or("blue")
         .to_string();
     //let settings: SettingsStore = serde_json::from_value(json).unwrap_or_default();
 
@@ -82,12 +82,12 @@ pub async fn get_stat(app: tauri::AppHandle) -> Result<StatisticsState, String> 
 }
 
 #[tauri::command]
-pub async fn del_ref(app: tauri::AppHandle, val: String) -> Result<String, String> {
+pub async fn del_ref(app: tauri::AppHandle, val: PathBuf) -> Result<String, String> {
     let document_dir = app.path().document_dir().map_err(|e| e.to_string())?;
     let reference_path = document_dir.join(APP_EXT).join(&val);
 
     match fs::remove_file(reference_path){
-        Ok(_i) => Ok({info!("reference deleted: {}",val);String::from("reference_deleted")}),
+        Ok(_i) => Ok({info!("reference deleted: {:?}",val);String::from("reference_deleted")}),
         Err(e) => Ok({error!("failed reference deleted: {}",e);"failed_reference_deleted".to_string()})
     }
 }

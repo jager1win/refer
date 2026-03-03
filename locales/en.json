@@ -42,10 +42,10 @@
     "loading": "Loading...",
     "show_logs": "Show logs",
     "clear_logs": "Clear Logs",
-    "path_ref": "Path to refer folder",
-    "path_ref_access": "Access to refer folder",
-    "number": "Number of references",
-    "size": "Folder size",
-    "log_path": "Log file path"
+    "st_path": "Path",
+    "st_access": "Access",
+    "st_count": "Count",
+    "st_size": "Size",
+    "st_log": "Log"
   }
 }

@@ -4,7 +4,7 @@ cargo tauri android build
 debug версия:
 adb install -r /home/jager/Development/rust/refer/src-tauri/gen/android/app/build/outputs/apk/arm64/debug/app-arm64-debug.apk
 
-
+=========================================================================
 /* universal color scheme
 [data-color="ccc"][data-theme=light]{
   color-scheme: light;
@@ -29,7 +29,7 @@ slate, zinc, taupe, mauve, mist, olive */
 
 ```rust
 
-
+==========================================================================
 #[wasm_bindgen]
 extern "C" {
     #[wasm_bindgen(js_namespace = ["window", "__TAURI__", "core"], catch)]
@@ -56,3 +56,128 @@ spawn_local(async move {
 });
 
 ```
+===========================================================================
+
+Вот минимальный и надежный пример того, как это организовать:
+1. Объявление стейта
+
+use rusqlite::Connection;use std::sync::Mutex;
+// Обертка для соединения. Нам не нужны derive, // так как Tauri хранит это в атомарном указателе.
+pub struct DbState(pub Mutex<Option<Connection>>);
+
+2. Команда для переключения базы
+Здесь мы используем ваш db_selected для того, чтобы понять, какой файл открывать, и записываем соединение в DbState.
+
+#[tauri::command]async fn select_database(
+    path: String, 
+    db_state: tauri::State<'_, DbState>,
+    stats_state: tauri::State<'_, Mutex<StatisticsState>>
+) -> Result<(), String> {
+    // 1. Открываем новое соединение
+    let conn = Connection::open(&path)
+        .map_err(|e| format!("Ошибка открытия БД: {}", e))?;
+
+    // 2. Обновляем DbState (активное соединение)
+    let mut db_lock = db_state.0.lock().unwrap();
+    *db_lock = Some(conn); 
+
+    // 3. Обновляем ваш общий StatisticsState
+    let mut stats = stats_state.lock().unwrap();
+    stats.db_selected = Some(path.into());
+
+    Ok(())
+}
+
+3. Команда для работы с данными
+Пример того, как достать тот самый "один элемент", о котором вы говорили:
+
+#[tauri::command]async fn get_single_element(
+    db_state: tauri::State<'_, DbState>
+) -> Result<String, String> {
+    let db_lock = db_state.0.lock().unwrap();
+    
+    // Проверяем, инициализирована ли база
+    let conn = db_lock.as_ref().ok_or("База данных не выбрана")?;
+
+    // Обычный запрос rusqlite
+    let mut stmt = conn.prepare("SELECT name FROM items LIMIT 1")
+        .map_err(|e| e.to_string())?;
+        
+    let name: String = stmt.query_row([], |row| row.get(0))
+        .map_err(|e| e.to_string())?;
+
+    Ok(name)
+}
+
+Почему это удобно:
+
+   1. Авто-закрытие: Как только вы делаете *db_lock = Some(new_conn), старое соединение (если оно было) автоматически закрывается (Drop).
+   2. Безопасность: Если фронтенд на Leptos вызовет запрос, когда база не выбрана, вы корректно вернете ошибку через ok_or.
+   3. Синхронизация: Mutex гарантирует, что если два быстрых клика в UI вызовут команды, они выполнятся строго по очереди.
+
+Нюанс по производительности:
+Поскольку у вас SQLite и один активный элемент, Mutex никак не замедлит работу. 
+Главное — не держать лок (let _lock = ...) слишком долго, если внутри команды есть тяжелые вычисления (не связанные с БД).
+
+Закрыть соединение с базой, сбросить.
+#[tauri::command]
+async fn close_current_db(
+    db_state: tauri::State<'_, DbState>,
+    stats_state: tauri::State<'_, Mutex<StatisticsState>>
+) -> Result<(), String> {
+    // 1. Освобождаем соединение
+    let mut db_lock = db_state.0.lock().unwrap();
+    *db_lock = None; // Предыдущее соединение будет автоматически закрыто (Dropped)
+
+    // 2. Сбрасываем путь в статистике
+    let mut stats = stats_state.lock().unwrap();
+    stats.db_selected = None;
+
+    Ok(())
+}
+
+
+Вот лучший способ автоматизировать подключение базы на бэкенде:
+1. Инкапсуляция логики
+Вместо того чтобы давать командам прямой доступ к мутексам, создайте метод у вашей структуры StatisticsState.
+rust
+
+impl StatisticsState {
+    pub fn switch_db(
+        &mut self, 
+        new_path: Option<PathBuf>, 
+        db_state: &DbState
+    ) -> Result<(), String> {
+        // 1. Обновляем путь в текущей структуре
+        self.db_selected = new_path.clone();
+
+        // 2. Обновляем соединение в DbState
+        let mut conn_lock = db_state.0.lock().unwrap();
+        
+        if let Some(path) = new_path {
+            let conn = Connection::open(path).map_err(|e| e.to_string())?;
+            *conn_lock = Some(conn);
+        } else {
+            *conn_lock = None;
+        }
+
+        Ok(())
+    }
+}
+
+2. Использование в командах
+Теперь любая команда, которая должна изменить базу, будет делать это одной строчкой. 
+Вам не нужно следить за синхронизацией двух стейтов вручную в разных местах.
+
+
+#[tauri::command]
+async fn select_db_command(
+    path: Option<PathBuf>,
+    stats: tauri::State<'_, Mutex<StatisticsState>>,
+    db_conn: tauri::State<'_, DbState>,
+) -> Result<(), String> {
+    let mut stats_lock = stats.lock().unwrap();
+    
+    // Автоматически обновляет и путь, и само соединение
+    stats_lock.switch_db(path, &db_conn)
+}
