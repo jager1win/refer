@@ -28,7 +28,7 @@
     "example_desc_1": "example_desc_1",
     "example_desc_2": "example_desc_2",
     "example_desc_3": "example_desc_3",
-    "fname": "Name",
+    "fname": "File name",
     "fsqlite": "SQLite file",
     "ftable": "Spreadsheet file",
     "fheader": "Header",

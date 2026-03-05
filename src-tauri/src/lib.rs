@@ -5,11 +5,11 @@ use std::path::{Path, PathBuf};
 use std::time::{SystemTime, UNIX_EPOCH};
 use std::sync::Mutex;
 use tauri::Manager;
-use rusqlite::Connection;
 pub mod sql;
 pub mod commands;
 pub mod errors;
 use crate::commands::*;
+use crate::sql::DbState;
 use tracing_subscriber::{fmt, EnvFilter};
 use tracing_appender::non_blocking::WorkerGuard;
 use tracing::{debug, error, warn, info};
@@ -43,10 +43,6 @@ pub struct StatisticsState {
     pub initialized: bool,  // Флаг, что инициализация уже выполнена
 }
 
-#[derive(Default)]
-pub struct DbState(pub Mutex<Option<Connection>>);
-
-
 // Храним WorkerGuard, чтобы логи не терялись при выходе
 static LOG_GUARD: std::sync::OnceLock<WorkerGuard> = std::sync::OnceLock::new();
 
@@ -56,7 +52,7 @@ pub fn run() {
         .setup(|app| {
             init_tracing(app.handle())?;
             app.manage(Mutex::new(StatisticsState::default()));
-            app.manage(DbState(Mutex::new(None)));
+            app.manage(Mutex::new(DbState::default()));
             // Только инициализация при запуске, без вызова set_stat_all
             init_stat_all(app.handle())?;
             Ok(())
@@ -68,7 +64,8 @@ pub fn run() {
             del_ref,
             get_log,
             clear_log,
-            create
+            create,
+            get_db_info,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

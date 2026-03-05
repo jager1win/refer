@@ -28,7 +28,7 @@
     "example_desc_1": "example_desc_1",
     "example_desc_2": "example_desc_2",
     "example_desc_3": "example_desc_3",
-    "fname": "Имя",
+    "fname": "Название файла",
     "fsqlite": "Файл SQLite",
     "ftable": "Файл таблицы",
     "fheader": "Заголовок",

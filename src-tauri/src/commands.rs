@@ -1,15 +1,16 @@
+use std::collections::HashMap;
 use std::fs::{self};
 use std::fs::File;
 use std::io::{self, Read};
 use std::path::{Path, PathBuf, Component};
+use rusqlite::Error;
 use serde::{Deserialize, Serialize};
-use tauri::Manager;
+use tauri::{Manager,State};
 use serde_json::Value;
 use std::sync::Mutex;
 
-use crate::sql::*;
-
-use crate::{APP_EXT,SettingsStore,StatisticsState};
+use crate::sql::{self, *};
+use crate::{APP_EXT,SettingsStore,StatisticsState,DbState};
 use tracing::{error,info};
 
 #[derive(Debug,Serialize, Deserialize)]
@@ -254,6 +255,17 @@ fn try_remove(path: &std::path::Path) -> io::Result<()> {
         Err(e) if e.kind() == io::ErrorKind::NotFound => Ok(()), // нет файла — нормально
         Err(e) => Err(e),
     }
+}
+
+#[tauri::command]
+pub fn get_db_info(val:PathBuf,state: State<'_, Mutex<DbState>>) -> Result<HashMap<String, Vec<String>>, String> {
+    let mut state_lock = state.lock().unwrap();
+    let conn = state_lock.get_conn(val)?;
+    println!("{:?}",&state);
+
+    let ee = sql::get_db_stats(conn).map_err(|e:Error| e.to_string());
+    println!("{:?}",ee);
+    ee
 }
 
 /*let mut path = root.join(String::from("example"));

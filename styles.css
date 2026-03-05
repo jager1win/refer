@@ -5,9 +5,9 @@ html, body {height: 100%;margin: 0;overflow: hidden;}
 body {display: flex;flex-direction: column;}
 header, footer {flex-shrink: 0;padding-block:0!important;}
 .main {display: grid;grid-template-columns: 1fr;overflow-y:auto;justify-items: stretch;padding:0;}
-.tab-content {opacity: 0;visibility: hidden;height: 0;overflow: hidden;transition: opacity 0.3s ease;}
+/*.tab-content {opacity: 0;visibility: hidden;height: 0;overflow: hidden;transition: opacity 0.3s ease;}
 .tab-content:not(.active) {opacity: 0;visibility: hidden;pointer-events: none;}
-.tab-content.active {opacity: 1;visibility: visible;height: auto;overflow: visible;}
+.tab-content.active {opacity: 1;visibility: visible;height: auto;overflow: visible;}*/
 .top-nav {display: grid;grid-template-columns: 1fr 4fr 1fr;width: 100%;gap: 2rem;padding: 0.2rem;}
 .top-nav button {white-space: nowrap;min-width: 0;}
 h1,h2,h3,h4,h5,.center{text-align: center;}
@@ -20,9 +20,8 @@ div.now{display: flex;align-items: flex-start;margin:0 0.5rem;height:2rem;positi
 div.now p{flex: 1 1 auto;white-space: nowrap;padding: 0;margin:0;margin-bottom: 1rem;overflow-x: auto;height: 100%;}
 .sp_close{flex: 0 0 auto;cursor:pointer;padding-left:1rem;}
 div.now.error p, span.error, small.error{color:red;}
-.log-controls{display:flex;justify-content: space-around;}
-.log-content code{padding:0.2rem;overflow-x: auto;width: 100%;white-space: pre-line;}
-.log-content code:empty { display: none; }
+code#logs{padding:0.2rem;overflow: scroll;width: 100%;white-space: pre-line;}
+
 button:not(.navb){padding:0.4rem}
 .ar_lang, .ar_color{display:flex;gap: 1rem;flex-wrap: wrap;}
 .ar_lang button, .ar_color button{min-height: 1.2rem;min-width: 1.2rem;}
@@ -42,6 +41,59 @@ input.csv_deli{width: 2rem!important;padding: 0.4rem!important;}
 .hidden{display:none}
 .db_line{display: flex;align-items: baseline;gap:1rem;}
 .refs-list{gap:1rem;}
+.tab-content {
+    position: fixed;
+    top: 5.5rem;
+    left: 0;
+    width: 100vw;
+    height: calc(100vh - 5.5rem);
+    z-index: 100;
+    opacity: 0;
+    visibility: hidden;
+    transition: opacity 0.2s ease;
+    background-color: var( --pico-background-color);
+}
+.tab-content.active {opacity: 1;pointer-events: auto;visibility: visible;}
+.tab-content > * {max-height: 90vh;overflow-y: auto;}
+.main-content {width: 100%;height: 100%;}
+/*logs*/
+.log-viewer-wrapper {
+    position: fixed;
+    bottom: 0;
+    left: 0;
+    z-index: 200; /* Выше всех, даже оверлеев */
+}
+.log-trigger-btn {
+  position: fixed;
+  bottom: 1rem;
+  z-index: 201;
+    right: 1rem;
+    width: 3rem;
+    height: 3rem;
+    padding: 0;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+    border: 2px solid var(--pico-border-color);
+}
+
+/* Контейнер логов */
+.log-panel {
+    display: none; /* Скрыто по умолчанию */
+    width: 100vw;
+    max-height: 50vh;
+    background-color: var(--pico-background-color);
+    overflow-y: auto;
+}
+
+/* Когда обертка имеет класс .open */
+.log-viewer-wrapper.active .log-panel {
+    display: flex;
+}
+
+
+
 /* COLORS */
 .orange{background-color: orange;}
 .lime{background-color: lime;}

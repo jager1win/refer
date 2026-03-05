@@ -1,13 +1,94 @@
-use rusqlite::{Connection, Result as SqlResult, params};
+use rusqlite::{Connection, Result, params};
+use tauri::Manager;
 use std::path::{Path, PathBuf};
 use serde_json::json;
-
 use crate::commands::CreateForm;
+use std::sync::Mutex;
+use std::collections::HashMap;
+
+#[derive(Default, Debug)]
+pub struct DbState {
+    pub conn: Option<Connection>,
+    pub current_path: Option<PathBuf>,
+}
+
+impl DbState {
+    pub fn get_conn(&mut self, path: PathBuf) -> Result<&Connection, String> {
+        if self.current_path.as_ref() != Some(&path) {
+            // Присваивание Some автоматически дропает предыдущий Connection (закрывает файл)
+            self.conn = Some(Connection::open(&path).map_err(|e| e.to_string())?);
+            self.current_path = Some(path);
+        }
+        Ok(self.conn.as_ref().unwrap())
+    }
+}
+
+
+pub fn get_db_stats(conn: &Connection) -> Result<HashMap<String, Vec<String>>> {
+    let mut stats = HashMap::new();
+    println!("sql");
+    // 1. Получаем список таблиц
+    let mut stmt = conn.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'")?;
+    let tables: Vec<String> = stmt.query_map([], |row| row.get(0))?.collect::<Result<_>>()?;
+
+    let mut table_names = Vec::new();
+    let mut counts = Vec::new();
+    let mut all_fields = Vec::new();
+
+    for table in tables {
+        // Имена таблиц
+        table_names.push(table.clone());
+
+        // Количество записей
+        let count: i64 = conn.query_row(&format!("SELECT COUNT(*) FROM \"{}\"", table), [], |r| r.get(0))?;
+        counts.push(count.to_string());
+
+        // Поля (собираем в одну строку "col1, col2" или можно пушить по отдельности)
+        let mut col_stmt = conn.prepare(&format!("PRAGMA table_info(\"{}\")", table))?;
+        let fields: Vec<String> = col_stmt.query_map([], |row| row.get(1))?.collect::<Result<_>>()?;
+        all_fields.push(fields.join(", ")); // Объединяем поля таблицы в одну строку
+    }
+
+    stats.insert("tables".to_string(), table_names);
+    stats.insert("count".to_string(), counts);
+    stats.insert("fields".to_string(), all_fields);
+
+    Ok(stats)
+}
+
+/*pub fn get_all_items(conn: &Connection) -> Result<Vec<Item>> {
+    let mut stmt = conn.prepare("SELECT * FROM items ORDER BY name")?;
+    let items = stmt.query_map([], |row| {
+        Ok(Item {
+            id: row.get(0)?,
+            name: row.get(1)?,
+            description: row.get(2)?,
+        })
+    })?;
+    
+    let mut result = Vec::new();
+    for item in items {
+        result.push(item?);
+    }
+    Ok(result)
+}*/
+// mutex db conn
+/*n open_db(path: String, db_state: tauri::State<'_, DbState>) -> Result<(), String> {
+    use rusqlite::Connection;
+    let conn = Connection::open(&path)
+        .map_err(|e| format!("Ошибка открытия БД: {}", e))?;
+
+    // 2. Обновляем DbState (активное соединение)
+    let mut db_lock = db_state.0.lock().unwrap();
+    *db_lock = Some(conn); 
+
+    Ok(())
+}*/
 
 // ==================== Базовые операции с БД ====================
 
 // Создание пустой базы
-pub fn create_empty_database(path: &PathBuf) -> SqlResult<()> {
+pub fn create_empty_database(path: &PathBuf) -> Result<()> {
     let conn = Connection::open(path)?;
     
     // Таблица data - только ID
@@ -51,7 +132,7 @@ pub fn create_empty_database(path: &PathBuf) -> SqlResult<()> {
     Ok(())
 }
 
-pub fn create_from_file(path: &PathBuf, val: &CreateForm)->SqlResult<()>{
+pub fn create_from_file(path: &PathBuf, val: &CreateForm)->Result<()>{
     Ok(())
 }
 
@@ -61,7 +142,7 @@ pub fn add_field(
     field_index: usize,
     display_name: Option<&str>,
     field_type: &str,
-) -> SqlResult<String> {
+) -> Result<String> {
     let field_name = format!("f_{}", field_index);
     
     // Добавляем колонку в data
@@ -117,7 +198,7 @@ pub fn import_csv(
     conn: &Connection,
     csv_data: &str,
     has_header: bool,
-) -> SqlResult<Vec<String>> {
+) -> Result<Vec<String>> {
     let mut lines = csv_data.lines();
     let mut field_names = Vec::new();
     
@@ -170,7 +251,7 @@ pub fn add_operation(
     name: &str,
     expression: &str,
     description: Option<&str>,
-) -> SqlResult<()> {
+) -> Result<()> {
     let ops_json: String = conn.query_row(
         "SELECT value FROM meta WHERE key = 'operations'",
         [],
@@ -211,7 +292,7 @@ const BALLISTICS_CSV: &str = "caliber,bullet_mass_g,muzzle_velocity,bc_g1,cross_
 .45 ACP,15.0,260,0.180,0.16
 12 gauge slug,28.0,480,0.210,2.15";
 
-pub fn create_ballistics_database(path: &PathBuf) -> SqlResult<()> {
+pub fn create_ballistics_database(path: &PathBuf) -> Result<()> {
     // Создаем пустую базу
     create_empty_database(path)?;
     
@@ -250,18 +331,18 @@ pub fn create_ballistics_database(path: &PathBuf) -> SqlResult<()> {
 }
 
 // Заглушки для будущих демо-баз
-pub fn create_recipes_database(path: &PathBuf) -> SqlResult<()> {
+pub fn create_recipes_database(path: &PathBuf) -> Result<()> {
     // TODO: реализовать
     Ok(())
 }
 
-pub fn create_inventory_database(path: &PathBuf) -> SqlResult<()> {
+pub fn create_inventory_database(path: &PathBuf) -> Result<()> {
     // TODO: реализовать
     Ok(())
 }
 
 // Основная функция создания демо-базы по имени
-pub fn create_example_database(name: &str, path: &PathBuf) -> SqlResult<()> {
+pub fn create_example_database(name: &str, path: &PathBuf) -> Result<()> {
     match name {
         "ballistics" => create_ballistics_database(path),
         "recipes" => create_recipes_database(path),

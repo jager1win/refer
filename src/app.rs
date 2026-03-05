@@ -1,3 +1,4 @@
+use std::collections::HashMap;
 use std::path::{PathBuf,Path};
 use leptos::{prelude::*};
 use leptos::task::spawn_local;
@@ -57,7 +58,8 @@ pub fn App() -> impl IntoView {
     let edit_ref: RwSignal<bool> = RwSignal::new(false);
     let active_tab: RwSignal<i32> = RwSignal::new(1);
     let now: RwSignal<String> = RwSignal::new(String::from(""));
-    let er_pat = ["fail", "error"];
+    let er_pat = ["fail", "error", "warning"];
+    let show_logs = RwSignal::new(false);
 
     provide_context(settings);
     provide_context(stat);
@@ -87,6 +89,8 @@ pub fn App() -> impl IntoView {
         selected_ref.set(None::<PathBuf>);
         edit_ref.set(false);
     };
+
+    // now clean if not error+
     Effect::new(move |_| {
         let cur = now.get();
         let contains_bad = er_pat.iter().any(|p| cur.to_lowercase().contains(p));
@@ -94,7 +98,6 @@ pub fn App() -> impl IntoView {
             let cur_clone = cur.clone();
             set_timeout(
                 move || {
-
                     if now.get() == cur_clone {
                         now.set("".to_string());
                     }
@@ -102,8 +105,8 @@ pub fn App() -> impl IntoView {
                 std::time::Duration::from_millis(6000),
             );
         }
-        log::debug!("{:?}",stat.get());
     });
+
     view! {
         <header>
             <nav class="top-nav">
@@ -111,8 +114,11 @@ pub fn App() -> impl IntoView {
                     class="navb"
                     class:active=move || active_tab.get() == 0
                     on:click=move |_| {
-                        clean();
-                        active_tab.set(0)
+                        if active_tab.get() == 0 {
+                            active_tab.set(1);
+                        } else {
+                            active_tab.set(0);
+                        }
                     }
                 >
                     "⚙"
@@ -127,15 +133,23 @@ pub fn App() -> impl IntoView {
                     }
                 >
                     "📚 "
-                    <span>{let i18n = use_i18n();t!(i18n, all.references)}</span>             
+                    <span>
+                        {
+                            let i18n = use_i18n();
+                            t!(i18n, all.references)
+                        }
+                    </span>
                 </button>
                 <button
                     class="navb"
                     class:active=move || active_tab.get() == 2
                     on:click=move |_| {
-                        upd_stat(stat, now);
-                        clean();
-                        active_tab.set(2)
+                        if active_tab.get() == 2 {
+                            active_tab.set(1);
+                        } else {
+                            upd_stat(stat, now);
+                            active_tab.set(2);
+                        }
                     }
                 >
                     "✚"
@@ -156,24 +170,41 @@ pub fn App() -> impl IntoView {
             </div>
         </header>
         <main class="main">
+            // Основной слой — всегда активен
+            <div class="main-content">
+                <ReferencesContainer />
+            </div>
+
+            // Слой Настроек
             <div class="tab-content" class:active=move || active_tab.get() == 0>
                 <Settings />
             </div>
-            <div class="tab-content" class:active=move || active_tab.get() == 1>
-                <ReferencesContainer />
-            </div>
+
+            // Слой Создания
             <div class="tab-content" class:active=move || active_tab.get() == 2>
                 <Create />
             </div>
 
         </main>
+        <div class="log-viewer-wrapper" class:active=move || show_logs.get() >
+            <button 
+                class="log-trigger-btn" 
+                on:click=move |_| show_logs.update(|v| *v = !*v)
+            >
+                "📋"
+            </button>
+            
+            <div class="log-panel">
+                <LogViewer show=show_logs />
+            </div>
+        </div>
     }
 }
 
 #[component]
 fn ReferencesContainer() -> impl IntoView {
-    let selected_ref: RwSignal<Option<PathBuf>> = use_context::<RwSignal<Option<PathBuf>>>().expect("selected not found");
-    let edit_ref: RwSignal<bool> = use_context::<RwSignal<bool>>().expect("edit not found");
+    let selected_ref = use_context::<RwSignal<Option<PathBuf>>>().expect("selected not found");
+    let edit_ref = use_context::<RwSignal<bool>>().expect("edit not found");
 
     view! {
         <div class="references-container">
@@ -190,7 +221,7 @@ fn ReferencesContainer() -> impl IntoView {
 fn Settings() -> impl IntoView {
     let i18n = use_i18n();
     let all: &[Locale] = Locale::get_all();
-    let settings: RwSignal<AppSettings> = use_context::<RwSignal<AppSettings>>().expect("settings not found");
+    let settings = use_context::<RwSignal<AppSettings>>().expect("settings not found");
     let colors = ["orange", "lime", "green", "cyan", "blue", "indigo", "purple", "fuchsia", "pink", "rose", "slate", "zinc", "taupe", "mauve", "mist", "olive"];
     /* Possible color choices: orange, lime, green, cyan, blue, indigo, purple, fuchsia, pink, rose, slate, zinc, taupe, mauve, mist, olive*/
 
@@ -302,7 +333,11 @@ fn Settings() -> impl IntoView {
                             view! {
                                 <button
                                     class=move || {
-                                        if settings.get().color == color {format!("{} active", color)} else { color.to_string() }
+                                        if settings.get().color == color {
+                                            format!("{} active", color)
+                                        } else {
+                                            color.to_string()
+                                        }
                                     }
                                     on:click=move |_| set_color(color)
                                 />
@@ -337,8 +372,8 @@ fn Settings() -> impl IntoView {
 #[component]
 fn Refs() -> impl IntoView {
     let i18n = use_i18n();
-    let stat: RwSignal<StatisticsState> = use_context::<RwSignal<StatisticsState>>().expect("stat not found");
-    let selected_ref: RwSignal<Option<PathBuf>> = use_context().expect("selected not found");
+    let stat = use_context::<RwSignal<StatisticsState>>().expect("stat not found");
+    let selected_ref = use_context::<RwSignal<Option<PathBuf>>>().expect("selected not found");
     //let now: RwSignal<String> = use_context::<RwSignal<String>>().expect("now not found");
     let patterns = ["fail", "error"];
 
@@ -358,7 +393,9 @@ fn Refs() -> impl IntoView {
                         <button
                             class="rlist"
                             on:click=move |_| { selected_ref.set(Some(item.clone())) }
-                        >{remove_refer_ext(&item)}</button>
+                        >
+                            {remove_refer_ext(&item)}
+                        </button>
                     }
                 }
             />
@@ -378,40 +415,59 @@ fn Refs() -> impl IntoView {
             <ins>{t!(i18n, references.st_log)}": "</ins>
             <span>{move || stat.get().log_path}</span>
         </div>
-        <LogViewer />
+        /*<LogViewer />*/
     }
 }
 
 #[component]
 fn Ref() -> impl IntoView {
-    let selected_ref: RwSignal<Option<PathBuf>> = use_context().expect("selected not found");
-    let edit_ref: RwSignal<bool> = use_context::<RwSignal<bool>>().expect("reference not found");
+    let selected_ref = use_context::<RwSignal<Option<PathBuf>>>().expect("selected not found");
+    let edit_ref = use_context::<RwSignal<bool>>().expect("reference not found");
+    let stat = use_context::<RwSignal<StatisticsState>>().expect("stat not found");
+    let now = use_context::<RwSignal<String>>().expect("now not found");
+
+    // get_db_info
+    spawn_local(async move {
+        let p = dbp(stat.get_untracked().db_path, selected_ref.get_untracked().unwrap());
+        let args = to_value(&ToBack { val: p}).unwrap();
+        match invoke("get_db_info", args).await {
+            Ok(js) => {
+                let s = from_value::<HashMap<String, Vec<String>>>(js).unwrap_or_default();
+                log::debug!("Ref: ok get_db_info: {:?}",s);
+            }
+            Err(js) => {
+                let error_msg = from_value::<String>(js).unwrap_or_else(|_| "Unknown error".into());
+                log::debug!("Ref: Failed get_db_info: {}", error_msg);
+            }
+        };
+    });
+
+
     //let now: RwSignal<String> = use_context::<RwSignal<String>>().expect("now not found");
     /*Effect::new(move |_| {
         log::info!("Refs component rendered, selected: {:?}", selected_ref.get());
     });*/
     view! {
         <div class="ref">
-            <h3>"Reference "{move || remove_refer_ext(&selected_ref.get().unwrap())}
+            <h3>
+                "Reference "{move || remove_refer_ext(&selected_ref.get().unwrap_or_default())}
                 <button on:click=move |_| edit_ref.set(true)>"✎"</button>
             </h3>
         </div>
-        
     }
 }
 
 #[component]
 fn Edit() -> impl IntoView {
     let i18n = use_i18n();
-    let selected_ref: RwSignal<Option<PathBuf>> = use_context().expect("selected not found");
-    let edit_ref: RwSignal<bool> = use_context::<RwSignal<bool>>().expect("edit not found");
-    let now: RwSignal<String> = use_context::<RwSignal<String>>().expect("now not found");
-    let stat: RwSignal<StatisticsState> = use_context::<RwSignal<StatisticsState>>().expect("stat not found");
+    let selected_ref = use_context::<RwSignal<Option<PathBuf>>>().expect("selected not found");
+    let edit_ref = use_context::<RwSignal<bool>>().expect("edit not found");
+    let now = use_context::<RwSignal<String>>().expect("now not found");
+    let stat = use_context::<RwSignal<StatisticsState>>().expect("stat not found");
 
     let del_ref = move |name: PathBuf| {
         spawn_local(async move {
-            let args = to_value(&ToBack { val: name.clone()}).unwrap();
-            match invoke("del_ref", args).await {
+            match invoke("del_ref",JsValue::NULL).await {
                 Ok(_s) => {
                     now.set(format!("{}: {:?}", tu_string!(i18n, edit.ok_del_ref), &name));
                     selected_ref.set(None::<PathBuf>);
@@ -428,9 +484,7 @@ fn Edit() -> impl IntoView {
     view! {
         <h3>{t!(i18n, edit.test)}</h3>
 
-        <button on:click=move |_| {
-            edit_ref.set(false)
-        }>"✎ Save "</button>
+        <button on:click=move |_| { edit_ref.set(false) }>"✎ Save "</button>
         <button on:click=move |_| del_ref(selected_ref.get().unwrap())>"Del"</button>
     }
 }
@@ -439,11 +493,11 @@ fn Edit() -> impl IntoView {
 fn Create() -> impl IntoView {
     use leptos::ev::SubmitEvent;
     let i18n = use_i18n();
-    let stat: RwSignal<StatisticsState> = use_context::<RwSignal<StatisticsState>>().expect("stat not found");
-    let now: RwSignal<String> = use_context::<RwSignal<String>>().expect("now not found");
+    let stat = use_context::<RwSignal<StatisticsState>>().expect("stat not found");
+    let now = use_context::<RwSignal<String>>().expect("now not found");
+    let active_tab = use_context::<RwSignal<i32>>().expect("active_tab not found");
+    let selected_ref = use_context::<RwSignal<Option<PathBuf>>>().expect("selected not found");
     let err_form: RwSignal<String> = RwSignal::new("".to_string());
-    let active_tab: RwSignal<i32> = use_context().expect("active_tab not found");
-    let selected_ref: RwSignal<Option<PathBuf>> = use_context().expect("selected not found");
     // mode: "empty" | "sheet" | "sqlite"
     let mode = RwSignal::new("empty".to_string());
     let form_ref = NodeRef::<leptos::html::Form>::new();
@@ -589,6 +643,7 @@ fn Create() -> impl IntoView {
             match invoke("create", args).await {
                 Ok(_js) => {
                     now.set(format!("{}: {:?}", tu_string!(i18n, create.ok_create), &name));
+                    upd_stat(stat,now);
                     selected_ref.set(Some(name));
                     active_tab.set(1);
                 }
@@ -657,7 +712,10 @@ fn Create() -> impl IntoView {
                     <div class="block gridl">
                         <label>
                             {t!(i18n, create.fname)}
-                            <span data-placement="right" data-tooltip=t_string!(i18n, create.ttp_path)>
+                            <span
+                                data-placement="right"
+                                data-tooltip=t_string!(i18n, create.ttp_path)
+                            >
                                 "?"
                             </span>
                         </label>
@@ -739,12 +797,17 @@ fn Create() -> impl IntoView {
                 <h5>{t!(i18n, create.example)}</h5>
                 <p class="center">{t!(i18n, create.example_replace)}</p>
                 <div class="test_create gridl">
-                    <button on:click=move |_| create_ex(PathBuf::from("example/ballistics.refer"))>"Ballistics Data"
-                    </button>
+                    <button on:click=move |_| create_ex(
+                        PathBuf::from("example/ballistics.refer"),
+                    )>"Ballistics Data"</button>
                     <span>{t!(i18n, create.example_desc_1)}</span>
-                    <button on:click=move |_| create_ex(PathBuf::from("example/222.refer"))>"222"</button>
+                    <button on:click=move |_| create_ex(
+                        PathBuf::from("example/222.refer"),
+                    )>"222"</button>
                     <span>{t!(i18n, create.example_desc_2)}</span>
-                    <button on:click=move |_| create_ex(PathBuf::from("example/333.refer"))>"333"</button>
+                    <button on:click=move |_| create_ex(
+                        PathBuf::from("example/333.refer"),
+                    )>"333"</button>
                     <span>{t!(i18n, create.example_desc_3)}</span>
                 </div>
             </div>
@@ -777,65 +840,39 @@ pub fn validate_relative_refer_path(p: &Path) -> Result<(), ()> {
 }
 
 #[component]
-fn LogViewer() -> impl IntoView {
-    let now: RwSignal<String> = use_context::<RwSignal<String>>().expect("now not found");
+fn LogViewer(show:RwSignal<bool>) -> impl IntoView {
     let logs = RwSignal::new(None::<String>);
-    let loading = RwSignal::new(false);
-    let i18n = use_i18n();
 
-    let load_logs = move |_| {
-        loading.set(true);
-        
+    let load_logs = move || {
         spawn_local(async move {
             match invoke("get_log", JsValue::NULL).await{
                 Ok(js) => {
                     let res = from_value::<String>(js).unwrap_or_default();
                     logs.set(Some(res));
-                    loading.set(false);
-                    now.set("Logs uploaded".to_string());
                 }
                 Err(js) => {
                     let error_msg = from_value::<String>(js).unwrap_or_else(|_| "Unknown error".into());
-                    now.set(format!("Failed to load logs: {}", error_msg));
-                    logs.set(None);
-                    loading.set(false);
+                    logs.set(Some(format!("Failed to load logs: {}", error_msg)));
                 }
             }
         });
     };
-    
-    let clear_logs = move |_| {
-        logs.set(None);
-        spawn_local(async move {
-            match invoke("clear_log", JsValue::NULL).await{
-                Ok(_) => {
-                    now.set("Logs deleted".to_string());
-                }
-                Err(js) => {
-                    let error_msg = from_value::<String>(js).unwrap_or_else(|_| "Unknown error".into());
-                    now.set(format!("Failed to load logs: {}", error_msg));
-                }
-            }
-        });
-    };
+
+    Effect::new(move |_| {
+        if show.get() {
+            load_logs();
+            #[allow(clippy::redundant_closure)]
+            let _ = set_interval_with_handle(
+                move || load_logs(),
+                std::time::Duration::from_secs(2),
+            ).ok();
+        }
+    });
+
 
     view! {
-        <div class="log-viewer gr">
-            <div class="log-controls">
-                <button on:click=load_logs disabled=move || loading.get() class="">
-                    {move || match loading.get() {
-                        true => t!(i18n, references.loading).into_any(),
-                        false => t!(i18n, references.show_logs).into_any(),
-                    }}
-                </button>
-                <button on:click=clear_logs class="">
-                    {t!(i18n, references.clear_logs)}
-                </button>
-            </div>
-
-            <div class="log-content">
-                <code>{move || logs.get()}</code>
-            </div>
+        <div class="log-viewer">
+            <code id="logs">{move || logs.get()}</code>
         </div>
     }
 }
@@ -896,6 +933,12 @@ async fn read_file_as_bytes(file: &web_sys::File) -> Result<Vec<u8>, String> {
     Ok(uint8_array.to_vec())
 }
 
+fn dbp(main:PathBuf,rel:PathBuf)->PathBuf{
+    let mut full_path = main;
+    full_path.push(rel);
+    full_path.to_path_buf()
+}
+// let p = dbp(stat.get_untracked().db_path, selected_ref.get_untracked().unwrap());
 /*fn ensure_utf8_path(p: &std::path::Path) -> Result<&str, &'static str> {
     p.to_str().ok_or("Имя файла содержит недопустимые (не UTF-8) символы.")
 }*/
