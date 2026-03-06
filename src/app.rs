@@ -402,17 +402,17 @@ fn Refs() -> impl IntoView {
         </div>
 
         <div class="grid1a stat_table gr">
-            <ins>{t!(i18n, references.st_path)}": "</ins>
+            <b>{t!(i18n, references.st_path)}": "</b>
             <span>{move || stat.get().db_path.display().to_string()}</span>
-            <ins>{t!(i18n, references.st_access)}": "</ins>
+            <b>{t!(i18n, references.st_access)}": "</b>
             <span class:error=move || {
                 patterns.iter().any(|p| stat.get().db_path_ok.to_lowercase().contains(p))
             }>{move || stat.get().db_path_ok}</span>
-            <ins>{t!(i18n, references.st_count)}": "</ins>
+            <b>{t!(i18n, references.st_count)}": "</b>
             <span>{move || stat.get().db_list.len()}</span>
-            <ins>{t!(i18n, references.st_size)}": "</ins>
+            <b>{t!(i18n, references.st_size)}": "</b>
             <span>{move || read_size(stat.get().db_path_size)}</span>
-            <ins>{t!(i18n, references.st_log)}": "</ins>
+            <b>{t!(i18n, references.st_log)}": "</b>
             <span>{move || stat.get().log_path}</span>
         </div>
         /*<LogViewer />*/
@@ -871,9 +871,9 @@ fn LogViewer(show:RwSignal<bool>) -> impl IntoView {
 
 
     view! {
-        <div class="log-viewer">
+
             <code id="logs">{move || logs.get()}</code>
-        </div>
+
     }
 }
 
