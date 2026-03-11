@@ -2,10 +2,12 @@ use serde::Serialize;
 use tracing::error;
 
 #[derive(Serialize, Debug)]
-pub struct RError( pub &'static str);
+pub struct RError(pub &'static str);
 
 impl RError {
-    pub const fn new(code: &'static str) -> Self {Self(code)}
+    pub const fn new(code: &'static str) -> Self {
+        Self(code)
+    }
 }
 
 impl From<std::io::Error> for RError {

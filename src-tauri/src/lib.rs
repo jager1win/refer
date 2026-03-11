@@ -66,6 +66,7 @@ pub fn run() {
             clear_log,
             create,
             get_db_info,
+            get_meta
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

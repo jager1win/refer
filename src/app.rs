@@ -1,11 +1,11 @@
-use std::collections::HashMap;
-use std::path::{PathBuf,Path};
-use leptos::{prelude::*};
+use crate::i18n::*;
+use leptos::prelude::*;
 use leptos::task::spawn_local;
 use serde::{Deserialize, Serialize};
 use serde_wasm_bindgen::{from_value, to_value};
+use std::collections::HashMap;
+use std::path::{Path, PathBuf};
 use wasm_bindgen::prelude::*;
-use crate::i18n::*;
 
 #[wasm_bindgen]
 extern "C" {
@@ -13,11 +13,11 @@ extern "C" {
     async fn invoke(cmd: &str, args: JsValue) -> Result<JsValue, JsValue>;
 }
 
-#[derive(Default,Debug, Clone, Serialize, Deserialize)]
+#[derive(Default, Debug, Clone, Serialize, Deserialize)]
 struct AppSettings {
     theme: String,
     language: String,
-    color: String
+    color: String,
 }
 
 #[derive(Serialize)]
@@ -26,7 +26,9 @@ struct SettingsBack {
 }
 
 #[derive(Serialize)]
-struct ToBack { val: PathBuf }
+struct ToBack {
+    val: PathBuf,
+}
 
 #[derive(Default, Debug, Clone, Serialize, Deserialize)]
 struct StatisticsState {
@@ -35,30 +37,63 @@ struct StatisticsState {
     pub db_list: Vec<PathBuf>,
     pub log_path: String,
     pub db_path_ok: String,
-    
 }
 
 #[derive(Serialize, Deserialize, Clone, Default, Debug)]
 struct CreateForm {
-    mode: String,                    // "empty", "sheet", "sqlite"
-    db_name: PathBuf,                 // имя БД
-    has_header: bool,                // есть заголовок
-    file_extension: Option<String>,  // расширение файла
-    file_data: Option<Vec<u8>>,      // содержимое файла
+    mode: String,                   // "empty", "sheet", "sqlite"
+    db_name: PathBuf,               // имя БД
+    has_header: bool,               // есть заголовок
+    file_extension: Option<String>, // расширение файла
+    file_data: Option<Vec<u8>>,     // содержимое файла
+}
+
+#[derive(Default, Clone, Debug, Deserialize, Serialize)]
+pub struct TableMeta {
+    pub field_names: HashMap<String, String>,
+    pub field_types: HashMap<String, FieldType>,
+    pub operations: Vec<Operation>,
+    pub search_config: SearchConfig,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize)]
+#[serde(rename_all = "lowercase")]
+pub enum FieldType {
+    Text,
+    Number,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct Operation {
+    pub name: String, // "Total Price"
+    pub description: String,
+    pub expression: String, // "field_6 * 17 / field_20"
+}
+
+#[derive(Default, Clone, Debug, Deserialize, Serialize)]
+pub struct SearchConfig {
+    pub fields: Vec<String>, // какие field_* участвуют в поиске
+    pub case_sensitive: bool,
 }
 
 #[derive(Serialize)]
-struct CreateFormBack { val: CreateForm }
+struct CreateFormBack {
+    val: CreateForm,
+}
 
 #[component]
 pub fn App() -> impl IntoView {
-    let settings: RwSignal<AppSettings> = RwSignal::new(AppSettings {theme: "light".into(),language: "en".into(),color: "blue".into()});
+    let settings: RwSignal<AppSettings> = RwSignal::new(AppSettings {
+        theme: "light".into(),
+        language: "en".into(),
+        color: "blue".into(),
+    });
     let stat: RwSignal<StatisticsState> = RwSignal::new(StatisticsState::default());
-    let selected_ref:RwSignal<Option<PathBuf>>  = RwSignal::new(None::<PathBuf>);
+    let selected_ref: RwSignal<Option<PathBuf>> = RwSignal::new(None::<PathBuf>);
     let edit_ref: RwSignal<bool> = RwSignal::new(false);
     let active_tab: RwSignal<i32> = RwSignal::new(1);
     let now: RwSignal<String> = RwSignal::new(String::from(""));
-    let er_pat = ["fail", "error", "warning"];
+    let er_pat = ["fail", "error", "warning", "invalid"];
     let show_logs = RwSignal::new(false);
 
     provide_context(settings);
@@ -83,7 +118,7 @@ pub fn App() -> impl IntoView {
         };
     });
 
-    upd_stat(stat,now);
+    upd_stat(stat, now);
 
     let clean = move || {
         selected_ref.set(None::<PathBuf>);
@@ -155,10 +190,7 @@ pub fn App() -> impl IntoView {
                     "✚"
                 </button>
             </nav>
-            <div
-                class="now"
-                class:error=move || er_pat.iter().any(|p| now.get().to_lowercase().contains(p))
-            >
+            <div class="now" class:error=move || er_pat.iter().any(|p| now.get().to_lowercase().contains(p))>
                 <p>{move || now.get()}</p>
                 <span
                     class="sp_close"
@@ -186,14 +218,11 @@ pub fn App() -> impl IntoView {
             </div>
 
         </main>
-        <div class="log-viewer-wrapper" class:active=move || show_logs.get() >
-            <button 
-                class="log-trigger-btn" 
-                on:click=move |_| show_logs.update(|v| *v = !*v)
-            >
+        <div class="log-viewer-wrapper" class:active=move || show_logs.get()>
+            <button class="log-trigger-btn" on:click=move |_| show_logs.update(|v| *v = !*v)>
                 "📋"
             </button>
-            
+
             <div class="log-panel">
                 <LogViewer show=show_logs />
             </div>
@@ -222,7 +251,10 @@ fn Settings() -> impl IntoView {
     let i18n = use_i18n();
     let all: &[Locale] = Locale::get_all();
     let settings = use_context::<RwSignal<AppSettings>>().expect("settings not found");
-    let colors = ["orange", "lime", "green", "cyan", "blue", "indigo", "purple", "fuchsia", "pink", "rose", "slate", "zinc", "taupe", "mauve", "mist", "olive"];
+    let colors = [
+        "orange", "lime", "green", "cyan", "blue", "indigo", "purple", "fuchsia", "pink", "rose", "slate", "zinc",
+        "taupe", "mauve", "mist", "olive",
+    ];
     /* Possible color choices: orange, lime, green, cyan, blue, indigo, purple, fuchsia, pink, rose, slate, zinc, taupe, mauve, mist, olive*/
 
     let toggle_theme = move |_| {
@@ -233,17 +265,23 @@ fn Settings() -> impl IntoView {
                 current.theme = "light".to_string();
             }
             spawn_local(async move {
-                let args = to_value(&SettingsBack {new: settings.get_untracked()}).unwrap();
+                let args = to_value(&SettingsBack {
+                    new: settings.get_untracked(),
+                })
+                .unwrap();
                 let _ = invoke("set_settings", args).await;
             });
         });
     };
 
-    let set_color = move |color:&str| {
+    let set_color = move |color: &str| {
         settings.update(|current| {
             current.color = color.to_string();
             spawn_local(async move {
-                let args = to_value(&SettingsBack {new: settings.get_untracked()}).unwrap();
+                let args = to_value(&SettingsBack {
+                    new: settings.get_untracked(),
+                })
+                .unwrap();
                 let _ = invoke("set_settings", args).await;
             });
         });
@@ -266,12 +304,8 @@ fn Settings() -> impl IntoView {
         let color_value = settings.get().color;
         let document = window().document().unwrap();
         let html_element = document.document_element().unwrap();
-        html_element
-            .set_attribute("data-theme", &theme_value)
-            .unwrap();
-        html_element
-            .set_attribute("data-color", &color_value)
-            .unwrap();
+        html_element.set_attribute("data-theme", &theme_value).unwrap();
+        html_element.set_attribute("data-color", &color_value).unwrap();
     });
 
     //log::debug!("lang: {:?}", &all);
@@ -382,7 +416,6 @@ fn Refs() -> impl IntoView {
         log::info!("stat2: {:?}", stat.get());
     });*/
 
-
     view! {
         <div class="refs-list grid2 gr">
             <For
@@ -390,10 +423,7 @@ fn Refs() -> impl IntoView {
                 key=|item| item.clone()
                 children=move |item: PathBuf| {
                     view! {
-                        <button
-                            class="rlist"
-                            on:click=move |_| { selected_ref.set(Some(item.clone())) }
-                        >
+                        <button class="rlist" on:click=move |_| { selected_ref.set(Some(item.clone())) }>
                             {remove_refer_ext(&item)}
                         </button>
                     }
@@ -415,7 +445,6 @@ fn Refs() -> impl IntoView {
             <b>{t!(i18n, references.st_log)}": "</b>
             <span>{move || stat.get().log_path}</span>
         </div>
-        /*<LogViewer />*/
     }
 }
 
@@ -425,15 +454,37 @@ fn Ref() -> impl IntoView {
     let edit_ref = use_context::<RwSignal<bool>>().expect("reference not found");
     let stat = use_context::<RwSignal<StatisticsState>>().expect("stat not found");
     let now = use_context::<RwSignal<String>>().expect("now not found");
+    let meta = RwSignal::new(None::<TableMeta>);
+    let (name, set_name) = signal("Controlled".to_string());
+    //let selected_el =
+    //let short_data =
+    //let full_data =
+
+    // get meta
+    spawn_local(async move {
+        let p = dbp(stat.get_untracked().db_path, selected_ref.get_untracked().unwrap());
+        let args = to_value(&ToBack { val: p }).unwrap();
+        match invoke("get_meta", args).await {
+            Ok(js) => {
+                log::debug!("js: {:#?}", js);
+                let s = from_value::<TableMeta>(js).unwrap_or_default();
+                meta.set(Some(s));
+            }
+            Err(js) => {
+                let error_msg = from_value::<String>(js).unwrap_or_else(|_| "Unknown error".into());
+                now.set(format!("{} {}", "Failed get db meta:", error_msg));
+            }
+        };
+    });
 
     // get_db_info
     spawn_local(async move {
         let p = dbp(stat.get_untracked().db_path, selected_ref.get_untracked().unwrap());
-        let args = to_value(&ToBack { val: p}).unwrap();
+        let args = to_value(&ToBack { val: p }).unwrap();
         match invoke("get_db_info", args).await {
             Ok(js) => {
                 let s = from_value::<HashMap<String, Vec<String>>>(js).unwrap_or_default();
-                log::debug!("Ref: ok get_db_info: {:?}",s);
+                log::debug!("Ref: ok get_db_info: {:?}", s);
             }
             Err(js) => {
                 let error_msg = from_value::<String>(js).unwrap_or_else(|_| "Unknown error".into());
@@ -442,17 +493,27 @@ fn Ref() -> impl IntoView {
         };
     });
 
-
-    //let now: RwSignal<String> = use_context::<RwSignal<String>>().expect("now not found");
-    /*Effect::new(move |_| {
-        log::info!("Refs component rendered, selected: {:?}", selected_ref.get());
-    });*/
+    Effect::new(move |_| {
+        log::info!("meta: {:#?}", meta.get());
+    });
     view! {
-        <div class="ref">
-            <h3>
-                "Reference "{move || remove_refer_ext(&selected_ref.get().unwrap_or_default())}
+        <div class="ref gr">
+            <h3 class="ffull">
+                <button on:click=move |_| selected_ref.set(None)>"←"</button>
+                {move || remove_refer_ext(&selected_ref.get().unwrap_or_default())}
                 <button on:click=move |_| edit_ref.set(true)>"✎"</button>
             </h3>
+            <div aria-busy="true">"Loading..."</div>
+
+            <input
+                type="text"
+                on:input:target=move |ev| {
+                    set_name.set(ev.target().value());
+                }
+                prop:value=move || name.get()
+            />
+            <p>"Name is: " {move || name.get()}</p>
+
         </div>
     }
 }
@@ -467,16 +528,22 @@ fn Edit() -> impl IntoView {
 
     let del_ref = move |name: PathBuf| {
         spawn_local(async move {
-            match invoke("del_ref",JsValue::NULL).await {
+            let args = to_value(&ToBack { val: name.clone() }).unwrap();
+            match invoke("del_ref", args).await {
                 Ok(_s) => {
                     now.set(format!("{}: {:?}", tu_string!(i18n, edit.ok_del_ref), &name));
                     selected_ref.set(None::<PathBuf>);
                     edit_ref.set(false);
-                    upd_stat(stat,now);
-                },
+                    upd_stat(stat, now);
+                }
                 Err(js) => {
                     let error_msg = from_value::<String>(js).unwrap_or_else(|_| "Unknown error".into());
-                    now.set(format!("{}: {:?} - {}", tu_string!(i18n, edit.er_del_ref), &name, error_msg));
+                    now.set(format!(
+                        "{}: {:?} - {}",
+                        tu_string!(i18n, edit.er_del_ref),
+                        &name,
+                        error_msg
+                    ));
                 }
             }
         });
@@ -506,20 +573,24 @@ fn Create() -> impl IntoView {
         ev.prevent_default();
 
         let Some(form) = form_ref.get() else { return };
-        
+
         // 1. СОБИРАЕМ ДАННЫЕ
-        let mut form_data = CreateForm { mode: mode.get(), ..Default::default() };
-        
+        let mut form_data = CreateForm {
+            mode: mode.get(),
+            ..Default::default()
+        };
+
         let elements = form.elements();
         for i in 0..elements.length() {
             if let Some(element) = elements.item(i)
-                && let Some(input) = element.dyn_ref::<web_sys::HtmlInputElement>() {
-                    match input.name().as_str() {
-                        "db_name" => form_data.db_name = input.value().into(),
-                        "has_header" => form_data.has_header = input.checked(),
-                        _ => {}
-                    }
+                && let Some(input) = element.dyn_ref::<web_sys::HtmlInputElement>()
+            {
+                match input.name().as_str() {
+                    "db_name" => form_data.db_name = input.value().into(),
+                    "has_header" => form_data.has_header = input.checked(),
+                    _ => {}
                 }
+            }
         }
 
         // 2. проверка - поле имя файла
@@ -530,16 +601,19 @@ fn Create() -> impl IntoView {
         }
 
         // check simbols
-        match validate_relative_refer_path(&form_data.db_name){
+        match validate_relative_refer_path(&form_data.db_name) {
             Ok(()) => log::debug!("simbols: ok"),
-            Err(()) => { err_form.set(format!("🖉 {}", t_string!(i18n, create.fname)));return;}
+            Err(()) => {
+                err_form.set(format!("🖉 {}", t_string!(i18n, create.fname)));
+                return;
+            }
         };
 
         // if exist
         if !form_data.db_name.to_string_lossy().ends_with(".refer") {
             let _ = form_data.db_name.set_extension("refer");
         }
-       
+
         if stat.get().db_list.contains(&form_data.db_name) {
             err_form.set(format!("🖉 !exist {}", t_string!(i18n, create.fname)));
             return;
@@ -553,7 +627,7 @@ fn Create() -> impl IntoView {
                 "sqlite" => "#sqlite_file",
                 _ => "",
             };
-            
+
             // Получаем файл - селектор 100% валидный для своего режима
             let file_input = form
                 .query_selector(selector)
@@ -561,7 +635,7 @@ fn Create() -> impl IntoView {
                 .flatten()
                 .and_then(|el| el.dyn_into::<web_sys::HtmlInputElement>().ok())
                 .unwrap();
-            
+
             // Получаем первый файл
             let file = match file_input.files().and_then(|f| f.get(0)) {
                 Some(f) => f,
@@ -574,15 +648,19 @@ fn Create() -> impl IntoView {
                     return;
                 }
             };
-            
+
             // Проверяем расширение
             let extension = get_file_extension(&file.name()).to_lowercase();
-            
+
             match form_data.mode.as_str() {
                 "sheet" => {
                     let allowed = ["csv", "xls", "xlsx", "ods"];
                     if !allowed.contains(&extension.as_str()) {
-                        err_form.set(format!("!!! {} = {}", t_string!(i18n, create.ftable), t_string!(i18n, create.ttp_table)));
+                        err_form.set(format!(
+                            "!!! {} = {}",
+                            t_string!(i18n, create.ftable),
+                            t_string!(i18n, create.ttp_table)
+                        ));
                         return;
                     }
                     form_data.file_extension = Some(extension);
@@ -590,14 +668,18 @@ fn Create() -> impl IntoView {
                 "sqlite" => {
                     let allowed = ["sqlite", "sqlite3", "db"];
                     if !allowed.contains(&extension.as_str()) {
-                        err_form.set(format!("!!! {} = {}", t_string!(i18n, create.fsqlite),  t_string!(i18n, create.ttp_sqlite)));
+                        err_form.set(format!(
+                            "!!! {} = {}",
+                            t_string!(i18n, create.fsqlite),
+                            t_string!(i18n, create.ttp_sqlite)
+                        ));
                         return;
                     }
                     form_data.file_extension = Some(extension);
                 }
                 _ => {}
             }
-            
+
             Some(file)
         } else {
             None
@@ -605,51 +687,70 @@ fn Create() -> impl IntoView {
 
         spawn_local(async move {
             let mut final_data = form_data.clone();
-            
+
             if let Some(file) = selected_file {
                 match read_file_as_bytes(&file).await {
                     Ok(bytes) => final_data.file_data = Some(bytes),
                     Err(e) => {
-                        now.set(format!("{}: {} - {}", 
-                            tu_string!(i18n, create.er_create), 
-                            final_data.db_name.to_string_lossy(), 
-                            e));
+                        now.set(format!(
+                            "{}: {} - {}",
+                            tu_string!(i18n, create.er_create),
+                            final_data.db_name.to_string_lossy(),
+                            e
+                        ));
                         return;
                     }
                 }
             }
-            
+
             let args = to_value(&CreateFormBack { val: final_data }).unwrap();
             match invoke("create", args).await {
                 Ok(_s) => {
-                    now.set(format!("{}: {}", 
-                    tu_string!(i18n, create.ok_create), form_data.db_name.to_string_lossy()));
+                    now.set(format!(
+                        "{}: {}",
+                        tu_string!(i18n, create.ok_create),
+                        form_data.db_name.to_string_lossy()
+                    ));
                     selected_ref.set(Some(form_data.db_name));
                     active_tab.set(1);
                 }
                 Err(js) => {
                     let error_msg = from_value::<String>(js).unwrap_or_else(|_| "Unknown error".into());
-                    now.set(format!("{}: {} - {}", tu_string!(i18n, create.er_create), form_data.db_name.to_string_lossy(), error_msg))
+                    now.set(format!(
+                        "{}: {} - {}",
+                        tu_string!(i18n, create.er_create),
+                        form_data.db_name.to_string_lossy(),
+                        error_msg
+                    ))
                 }
             }
         });
         form.reset();
     };
     // send create examle
-    let create_ex = move |name:PathBuf| {
-        let form_data = CreateForm { mode: "example".to_string(), db_name: name.to_path_buf(), ..Default::default() };
+    let create_ex = move |name: PathBuf| {
+        let form_data = CreateForm {
+            mode: "example".to_string(),
+            db_name: name.to_path_buf(),
+            ..Default::default()
+        };
         spawn_local(async move {
             let args = to_value(&CreateFormBack { val: form_data }).unwrap();
             match invoke("create", args).await {
                 Ok(_js) => {
                     now.set(format!("{}: {:?}", tu_string!(i18n, create.ok_create), &name));
-                    upd_stat(stat,now);
+                    upd_stat(stat, now);
                     selected_ref.set(Some(name));
                     active_tab.set(1);
                 }
                 Err(js) => {
                     let error_msg = from_value::<String>(js).unwrap_or_else(|_| "Unknown error".into());
-                    now.set(format!("{}: {:?} - {}", tu_string!(i18n, create.er_create), &name, error_msg));
+                    now.set(format!(
+                        "{}: {:?} - {}",
+                        tu_string!(i18n, create.er_create),
+                        &name,
+                        error_msg
+                    ));
                 }
             }
         });
@@ -659,7 +760,7 @@ fn Create() -> impl IntoView {
         err_form.track();
         set_timeout(
             move || err_form.set("".to_string()),
-            std::time::Duration::from_millis(6000)
+            std::time::Duration::from_millis(6000),
         );
     });
     view! {
@@ -712,10 +813,7 @@ fn Create() -> impl IntoView {
                     <div class="block gridl">
                         <label>
                             {t!(i18n, create.fname)}
-                            <span
-                                data-placement="right"
-                                data-tooltip=t_string!(i18n, create.ttp_path)
-                            >
+                            <span data-placement="right" data-tooltip=t_string!(i18n, create.ttp_path)>
                                 "?"
                             </span>
                         </label>
@@ -730,10 +828,7 @@ fn Create() -> impl IntoView {
                                     <div class="gridl">
                                         <label for="file">
                                             {t!(i18n, create.ftable)}
-                                            <span
-                                                data-placement="right"
-                                                data-tooltip=t_string!(i18n, create.ttp_table)
-                                            >
+                                            <span data-placement="right" data-tooltip=t_string!(i18n, create.ttp_table)>
                                                 "?"
                                             </span>
                                         </label>
@@ -801,13 +896,9 @@ fn Create() -> impl IntoView {
                         PathBuf::from("example/ballistics.refer"),
                     )>"Ballistics Data"</button>
                     <span>{t!(i18n, create.example_desc_1)}</span>
-                    <button on:click=move |_| create_ex(
-                        PathBuf::from("example/222.refer"),
-                    )>"222"</button>
+                    <button on:click=move |_| create_ex(PathBuf::from("example/222.refer"))>"222"</button>
                     <span>{t!(i18n, create.example_desc_2)}</span>
-                    <button on:click=move |_| create_ex(
-                        PathBuf::from("example/333.refer"),
-                    )>"333"</button>
+                    <button on:click=move |_| create_ex(PathBuf::from("example/333.refer"))>"333"</button>
                     <span>{t!(i18n, create.example_desc_3)}</span>
                 </div>
             </div>
@@ -823,29 +914,37 @@ pub fn validate_relative_refer_path(p: &Path) -> Result<(), ()> {
         return Err(());
     }
     // запрещаем ':' и обратный слеш
-    if s.contains(':') || s.contains('\\') || s.contains("//"){
+    if s.contains(':') || s.contains('\\') || s.contains("//") {
         return Err(());
     }
 
     // каждый компонент не пустой, не "..", без управляющих символов и длина 1..=255
     for comp in s.split('/') {
-        if comp.is_empty() { return Err(()); }
-        if comp == ".." { return Err(()); }
-        if comp.chars().any(|c| c.is_control()) { return Err(()); }
+        if comp.is_empty() {
+            return Err(());
+        }
+        if comp == ".." {
+            return Err(());
+        }
+        if comp.chars().any(|c| c.is_control()) {
+            return Err(());
+        }
         let len = comp.chars().count();
-        if len == 0 || len > 255 { return Err(()); }
+        if len == 0 || len > 255 {
+            return Err(());
+        }
     }
 
     Ok(())
 }
 
 #[component]
-fn LogViewer(show:RwSignal<bool>) -> impl IntoView {
+fn LogViewer(show: RwSignal<bool>) -> impl IntoView {
     let logs = RwSignal::new(None::<String>);
 
     let load_logs = move || {
         spawn_local(async move {
-            match invoke("get_log", JsValue::NULL).await{
+            match invoke("get_log", JsValue::NULL).await {
                 Ok(js) => {
                     let res = from_value::<String>(js).unwrap_or_default();
                     logs.set(Some(res));
@@ -862,19 +961,11 @@ fn LogViewer(show:RwSignal<bool>) -> impl IntoView {
         if show.get() {
             load_logs();
             #[allow(clippy::redundant_closure)]
-            let _ = set_interval_with_handle(
-                move || load_logs(),
-                std::time::Duration::from_secs(2),
-            ).ok();
+            let _ = set_interval_with_handle(move || load_logs(), std::time::Duration::from_secs(2)).ok();
         }
     });
 
-
-    view! {
-
-            <code id="logs">{move || logs.get()}</code>
-
-    }
+    view! { <code id="logs">{move || logs.get()}</code> }
 }
 
 fn read_size(bytes: u64) -> String {
@@ -894,7 +985,7 @@ fn read_size(bytes: u64) -> String {
 
 fn upd_stat(stat: RwSignal<StatisticsState>, now: RwSignal<String>) {
     spawn_local(async move {
-        match invoke("get_stat", JsValue::NULL).await{
+        match invoke("get_stat", JsValue::NULL).await {
             Ok(js) => {
                 let res = from_value::<StatisticsState>(js).unwrap_or_default();
                 stat.set(res);
@@ -916,11 +1007,7 @@ fn remove_refer_ext(p: &Path) -> String {
 }
 
 fn get_file_extension(filename: &str) -> String {
-    filename
-        .rsplit('.')
-        .next()
-        .unwrap_or("")
-        .to_string()
+    filename.rsplit('.').next().unwrap_or("").to_string()
 }
 
 async fn read_file_as_bytes(file: &web_sys::File) -> Result<Vec<u8>, String> {
@@ -928,16 +1015,17 @@ async fn read_file_as_bytes(file: &web_sys::File) -> Result<Vec<u8>, String> {
     let array_buffer = wasm_bindgen_futures::JsFuture::from(array_buffer_promise)
         .await
         .map_err(|e| format!("Ошибка чтения файла: {:?}", e))?;
-    
+
     let uint8_array = js_sys::Uint8Array::new(&array_buffer);
     Ok(uint8_array.to_vec())
 }
 
-fn dbp(main:PathBuf,rel:PathBuf)->PathBuf{
+fn dbp(main: PathBuf, rel: PathBuf) -> PathBuf {
     let mut full_path = main;
     full_path.push(rel);
     full_path.to_path_buf()
 }
+
 // let p = dbp(stat.get_untracked().db_path, selected_ref.get_untracked().unwrap());
 /*fn ensure_utf8_path(p: &std::path::Path) -> Result<&str, &'static str> {
     p.to_str().ok_or("Имя файла содержит недопустимые (не UTF-8) символы.")

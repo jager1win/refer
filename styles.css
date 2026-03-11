@@ -17,8 +17,6 @@ div.now{display: flex;align-items: flex-start;margin:0 0.5rem;height:2rem;positi
 div.now p{flex: 1 1 auto;white-space: nowrap;padding: 0;margin:0;margin-bottom: 1rem;overflow-x: auto;height: 100%;}
 .sp_close{flex: 0 0 auto;cursor:pointer;padding-left:1rem;}
 div.now.error p, span.error, small.error{color:red;}
-code#logs{padding:0.2rem;overflow: scroll;width: 100%;white-space: pre-line;color:var(--pico-color);
-border-top:1px dashed var(--pico-color)}
 button:not(.navb){padding:0.4rem}
 .ar_lang, .ar_color{display:flex;gap: 1rem;flex-wrap: wrap;}
 .ar_lang button, .ar_color button{min-height: 1.2rem;min-width: 1.2rem;}
@@ -50,6 +48,9 @@ input.csv_deli{width: 2rem!important;padding: 0.4rem!important;}
     border: 2px solid var(--pico-border-color);}
 .log-panel {display: none;width: 100vw;max-height: 50vh;background-color: var(--pico-background-color);overflow-y: auto;}
 .log-viewer-wrapper.active .log-panel {display: flex;}
+code#logs{padding:0.2rem;overflow: scroll;width: 100%;white-space: pre-line;color:var(--pico-color);
+border-top:1px dashed var(--pico-color);}
+.ffull{display: flex;justify-content: space-between;}
 
 /* COLORS */
 .orange{background-color: orange;}

@@ -182,3 +182,95 @@ async fn select_db_command(
     // Автоматически обновляет и путь, и само соединение
     stats_lock.switch_db(path, &db_conn)
 }
+============================================
+
+Если транзакции и логирование в БД не нужны, архитектура становится максимально линейной. Основная задача with_conn в этом случае — скрыть менеджмент мьютекса и переключение файлов баз.
+1. Финальный DbState (в main.rs или state.rs)
+Метод get_conn возвращает &mut Connection, чтобы быть универсальным, а with_conn инкапсулирует логику доступа.
+
+pub struct DbState {
+    pub conn: Option<Connection>,
+    pub current_path: Option<PathBuf>,
+}
+impl DbState {
+    pub fn get_conn(&mut self, path: PathBuf) -> Result<&mut Connection, String> {
+        if self.current_path.as_ref() != Some(&path) {
+            // Присваивание нового Connection автоматически закроет старый файл
+            self.conn = Some(Connection::open(&path).map_err(|e| e.to_string())?);
+            self.current_path = Some(path);
+        }
+        Ok(self.conn.as_mut().unwrap())
+    }
+
+    pub fn with_conn<F, T>(&mut self, path: PathBuf, f: F) -> Result<T, String>
+    where
+        F: FnOnce(&Connection) -> Result<T, String>,
+    {
+        let conn = self.get_conn(path)?;
+        f(conn)
+    }
+}
+
+2. Чистые SQL-запросы (sql.rs)
+Здесь только логика и типы данных. Никакого Tauri или Мьютексов.
+
+use rusqlite::{Connection, Result};
+pub fn fetch_data(conn: &Connection) -> Result<Vec<String>> {
+    let mut stmt = conn.prepare("SELECT name FROM items")?;
+    let rows = stmt.query_map([], |row| row.get(0))?;
+    
+    let mut results = Vec::new();
+    for name in rows { results.push(name?); }
+    Ok(results)
+}
+
+3. Команды Tauri (commands.rs)
+Команда теперь просто "пробрасывает" вызов из стейта в SQL-модуль.
+
+#[tauri::command]pub async fn get_items(
+    state: tauri::State<'_, Mutex<DbState>>, 
+    db_path: PathBuf
+) -> Result<Vec<String>, String> {
+    // 1. Блокируем стейт
+    let mut db = state.lock().map_err(|_| "State lock error")?;
+
+    // 2. Выполняем запрос через обертку
+    db.with_conn(db_path, |conn| {
+        sql::fetch_data(conn).map_err(|e| e.to_string())
+    })
+}
+
+Итог:
+
+* Фронтенд всегда присылает путь.
+* Tauri переключает базу "на лету", если путь изменился (благодаря вашему get_conn).
+* Код команд остается коротким (3-4 строки).
+* Бизнес-логика живет в отдельном файле и легко тестируется.
+
+Показать, как правильно настроить сериализацию структур (через serde), чтобы данные из sql.rs улетали на фронтенд без ошибок? Да / Нет
+
+{
+  "emmet.includeLanguages": {
+    "rust": "html"
+  },
+  "rust-analyzer.cargo.extraEnv": {
+    "OUT_DIR": "/tmp/tauri-out"
+  },
+  "rust-analyzer.procMacro.ignored": {
+        "leptos_macro": [
+            "server"
+        ]
+  },
+  "rust-analyzer.rustfmt.overrideCommand": [
+      "/home/jager/.cargo/bin/leptosfmt",
+      "--stdin",
+      "--rustfmt=/home/jager/.cargo/bin/rustfmt"
+  ],
+  "editor.defaultFormatter": "rust-lang.rust-analyzer",
+  "editor.formatOnSave": true,
+  "[rust]": {
+    "editor.defaultFormatter": "rust-lang.rust-analyzer",
+    "editor.formatOnSave": true
+  },
+  "rust-analyzer.trace.server": "verbose"
+}

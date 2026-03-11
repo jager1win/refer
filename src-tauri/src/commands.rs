@@ -1,19 +1,18 @@
-use std::collections::HashMap;
-use std::fs::{self};
-use std::fs::File;
-use std::io::{self, Read};
-use std::path::{Path, PathBuf, Component};
-use rusqlite::Error;
 use serde::{Deserialize, Serialize};
-use tauri::{Manager,State};
 use serde_json::Value;
+use std::collections::HashMap;
+use std::fs::File;
+use std::fs::{self};
+use std::io::{self, Read};
+use std::path::{Component, Path, PathBuf};
 use std::sync::Mutex;
+use tauri::{Manager, State};
 
 use crate::sql::{self, *};
-use crate::{APP_EXT,SettingsStore,StatisticsState,DbState};
-use tracing::{error,info};
+use crate::{APP_EXT, DbState, SettingsStore, StatisticsState};
+use tracing::{error, info};
 
-#[derive(Debug,Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize)]
 pub struct CreateForm {
     pub mode: String, // "empty", "sheet", "sqlite"
     pub db_name: PathBuf,
@@ -48,11 +47,7 @@ pub async fn get_settings(app: tauri::AppHandle) -> Result<SettingsStore, String
         .unwrap_or("en")
         .to_string();
 
-    let color = json
-        .get("color")
-        .and_then(|v| v.as_str())
-        .unwrap_or("blue")
-        .to_string();
+    let color = json.get("color").and_then(|v| v.as_str()).unwrap_or("blue").to_string();
     //let settings: SettingsStore = serde_json::from_value(json).unwrap_or_default();
 
     Ok(SettingsStore { theme, language, color })
@@ -87,9 +82,15 @@ pub async fn del_ref(app: tauri::AppHandle, val: PathBuf) -> Result<String, Stri
     let document_dir = app.path().document_dir().map_err(|e| e.to_string())?;
     let reference_path = document_dir.join(APP_EXT).join(&val);
 
-    match fs::remove_file(reference_path){
-        Ok(_i) => Ok({info!("reference deleted: {:?}",val);String::from("reference_deleted")}),
-        Err(e) => Ok({error!("failed reference deleted: {}",e);"failed_reference_deleted".to_string()})
+    match fs::remove_file(reference_path) {
+        Ok(_i) => Ok({
+            info!("reference deleted: {:?}", val);
+            String::from("reference_deleted")
+        }),
+        Err(e) => Ok({
+            error!("failed reference deleted: {}", e);
+            "failed_reference_deleted".to_string()
+        }),
     }
 }
 
@@ -98,20 +99,20 @@ pub async fn del_ref(app: tauri::AppHandle, val: PathBuf) -> Result<String, Stri
 pub fn get_log(app: tauri::AppHandle) -> Result<String, String> {
     let state = app.state::<Mutex<StatisticsState>>();
     let state = state.lock().unwrap();
-    
+
     let log_path = &state.log_path;
-    
+
     // Проверяем, существует ли файл логов
     if !log_path.exists() {
         return Err("Log file does not exist".to_string());
     }
-    
+
     // Читаем содержимое файла
     let mut file = match File::open(log_path) {
         Ok(file) => file,
         Err(e) => return Err(format!("Failed to open log file: {}", e)),
     };
-    
+
     let mut contents = String::new();
     match file.read_to_string(&mut contents) {
         Ok(_) => Ok(contents),
@@ -124,89 +125,71 @@ pub fn get_log(app: tauri::AppHandle) -> Result<String, String> {
 pub fn clear_log(app: tauri::AppHandle) -> Result<String, String> {
     let state = app.state::<Mutex<StatisticsState>>();
     let state = state.lock().unwrap();
-    
+
     let log_path = &state.log_path;
-    
+
     // Проверяем, существует ли файл логов
     if !log_path.exists() {
         return Err("Log file does not exist".to_string());
     }
-    
+
     // Пытаемся очистить файл
     match fs::write(log_path, "") {
         Ok(_) => Ok("Log file cleared successfully".to_string()),
-        Err(e) if e.kind() == io::ErrorKind::PermissionDenied => {
-            Ok("Note: Log file may be locked by another application. It will be cleared on next app restart.".to_string())
-        }
+        Err(e) if e.kind() == io::ErrorKind::PermissionDenied => Ok(
+            "Note: Log file may be locked by another application. It will be cleared on next app restart.".to_string(),
+        ),
         Err(e) => Err(format!("Failed to clear log file: {}", e)),
     }
 }
 
 #[tauri::command]
-pub fn create(val: CreateForm, app: tauri::AppHandle) -> Result<String, String> {
-    let state = app.state::<Mutex<StatisticsState>>();
-    let state = state.lock().unwrap();
-    let root = state.db_path.clone();
+pub fn create(val: CreateForm, stat_state: State<'_, Mutex<StatisticsState>>) -> Result<String, String> {
+    let stat_state = stat_state.lock().unwrap();
+    let mut root = stat_state.db_path.clone();
 
-    //println!("val: {:?}", val);
+    match build_and_create_refer_path(&root, &val.db_name, val.mode == "example") {
+        Ok(p) => root = p,
+        Err(e) => {
+            error!("Failed to create path: {}", e);
+            return Err(format!("Failed to create path: {:?}", e));
+        }
+    }
+
+    //println!("val.mode: {:?}, val.db_name: {:?}", &val.mode, &val.db_name);
     match val.mode.as_str() {
-        "empty" => {
-            match build_and_create_refer_path(&root, &val.db_name,false){
-                Ok(p) =>  match create_empty_database(&p){
-                    Ok(()) => {
-                        info!("Empty database created: {:?}", p);
-                        Ok(String::from("ok"))
-                    }
-                    Err(e) => {
-                        error!("Failed to create empty db: {}", e);
-                        Err(format!("Failed to create db: {}", e))
-                    }
-                },
-                Err(e) => {
-                    error!("Failed to create path: {}", e);
-                    Err(format!("Failed to create path: {:?}", e))
-                }
+        "empty" => match create_empty_database(&root) {
+            Ok(()) => {
+                info!("Empty database created: {:?}", &val.db_name);
+                Ok(String::from("ok"))
+            }
+            Err(e) => {
+                error!("Failed to create empty db: {}", e);
+                Err(format!("Failed to create db: {}", e))
             }
         },
-        "example" => {            
-            let demo_name = val.db_name.file_stem()
-                .and_then(|n| n.to_str())
-                .unwrap_or("")
-                .to_string();
-            match build_and_create_refer_path(&root, &val.db_name,true){
-                Ok(p) =>  match create_example_database(&demo_name,&p){
-                    Ok(()) => {
-                        info!("Demo database '{}' created: {:?}", demo_name, p);
-                        Ok(String::from("ok"))
-                    },
-                    Err(e) => {
-                        error!("Failed to create demo db '{}': {}", demo_name, e);
-                        Err(format!("Failed to create demo db: {}", e))
-                    }
-                },
+        "example" => {
+            let demo_name = &val.db_name.display().to_string();
+            match create_example_database(demo_name, &root) {
+                Ok(()) => {
+                    info!("Demo database '{}' created", demo_name);
+                    Ok(String::from("ok"))
+                }
                 Err(e) => {
-                    error!("Failed to create path: {}", e);
-                    Err(format!("Failed to create path: {:?}", e))
+                    error!("Failed to create demo db '{}': {}", demo_name, e);
+                    Err(format!("Failed to create demo db: {}", e))
                 }
             }
+        }
+        "from_file" => match create_from_file(&root, &val) {
+            Ok(()) => Ok(String::from("ok")),
+            Err(e) => Err(format!("Failed to create db: {:?}", e)),
         },
-        "from_file" => {
-            match build_and_create_refer_path(&root, &val.db_name,false){
-                Ok(p) =>  match create_from_file(&p, &val){
-                    Ok(()) => Ok(String::from("ok")),
-                    Err(e) => Err(format!("Failed to create db: {:?}", e))
-                },
-                Err(e) => {
-                    error!("Failed to create path: {}", e);
-                    Err(format!("Failed to create path: {:?}", e))
-                }
-            }
-        },
-        _ => Err(format!("Unknown operation: {}", val.mode))
+        _ => Err(format!("Unknown operation: {}", val.mode)),
     }
 }
 
-pub fn build_and_create_refer_path(root: &Path, p: &Path, example:bool) -> Result<PathBuf, io::Error> {
+pub fn build_and_create_refer_path(root: &Path, p: &Path, example: bool) -> Result<PathBuf, io::Error> {
     // Reject absolute on target platform or any prefix/root components
     if p.is_absolute() {
         return Err(io::Error::new(io::ErrorKind::InvalidInput, "incoming path is absolute"));
@@ -215,10 +198,16 @@ pub fn build_and_create_refer_path(root: &Path, p: &Path, example:bool) -> Resul
     for comp in p.components() {
         match comp {
             Component::ParentDir => {
-                return Err(io::Error::new(io::ErrorKind::InvalidInput, "parent-dir (`..`) not allowed"));
+                return Err(io::Error::new(
+                    io::ErrorKind::InvalidInput,
+                    "parent-dir (`..`) not allowed",
+                ));
             }
             Component::Prefix(_) | Component::RootDir => {
-                return Err(io::Error::new(io::ErrorKind::InvalidInput, "absolute/prefix component not allowed"));
+                return Err(io::Error::new(
+                    io::ErrorKind::InvalidInput,
+                    "absolute/prefix component not allowed",
+                ));
             }
             Component::Normal(os) => {
                 // Доп. проверка: запретить пустые имена или недопустимые байты
@@ -238,7 +227,9 @@ pub fn build_and_create_refer_path(root: &Path, p: &Path, example:bool) -> Resul
         std::fs::create_dir_all(parent)?;
     }
 
-    if example{ let _ = try_remove(&full); }
+    if example {
+        let _ = try_remove(&full);
+    }
 
     // Попробуем атомарно создать файл, не перезаписывая существующий
     let _f = fs::OpenOptions::new()
@@ -258,25 +249,40 @@ fn try_remove(path: &std::path::Path) -> io::Result<()> {
 }
 
 #[tauri::command]
-pub fn get_db_info(val:PathBuf,state: State<'_, Mutex<DbState>>) -> Result<HashMap<String, Vec<String>>, String> {
-    let mut state_lock = state.lock().unwrap();
-    let conn = state_lock.get_conn(val)?;
-    println!("{:?}",&state);
-
-    let ee = sql::get_db_stats(conn).map_err(|e:Error| e.to_string());
-    println!("{:?}",ee);
-    ee
+pub fn get_meta(val: PathBuf, state: State<'_, Mutex<DbState>>) -> Result<TableMeta, String> {
+    let mut state_lock = state.lock().map_err(|e| e.to_string())?;
+    let _ = state_lock.get_conn(val)?;
+    let res = state_lock.meta.clone().unwrap();
+    println!("1.get_meta: {:?}", &res);
+    Ok(res)
 }
 
-/*let mut path = root.join(String::from("example"));
-let _ = std::fs::create_dir_all(&path);
-println!("pb: {:?}", &path);
-let file_name = format!("{}.refer", val.db_name.to_string_lossy());
-path = path.join(file_name);
-println!("pb1: {:?}", &path);
-let dd = try_remove(&path);
-println!("pb2: {:?}", &dd);
-match create_example_database(val.db_name.to_string_lossy().to_string(), path){
-    Ok(()) => Ok("".to_string()),
-    Err(e) => Err(format!("Failed to create: {:?}", e)),
-}*/
+#[tauri::command]
+pub fn get_db_info(val: PathBuf, state: State<'_, Mutex<DbState>>) -> Result<HashMap<String, Vec<String>>, String> {
+    let mut db = state.lock().map_err(|e| e.to_string())?;
+    println!("2.db.meta: {:?}", db.meta);
+
+    // Выполняем запрос через обертку
+    db.with_conn(val, |conn| match sql::get_db_stats(conn).map_err(|e| e.to_string()) {
+        Ok(h) => Ok(h),
+        Err(e) => {
+            error!("{}", e);
+            Err(e)
+        }
+    })
+}
+
+/*
+   let mut path = root.join(String::from("example"));
+   let _ = std::fs::create_dir_all(&path);
+   println!("pb: {:?}", &path);
+   let file_name = format!("{}.refer", val.db_name.to_string_lossy());
+   path = path.join(file_name);
+   println!("pb1: {:?}", &path);
+   let dd = try_remove(&path);
+   println!("pb2: {:?}", &dd);
+   match create_example_database(val.db_name.to_string_lossy().to_string(), path){
+       Ok(()) => Ok("".to_string()),
+       Err(e) => Err(format!("Failed to create: {:?}", e)),
+   }
+*/

@@ -13,12 +13,16 @@ js-sys = "0.3"
 serde = { version = "1", features = ["derive"] }
 serde-wasm-bindgen = "0.6"
 console_error_panic_hook = "0.1.7"
-leptos_i18n = { version = "0.6", features = ["csr"]}
+leptos_i18n = { version = "0.6", features = ["csr"] }
 leptos_meta = "0.8"
 log = "0.4.29"
 console_log = "1.0.0"
 once_cell = "1.20"
-web-sys = { version = "0.3", features = ["File", "FileList", "HtmlFormElement"] }
+web-sys = { version = "0.3", features = [
+    "File",
+    "FileList",
+    "HtmlFormElement",
+] }
 evalexpr = "13"
 
 [build-dependencies]
@@ -31,7 +35,8 @@ locales = ["en", "ru"]
 [workspace]
 members = ["src-tauri"]
 
+
 [profile.release]
-opt-level = "z"  # Maximum optimization by size
+opt-level = "z" # Maximum optimization by size
 lto = true      # Aggressive optimization at the linking stage
-panic = "abort"  # Remove panic processing (reduces size)
+panic = "abort" # Remove panic processing (reduces size)

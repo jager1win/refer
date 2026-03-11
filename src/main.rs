@@ -9,7 +9,7 @@ fn main() {
     mount_to_body(|| {
         view! {
             <I18nContextProvider>
-                <App/>
+                <App />
             </I18nContextProvider>
         }
     })
