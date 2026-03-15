@@ -571,7 +571,7 @@ fn Ref() -> impl IntoView {
                     MetaState::Invalid(msg) => view! { <h5 class="error gr">"🚫 "{msg}</h5> }.into_any(),
                     MetaState::Pending => view! { <span class="gr" aria-busy="true"></span> }.into_any(),
                     MetaState::Loaded(meta) => {
-                        let meta_for = meta.clone().search_config;
+                        let meta_for = sort_f_keys_v(meta.clone().search_config);
                         view! {
                             <div class="gr">
                                 <h3 class="ffull ">
@@ -582,7 +582,7 @@ fn Ref() -> impl IntoView {
 
                                 // input. remove if empty search_config
                                 {
-                                    let metaclon = meta.clone().search_config;
+                                    let metaclon = meta_for.clone();
                                     move || {
                                         if metaclon.is_empty() {
                                             view! { <h5 class="warn">"⚠ Нет полей для поиска"</h5> }
@@ -616,34 +616,31 @@ fn Ref() -> impl IntoView {
                                 }}
 
                                 // search result
-                                <div class="search_result">
+                                <div class="search_result grid">
                                     <For
                                         each=move || data.get().unwrap_or_default()
                                         key=|rec: &DataRecord| rec.id
                                         children=move |rec: DataRecord| {
-                                            let fields = rec.fields.clone();
+                                            let search_fields = meta_for.clone();
+                                            // предполагаем, что уже отсортировано
+
                                             view! {
-                                                <p>
-                                                    {
-                                                        let search_fields = meta_for.clone();
-                                                        fields
-                                                            .into_iter()
-                                                            .map(move |(k, v)| {
-                                                                match search_fields.contains(&k) {
-                                                                    true => {
-                                                                        let val_str = match v {
-                                                                            FieldValue::Text(s) => s,
-                                                                            FieldValue::Number(n) => n.to_string(),
-                                                                            FieldValue::Null => String::new(),
-                                                                        };
-                                                                        view! { <span>{val_str}</span> }.into_any()
-                                                                    }
-                                                                    false => view! { "" }.into_any(),
-                                                                }
-                                                            })
-                                                            .collect_view()
-                                                    }
-                                                </p>
+                                                <div class=rec
+                                                    .id
+                                                    .to_string()>
+                                                    {search_fields
+                                                        .into_iter()
+                                                        .filter_map(|k| { rec.fields.get(&k).map(|v| (k, v.clone())) })
+                                                        .map(|(k, v)| {
+                                                            let val_str = match v {
+                                                                FieldValue::Text(s) => s,
+                                                                FieldValue::Number(n) => n.to_string(),
+                                                                FieldValue::Null => String::new(),
+                                                            };
+                                                            view! { <span>{val_str}</span> }
+                                                        })
+                                                        .collect_view()}
+                                                </div>
                                             }
                                         }
                                     />
@@ -655,24 +652,24 @@ fn Ref() -> impl IntoView {
                                     let names = meta.clone().field_names;
                                     let types = meta.clone().field_types;
                                     let oper = meta.clone().operations;
-                                    let search = meta.clone().search_config;
+                                    let search = sort_f_keys_v(meta.clone().search_config);
                                     let count = meta.clone().count_data;
                                     view! {
                                         <b>"Поля"</b>
                                         <ul>
-                                            {
-                                                let combined: Vec<(String, FieldType)> = names
+                                            {log::info!("types: {:#?}", types.clone());
+                                                /*let combined: Vec<(String, FieldType)> = names
                                                     .iter()
                                                     .filter_map(|(key, name)| {
                                                         types.get(key).map(|ft| (name.clone(), ft.clone()))
                                                     })
                                                     .collect();
-                                                combined
+                                                types
                                                     .into_iter()
                                                     .map(|(name, ft)| {
                                                         view! { <li>{name} ": " {format!("{:?}", ft)}</li> }
                                                     })
-                                                    .collect_view()
+                                                    .collect_view()*/
                                             }
                                         </ul>
 
@@ -693,7 +690,9 @@ fn Ref() -> impl IntoView {
                                                 search
                                                     .into_iter()
                                                     .map(|k| {
-                                                        view! { <li>{<std::string::String as Clone>::clone(&names[&k])}</li> }
+                                                        view! {
+                                                            <li>{<std::string::String as Clone>::clone(&names[&k])}</li>
+                                                        }
                                                     })
                                                     .collect_view()
                                             }}
@@ -1231,7 +1230,7 @@ fn full_pb(main: PathBuf, rel: PathBuf) -> PathBuf {
     p.to_path_buf()
 }
 
-fn get_sorted_f_keys<T>(map: &HashMap<String, T>) -> Vec<&String> {
+fn sort_f_keys_h<T>(map: &HashMap<String, T>) -> Vec<&String> {
     let mut keys: Vec<&String> = map.keys().collect();
     keys.sort_by(|a, b| {
         let num_a = a[2..].parse::<i32>().unwrap_or(0);
@@ -1239,6 +1238,16 @@ fn get_sorted_f_keys<T>(map: &HashMap<String, T>) -> Vec<&String> {
         num_a.cmp(&num_b)
     });
     keys
+}
+
+fn sort_f_keys_v(keys: Vec<String>) -> Vec<String> {
+    let mut sorted = keys;
+    sorted.sort_by(|a, b| {
+        let num_a = a[2..].parse::<i32>().unwrap_or(0);
+        let num_b = b[2..].parse::<i32>().unwrap_or(0);
+        num_a.cmp(&num_b)
+    });
+    sorted
 }
 
 // let p = dbp(stat.get_untracked().db_path, selected_ref.get_untracked().unwrap());
