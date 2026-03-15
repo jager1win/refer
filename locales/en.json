@@ -8,7 +8,10 @@
     "title": "App settings",
     "language": "Language",
     "theme": "Dark/Light",
-    "color": "Primary color"
+    "color": "Primary color",
+    "logs": "Logs",
+    "show": "Show",
+    "hide": "Hide"
   },
   "edit": {
     "test": "test",

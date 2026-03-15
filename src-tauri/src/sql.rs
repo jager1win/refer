@@ -1,35 +1,15 @@
 use crate::commands::CreateForm;
-use rusqlite::{Connection, Error, Result, Row, params};
+use rusqlite::{Connection, Error, Result, Row, params, types::ValueRef};
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 use std::collections::HashMap;
 use std::path::PathBuf;
-use tracing::error;
 
 // Представляет одну запись из таблицы data
 #[derive(Debug, Serialize, Deserialize)]
 pub struct DataRecord {
-    pub id: i64,
-    pub fields: HashMap<String, FieldValue>, // field_0, field_1 и т.д.
-}
-
-// Разные типы полей для гибкой обработки
-#[derive(Debug, Serialize, Deserialize)]
-#[serde(untagged)]
-pub enum FieldValue {
-    Text(String),
-    Number(f64),
-    Bool(bool),
-    Null,
-}
-
-// Метаданные таблицы из таблицы meta
-#[derive(Default, Clone, Debug, Deserialize, Serialize)]
-pub struct TableMeta {
-    pub field_names: HashMap<String, String>, // field_0 -> "Name", field_1 -> "Age"
-    pub field_types: HashMap<String, FieldType>, // field_0 -> Text, field_1 -> Number
-    pub operations: Vec<Operation>,           // вычисляемые поля
-    pub search_config: SearchConfig,          // настройки поиска
+    pub id: u32,
+    pub fields: HashMap<String, FieldValue>, // f_0, f_1 и т.д.
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
@@ -39,17 +19,30 @@ pub enum FieldType {
     Number,
 }
 
+// Разные типы полей для гибкой обработки
+#[derive(Debug, Serialize, Deserialize)]
+#[serde(untagged)]
+pub enum FieldValue {
+    Text(String),
+    Number(f64),
+    Null,
+}
+
+// Метаданные таблицы из таблицы meta
+#[derive(Default, Clone, Debug, Deserialize, Serialize)]
+pub struct TableMeta {
+    pub field_names: HashMap<String, String>,    // f_0 -> "Name", f_1 -> "Age"
+    pub field_types: HashMap<String, FieldType>, // f_0 -> Text, f_1 -> Number
+    pub operations: Vec<Operation>,              // вычисляемые поля
+    pub search_config: Vec<String>,              // настройки поиска
+    pub count_data: u32,
+}
+
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct Operation {
     pub name: String, // "Total Price"
     pub description: String,
-    pub expression: String, // "field_6 * 17 / field_20"
-}
-
-#[derive(Default, Clone, Debug, Deserialize, Serialize)]
-pub struct SearchConfig {
-    pub fields: Vec<String>, // какие field_* участвуют в поиске
-    pub case_sensitive: bool,
+    pub expression: String, // "f_6 * 17 / f_20"
 }
 
 // Основная структура для работы с базой
@@ -61,30 +54,30 @@ pub struct DbState {
 }
 
 impl DbState {
-    pub fn get_conn(&mut self, path: PathBuf) -> Result<&mut Connection, String> {
+    pub fn get_conn(&mut self, path: PathBuf) -> Result<&Connection, String> {
         if self.current_path.as_ref() != Some(&path) {
             // Присваивание Some автоматически дропает предыдущий Connection (закрывает файл)
             self.conn = Some(Connection::open(&path).map_err(|e| e.to_string())?);
             self.current_path = Some(path);
-            // безопасно взять ссылку на только что присвоенный Connection
-            if let Some(ref conn_ref) = self.conn {
-                // пытаемся загрузить meta; при ошибке парсинга/SQL — вернуть Err
-                let meta = self.load_meta(conn_ref).map_err(|e| e.to_string())?;
-                self.meta = Some(meta);
-            } else {
-                // если meta невалидный - то None
-                self.meta = None;
+            // Пытаемся загрузить meta. Если ошибка - оставляем None.
+            if let Some(conn_ref) = self.conn.as_ref() {
+                self.meta = self.load_meta(conn_ref).ok();
             }
         }
         Ok(self.conn.as_mut().unwrap())
     }
 
+    // теперь замыкание получает и соединение, и ссылку на meta
     pub fn with_conn<F, T>(&mut self, path: PathBuf, f: F) -> Result<T, String>
     where
-        F: FnOnce(&Connection) -> Result<T, String>,
+        F: FnOnce(&Connection, Option<&TableMeta>) -> Result<T, String>,
     {
-        let conn = self.get_conn(path)?;
-        f(conn)
+        self.get_conn(path)?;
+
+        let conn = self.conn.as_ref().unwrap();
+        let meta = self.meta.as_ref(); // Может быть None
+
+        f(conn, meta)
     }
 
     fn load_meta(&self, conn: &Connection) -> rusqlite::Result<TableMeta> {
@@ -113,40 +106,49 @@ impl DbState {
             None => Vec::new(),
         };
 
-        let search_config: SearchConfig = match meta_data.get("search_config") {
+        let search_config: Vec<String> = match meta_data.get("search_config") {
             Some(s) => serde_json::from_str(s).unwrap_or_default(),
-            None => SearchConfig::default(),
+            None => Vec::new(),
         };
+
+        let count_data: u32 = conn.query_row(&format!("SELECT COUNT(*) FROM \"{}\"", "data"), [], |r| r.get(0))?;
 
         Ok(TableMeta {
             field_names,
             field_types,
             operations,
             search_config,
+            count_data,
         })
     }
 }
 
 pub fn search_items(conn: &Connection, meta: &TableMeta, query: &str) -> Result<Vec<DataRecord>, String> {
     // 1. Формируем список полей для поиска
-    let search_fields = if meta.search_config.fields.is_empty() {
+    let search_fields = if meta.search_config.is_empty() {
         meta.field_types
             .iter()
             .filter(|(_, ftype)| matches!(ftype, FieldType::Text))
             .map(|(field, _)| field.clone())
             .collect::<Vec<String>>()
     } else {
-        meta.search_config.fields.clone()
+        meta.search_config.clone()
     };
 
     if search_fields.is_empty() {
-        return Ok(vec![]);
+        return Err("No search fields defined.".to_string());
     }
 
     // 2. Строим SQL
     let conditions: Vec<String> = search_fields.iter().map(|f| format!("{} LIKE ?1", f)).collect();
 
-    let sql = format!("SELECT * FROM data WHERE {} LIMIT 10", conditions.join(" OR "));
+    let where_clause = if conditions.is_empty() {
+        String::from("") // или "WHERE 1" если нужно явно
+    } else {
+        format!("WHERE {}", conditions.join(" OR "))
+    };
+
+    let sql = format!("SELECT * FROM data {} ORDER BY id ASC LIMIT 10", where_clause);
 
     let query_pattern = format!("%{}%", query);
 
@@ -167,51 +169,19 @@ pub fn search_items(conn: &Connection, meta: &TableMeta, query: &str) -> Result<
 }
 
 // Получить один элемент по ID
-pub fn get_item(conn: &Connection, id: i64) -> Result<Option<DataRecord>, String> {
+pub fn get_item(conn: &Connection, id: u32) -> Result<Option<DataRecord>, String> {
     let mut stmt = conn
         .prepare("SELECT * FROM data WHERE id = ?1")
         .map_err(|e| e.to_string())?;
 
     match stmt.query_row([id], row_to_record) {
         Ok(record) => Ok(Some(record)),
-        Err(rusqlite::Error::QueryReturnedNoRows) => Ok(None),
+        Err(Error::QueryReturnedNoRows) => Ok(None),
         Err(e) => Err(e.to_string()),
     }
 }
 
-pub fn get_db_stats(conn: &Connection) -> Result<HashMap<String, Vec<String>>> {
-    let mut stats = HashMap::new();
-    println!("get_db_stats");
-    // 1. Получаем список таблиц
-    let mut stmt = conn.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'")?;
-    let tables: Vec<String> = stmt.query_map([], |row| row.get(0))?.collect::<Result<_>>()?;
-
-    let mut table_names = Vec::new();
-    let mut counts = Vec::new();
-    let mut all_fields = Vec::new();
-
-    for table in tables {
-        // Имена таблиц
-        table_names.push(table.clone());
-
-        // Количество записей
-        let count: i64 = conn.query_row(&format!("SELECT COUNT(*) FROM \"{}\"", table), [], |r| r.get(0))?;
-        counts.push(count.to_string());
-
-        // Поля (собираем в одну строку "col1, col2" или можно пушить по отдельности)
-        let mut col_stmt = conn.prepare(&format!("PRAGMA table_info(\"{}\")", table))?;
-        let fields: Vec<String> = col_stmt.query_map([], |row| row.get(1))?.collect::<Result<_>>()?;
-        all_fields.push(fields.join(", ")); // Объединяем поля таблицы в одну строку
-    }
-
-    stats.insert("tables".to_string(), table_names);
-    stats.insert("count".to_string(), counts);
-    stats.insert("fields".to_string(), all_fields);
-
-    Ok(stats)
-}
-
-fn row_to_record(row: &Row) -> Result<DataRecord> {
+/*fn row_to_record(row: &Row) -> Result<DataRecord> {
     let id = row.get(0)?;
     let mut fields = HashMap::new();
 
@@ -229,7 +199,36 @@ fn row_to_record(row: &Row) -> Result<DataRecord> {
             fields.insert(column_name, FieldValue::Null);
         }
     }
-    println!("rtr: {}, {:?}", &id, &fields);
+    // println!("rtr: {}, {:?}", &id, &fields);
+    Ok(DataRecord { id, fields })
+}*/
+
+fn row_to_record(row: &Row) -> Result<DataRecord> {
+    let id: u32 = row.get(0)?;
+    let mut fields = HashMap::new();
+
+    let column_count = row.as_ref().column_count();
+    for i in 1..column_count {
+        let name = row.as_ref().column_name(i)?.to_string();
+        match row.get_ref_unwrap(i) {
+            ValueRef::Null => {
+                fields.insert(name, FieldValue::Null);
+            }
+            ValueRef::Integer(n) => {
+                fields.insert(name, FieldValue::Number(n as f64));
+            }
+            ValueRef::Real(f) => {
+                fields.insert(name, FieldValue::Number(f));
+            }
+            ValueRef::Text(b) => {
+                let s = String::from_utf8_lossy(b).into_owned();
+                fields.insert(name, FieldValue::Text(s));
+            }
+            ValueRef::Blob(_) => {
+                fields.insert(name, FieldValue::Null);
+            }
+        }
+    }
     Ok(DataRecord { id, fields })
 }
 
@@ -295,13 +294,15 @@ pub fn create_empty_database(path: &PathBuf) -> Result<()> {
          ('field_names', ?3),
          ('field_types', ?4),
          ('operations', ?5),
-         ('created_at', ?6)",
+         ('search_config', ?6),
+         ('created_at', ?7)",
         params![
             "",   // table_name - пустое, юзер сам заполнит
             "",   // table_description - пустое
             "{}", // field_names - пустой JSON объект
             "{}", // field_types - пустой JSON объект
             "[]", // operations - пустой JSON массив
+            "{}", // fields to search
             &now,
         ],
     )?;
@@ -472,6 +473,12 @@ pub fn create_ballistics_database(path: &PathBuf) -> Result<()> {
         params!["Ballistic trajectory calculator demo data"],
     )?;
 
+    // add search field
+    conn.execute(
+        "UPDATE meta SET value = ?1 WHERE key = 'search_config'",
+        params![serde_json::to_string(&vec!["f_0"]).unwrap()],
+    )?;
+
     // Импортируем CSV с заголовком
     import_csv(&conn, BALLISTICS_CSV, true)?;
 
@@ -510,7 +517,7 @@ pub fn create_example_database(name: &str, path: &PathBuf) -> Result<()> {
         "example/ballistics.refer" => create_ballistics_database(path),
         "recipes" => create_recipes_database(path),
         "inventory" => create_inventory_database(path),
-        _ => Err(rusqlite::Error::SqliteFailure(
+        _ => Err(Error::SqliteFailure(
             rusqlite::ffi::Error::new(1),
             Some(format!("Unknown demo database: {}", name)),
         )),

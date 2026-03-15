@@ -3,4 +3,4 @@ tab_spaces = 4
 indentation_style = "Auto"
 newline_style = "Auto"
 # дополнительные опции по необходимости:
-# macro_names = ["leptos::view", "view"]
+macro_names = ["leptos::view", "view"]

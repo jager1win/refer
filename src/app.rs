@@ -1,5 +1,6 @@
 use crate::i18n::*;
 use leptos::prelude::*;
+use leptos::serde_json;
 use leptos::task::spawn_local;
 use serde::{Deserialize, Serialize};
 use serde_wasm_bindgen::{from_value, to_value};
@@ -10,7 +11,14 @@ use wasm_bindgen::prelude::*;
 #[wasm_bindgen]
 extern "C" {
     #[wasm_bindgen(js_namespace = ["window", "__TAURI__", "core"], catch)]
-    async fn invoke(cmd: &str, args: JsValue) -> Result<JsValue, JsValue>;
+    async fn invoke(cmd: &str, args: &JsValue) -> Result<JsValue, JsValue>;
+}
+
+macro_rules! tauri_args {
+    ($($key:literal : $val:expr),* $(,)?) => {{
+        use serde_wasm_bindgen::to_value;
+        to_value(&serde_json::json!({ $($key: $val),* })).unwrap()
+    }};
 }
 
 #[derive(Default, Debug, Clone, Serialize, Deserialize)]
@@ -18,16 +26,12 @@ struct AppSettings {
     theme: String,
     language: String,
     color: String,
+    log: String,
 }
 
 #[derive(Serialize)]
 struct SettingsBack {
     new: AppSettings,
-}
-
-#[derive(Serialize)]
-struct ToBack {
-    val: PathBuf,
 }
 
 #[derive(Default, Debug, Clone, Serialize, Deserialize)]
@@ -48,12 +52,24 @@ struct CreateForm {
     file_data: Option<Vec<u8>>,     // содержимое файла
 }
 
-#[derive(Default, Clone, Debug, Deserialize, Serialize)]
-pub struct TableMeta {
-    pub field_names: HashMap<String, String>,
-    pub field_types: HashMap<String, FieldType>,
-    pub operations: Vec<Operation>,
-    pub search_config: SearchConfig,
+#[derive(Serialize)]
+struct CreateFormBack {
+    val: CreateForm,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DataRecord {
+    pub id: u32,
+    pub fields: HashMap<String, FieldValue>, // field_0, field_1 и т.д.
+}
+
+// Разные типы полей для гибкой обработки
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(untagged)]
+pub enum FieldValue {
+    Text(String),
+    Number(f64),
+    Null,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
@@ -63,22 +79,27 @@ pub enum FieldType {
     Number,
 }
 
+#[derive(Clone, Debug, Deserialize, Serialize)]
+pub struct TableMeta {
+    pub field_names: HashMap<String, String>,
+    pub field_types: HashMap<String, FieldType>,
+    pub operations: Vec<Operation>,
+    pub search_config: Vec<String>,
+    pub count_data: u32,
+}
+
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct Operation {
     pub name: String, // "Total Price"
     pub description: String,
-    pub expression: String, // "field_6 * 17 / field_20"
+    pub expression: String, // "f_6 * 17 / f_20"
 }
 
-#[derive(Default, Clone, Debug, Deserialize, Serialize)]
-pub struct SearchConfig {
-    pub fields: Vec<String>, // какие field_* участвуют в поиске
-    pub case_sensitive: bool,
-}
-
-#[derive(Serialize)]
-struct CreateFormBack {
-    val: CreateForm,
+#[derive(Clone, Debug)]
+enum MetaState {
+    Pending,
+    Loaded(TableMeta),
+    Invalid(String), // причина невалидности
 }
 
 #[component]
@@ -87,6 +108,7 @@ pub fn App() -> impl IntoView {
         theme: "light".into(),
         language: "en".into(),
         color: "blue".into(),
+        log: "false".into(),
     });
     let stat: RwSignal<StatisticsState> = RwSignal::new(StatisticsState::default());
     let selected_ref: RwSignal<Option<PathBuf>> = RwSignal::new(None::<PathBuf>);
@@ -94,7 +116,6 @@ pub fn App() -> impl IntoView {
     let active_tab: RwSignal<i32> = RwSignal::new(1);
     let now: RwSignal<String> = RwSignal::new(String::from(""));
     let er_pat = ["fail", "error", "warning", "invalid"];
-    let show_logs = RwSignal::new(false);
 
     provide_context(settings);
     provide_context(stat);
@@ -106,7 +127,7 @@ pub fn App() -> impl IntoView {
 
     // set settings from file
     spawn_local(async move {
-        match invoke("get_settings", JsValue::NULL).await {
+        match invoke("get_settings", &JsValue::NULL).await {
             Ok(js) => {
                 let s = from_value::<AppSettings>(js).unwrap_or_default();
                 settings.set(s);
@@ -123,6 +144,7 @@ pub fn App() -> impl IntoView {
     let clean = move || {
         selected_ref.set(None::<PathBuf>);
         edit_ref.set(false);
+        now.set(String::from(""))
     };
 
     // now clean if not error+
@@ -216,17 +238,12 @@ pub fn App() -> impl IntoView {
             <div class="tab-content" class:active=move || active_tab.get() == 2>
                 <Create />
             </div>
-
         </main>
-        <div class="log-viewer-wrapper" class:active=move || show_logs.get()>
-            <button class="log-trigger-btn" on:click=move |_| show_logs.update(|v| *v = !*v)>
-                "📋"
-            </button>
-
-            <div class="log-panel">
-                <LogViewer show=show_logs />
-            </div>
-        </div>
+        {move || match settings.get().log.as_str() {
+            "false" => view! { "" }.into_any(),
+            "true" => view! { <LogViewer /> }.into_any(),
+            _ => view! { "" }.into_any(),
+        }}
     }
 }
 
@@ -269,7 +286,24 @@ fn Settings() -> impl IntoView {
                     new: settings.get_untracked(),
                 })
                 .unwrap();
-                let _ = invoke("set_settings", args).await;
+                let _ = invoke("set_settings", &args).await;
+            });
+        });
+    };
+
+    let toggle_log = move |_| {
+        settings.update(|current| {
+            if current.log == "false" {
+                current.log = "true".to_string();
+            } else {
+                current.log = "false".to_string();
+            }
+            spawn_local(async move {
+                let args = to_value(&SettingsBack {
+                    new: settings.get_untracked(),
+                })
+                .unwrap();
+                let _ = invoke("set_settings", &args).await;
             });
         });
     };
@@ -282,7 +316,7 @@ fn Settings() -> impl IntoView {
                     new: settings.get_untracked(),
                 })
                 .unwrap();
-                let _ = invoke("set_settings", args).await;
+                let _ = invoke("set_settings", &args).await;
             });
         });
     };
@@ -345,7 +379,7 @@ fn Settings() -> impl IntoView {
                                                         },
                                                     )
                                                     .unwrap();
-                                                let _ = invoke("set_settings", args).await;
+                                                let _ = invoke("set_settings", &args).await;
                                             });
                                         }
                                     }
@@ -395,6 +429,21 @@ fn Settings() -> impl IntoView {
                     </button>
                 </div>
             </div>
+
+            <div class="gridl">
+                <div>
+                    <span>{t!(i18n, settings.logs)}</span>
+                </div>
+                <div>
+                    <button on:click=toggle_log class="theme-switcher">
+                        {move || match settings.get().log.as_str() {
+                            "false" => t!(i18n, settings.show).into_any(),
+                            "true" => t!(i18n, settings.hide).into_any(),
+                            _ => "".into_any(),
+                        }}
+                    </button>
+                </div>
+            </div>
         </div>
         <div class="settings_block gr">
             <h5>"Создано с помощью Rust, Tauri, Leptos, Picocss."</h5>
@@ -431,7 +480,7 @@ fn Refs() -> impl IntoView {
             />
         </div>
 
-        <div class="grid1a stat_table gr">
+        <div class="grid1a stat_table gr info">
             <b>{t!(i18n, references.st_path)}": "</b>
             <span>{move || stat.get().db_path.display().to_string()}</span>
             <b>{t!(i18n, references.st_access)}": "</b>
@@ -450,70 +499,216 @@ fn Refs() -> impl IntoView {
 
 #[component]
 fn Ref() -> impl IntoView {
+    let i18n = use_i18n();
     let selected_ref = use_context::<RwSignal<Option<PathBuf>>>().expect("selected not found");
     let edit_ref = use_context::<RwSignal<bool>>().expect("reference not found");
     let stat = use_context::<RwSignal<StatisticsState>>().expect("stat not found");
     let now = use_context::<RwSignal<String>>().expect("now not found");
-    let meta = RwSignal::new(None::<TableMeta>);
-    let (name, set_name) = signal("Controlled".to_string());
+    let pb = full_pb(stat.get_untracked().db_path, selected_ref.get_untracked().unwrap());
+    let query_string = RwSignal::new("".to_string());
+    let meta = RwSignal::new(MetaState::Pending);
+    let data = RwSignal::new(None::<Vec<DataRecord>>);
+
     //let selected_el =
-    //let short_data =
-    //let full_data =
 
     // get meta
     spawn_local(async move {
-        let p = dbp(stat.get_untracked().db_path, selected_ref.get_untracked().unwrap());
-        let args = to_value(&ToBack { val: p }).unwrap();
-        match invoke("get_meta", args).await {
+        let pb = full_pb(stat.get_untracked().db_path, selected_ref.get_untracked().unwrap());
+        match invoke("get_meta", &tauri_args!("pb": pb)).await {
             Ok(js) => {
-                log::debug!("js: {:#?}", js);
-                let s = from_value::<TableMeta>(js).unwrap_or_default();
-                meta.set(Some(s));
+                let s = from_value::<TableMeta>(js).unwrap();
+                meta.set(MetaState::Loaded(s))
             }
             Err(js) => {
                 let error_msg = from_value::<String>(js).unwrap_or_else(|_| "Unknown error".into());
-                now.set(format!("{} {}", "Failed get db meta:", error_msg));
+                now.set(format!("{} {}", "Failed get meta:", &error_msg));
+                meta.set(MetaState::Invalid(error_msg));
             }
         };
     });
 
-    // get_db_info
-    spawn_local(async move {
-        let p = dbp(stat.get_untracked().db_path, selected_ref.get_untracked().unwrap());
-        let args = to_value(&ToBack { val: p }).unwrap();
-        match invoke("get_db_info", args).await {
-            Ok(js) => {
-                let s = from_value::<HashMap<String, Vec<String>>>(js).unwrap_or_default();
-                log::debug!("Ref: ok get_db_info: {:?}", s);
-            }
-            Err(js) => {
-                let error_msg = from_value::<String>(js).unwrap_or_else(|_| "Unknown error".into());
-                log::debug!("Ref: Failed get_db_info: {}", error_msg);
-            }
-        };
-    });
+    // get data
+    let search_items = move |pb: PathBuf, query: String| {
+        spawn_local(async move {
+            match invoke("search_items", &tauri_args!("pb": pb, "query": query)).await {
+                Ok(js) => {
+                    let s = from_value::<Vec<DataRecord>>(js).unwrap();
+                    data.set(Some(s));
+                }
+                Err(js) => {
+                    let error_msg = from_value::<String>(js).unwrap_or_else(|_| "Unknown error".into());
+                    now.set(format!("{} {}", "Failed search:", error_msg));
+                }
+            };
+        });
+    };
+
+    search_items(pb.clone(), "".to_string());
 
     Effect::new(move |_| {
-        log::info!("meta: {:#?}", meta.get());
+        //log::info!("meta: {:#?}", meta.get());
+        //log::info!("data: {:#?}", data.get());
+        log::info!("info: {:#?}", meta.get());
+    });
+    // debounce for search
+    Effect::new(move |_| {
+        let pbclon = pb.clone();
+        let current_query = query_string.get();
+
+        set_timeout(
+            move || {
+                if query_string.get() == current_query {
+                    search_items(pbclon, current_query);
+                }
+            },
+            std::time::Duration::from_millis(250),
+        );
     });
     view! {
-        <div class="ref gr">
-            <h3 class="ffull">
-                <button on:click=move |_| selected_ref.set(None)>"←"</button>
-                {move || remove_refer_ext(&selected_ref.get().unwrap_or_default())}
-                <button on:click=move |_| edit_ref.set(true)>"✎"</button>
-            </h3>
-            <div aria-busy="true">"Loading..."</div>
+        <div class="ref">
+            {move || {
+                match meta.get() {
+                    MetaState::Invalid(msg) => view! { <h5 class="error gr">"🚫 "{msg}</h5> }.into_any(),
+                    MetaState::Pending => view! { <span class="gr" aria-busy="true"></span> }.into_any(),
+                    MetaState::Loaded(meta) => {
+                        let meta_for = meta.clone().search_config;
+                        view! {
+                            <div class="gr">
+                                <h3 class="ffull ">
+                                    <button on:click=move |_| selected_ref.set(None)>"←"</button>
+                                    {move || remove_refer_ext(&selected_ref.get().unwrap_or_default())}
+                                    <button on:click=move |_| edit_ref.set(true)>"✎"</button>
+                                </h3>
 
-            <input
-                type="text"
-                on:input:target=move |ev| {
-                    set_name.set(ev.target().value());
+                                // input. remove if empty search_config
+                                {
+                                    let metaclon = meta.clone().search_config;
+                                    move || {
+                                        if metaclon.is_empty() {
+                                            view! { <h5 class="warn">"⚠ Нет полей для поиска"</h5> }
+                                                .into_any()
+                                        } else {
+                                            view! {
+                                                <input
+                                                    type="text"
+                                                    on:input:target=move |ev| {
+                                                        query_string.set(ev.target().value());
+                                                    }
+                                                    prop:value=move || query_string.get()
+                                                />
+                                            }
+                                                .into_any()
+                                        }
+                                    }
+                                }
+
+                                // search status line
+                                {move || {
+                                    let has_data = data.get().is_some_and(|d| !d.is_empty());
+                                    let query_len = query_string.get().len();
+                                    let text = match (query_len, has_data) {
+                                        (0, true) => " Первые элементы справочника: ",
+                                        (0, false) => " Справочник пустой ",
+                                        (_, true) => " Найдено ",
+                                        (_, false) => " Ничего не найдено ",
+                                    };
+                                    view! { <small>{text}</small> }
+                                }}
+
+                                // search result
+                                <div class="search_result">
+                                    <For
+                                        each=move || data.get().unwrap_or_default()
+                                        key=|rec: &DataRecord| rec.id
+                                        children=move |rec: DataRecord| {
+                                            let fields = rec.fields.clone();
+                                            view! {
+                                                <p>
+                                                    {
+                                                        let search_fields = meta_for.clone();
+                                                        fields
+                                                            .into_iter()
+                                                            .map(move |(k, v)| {
+                                                                match search_fields.contains(&k) {
+                                                                    true => {
+                                                                        let val_str = match v {
+                                                                            FieldValue::Text(s) => s,
+                                                                            FieldValue::Number(n) => n.to_string(),
+                                                                            FieldValue::Null => String::new(),
+                                                                        };
+                                                                        view! { <span>{val_str}</span> }.into_any()
+                                                                    }
+                                                                    false => view! { "" }.into_any(),
+                                                                }
+                                                            })
+                                                            .collect_view()
+                                                    }
+                                                </p>
+                                            }
+                                        }
+                                    />
+                                </div>
+                            </div>
+
+                            <div class="grid1a stat_table gr info">
+                                {
+                                    let names = meta.clone().field_names;
+                                    let types = meta.clone().field_types;
+                                    let oper = meta.clone().operations;
+                                    let search = meta.clone().search_config;
+                                    let count = meta.clone().count_data;
+                                    view! {
+                                        <b>"Поля"</b>
+                                        <ul>
+                                            {
+                                                let combined: Vec<(String, FieldType)> = names
+                                                    .iter()
+                                                    .filter_map(|(key, name)| {
+                                                        types.get(key).map(|ft| (name.clone(), ft.clone()))
+                                                    })
+                                                    .collect();
+                                                combined
+                                                    .into_iter()
+                                                    .map(|(name, ft)| {
+                                                        view! { <li>{name} ": " {format!("{:?}", ft)}</li> }
+                                                    })
+                                                    .collect_view()
+                                            }
+                                        </ul>
+
+                                        <b>"Операции"</b>
+                                        <ul>
+                                            {{
+                                                oper.into_iter()
+                                                    .map(|k| {
+                                                        view! { <li>{k.name}" : "{k.expression}</li> }
+                                                    })
+                                                    .collect_view()
+                                            }}
+                                        </ul>
+
+                                        <b>"Fields to search"</b>
+                                        <ul>
+                                            {{
+                                                search
+                                                    .into_iter()
+                                                    .map(|k| {
+                                                        view! { <li>{<std::string::String as Clone>::clone(&names[&k])}</li> }
+                                                    })
+                                                    .collect_view()
+                                            }}
+                                        </ul>
+
+                                        <b>{t!(i18n, references.st_count)}</b>
+                                        <span>{count}</span>
+                                    }
+                                }
+                            </div>
+                        }
+                            .into_any()
+                    }
                 }
-                prop:value=move || name.get()
-            />
-            <p>"Name is: " {move || name.get()}</p>
-
+            }}
         </div>
     }
 }
@@ -528,8 +723,7 @@ fn Edit() -> impl IntoView {
 
     let del_ref = move |name: PathBuf| {
         spawn_local(async move {
-            let args = to_value(&ToBack { val: name.clone() }).unwrap();
-            match invoke("del_ref", args).await {
+            match invoke("del_ref", &tauri_args!("val" : name.clone())).await {
                 Ok(_s) => {
                     now.set(format!("{}: {:?}", tu_string!(i18n, edit.ok_del_ref), &name));
                     selected_ref.set(None::<PathBuf>);
@@ -704,7 +898,7 @@ fn Create() -> impl IntoView {
             }
 
             let args = to_value(&CreateFormBack { val: final_data }).unwrap();
-            match invoke("create", args).await {
+            match invoke("create", &args).await {
                 Ok(_s) => {
                     now.set(format!(
                         "{}: {}",
@@ -736,7 +930,7 @@ fn Create() -> impl IntoView {
         };
         spawn_local(async move {
             let args = to_value(&CreateFormBack { val: form_data }).unwrap();
-            match invoke("create", args).await {
+            match invoke("create", &args).await {
                 Ok(_js) => {
                     now.set(format!("{}: {:?}", tu_string!(i18n, create.ok_create), &name));
                     upd_stat(stat, now);
@@ -939,12 +1133,13 @@ pub fn validate_relative_refer_path(p: &Path) -> Result<(), ()> {
 }
 
 #[component]
-fn LogViewer(show: RwSignal<bool>) -> impl IntoView {
+fn LogViewer() -> impl IntoView {
     let logs = RwSignal::new(None::<String>);
+    let show_logs = RwSignal::new(false);
 
     let load_logs = move || {
         spawn_local(async move {
-            match invoke("get_log", JsValue::NULL).await {
+            match invoke("get_log", &JsValue::NULL).await {
                 Ok(js) => {
                     let res = from_value::<String>(js).unwrap_or_default();
                     logs.set(Some(res));
@@ -958,14 +1153,24 @@ fn LogViewer(show: RwSignal<bool>) -> impl IntoView {
     };
 
     Effect::new(move |_| {
-        if show.get() {
+        if show_logs.get() {
             load_logs();
             #[allow(clippy::redundant_closure)]
             let _ = set_interval_with_handle(move || load_logs(), std::time::Duration::from_secs(2)).ok();
         }
     });
 
-    view! { <code id="logs">{move || logs.get()}</code> }
+    view! {
+        <div class="log-viewer-wrapper" class:active=move || show_logs.get()>
+            <button class="log-trigger-btn" on:click=move |_| show_logs.update(|v| *v = !*v)>
+                "📋"
+            </button>
+
+            <div class="log-panel">
+                <code id="logs">{move || logs.get()}</code>
+            </div>
+        </div>
+    }
 }
 
 fn read_size(bytes: u64) -> String {
@@ -985,7 +1190,7 @@ fn read_size(bytes: u64) -> String {
 
 fn upd_stat(stat: RwSignal<StatisticsState>, now: RwSignal<String>) {
     spawn_local(async move {
-        match invoke("get_stat", JsValue::NULL).await {
+        match invoke("get_stat", &JsValue::NULL).await {
             Ok(js) => {
                 let res = from_value::<StatisticsState>(js).unwrap_or_default();
                 stat.set(res);
@@ -1020,10 +1225,20 @@ async fn read_file_as_bytes(file: &web_sys::File) -> Result<Vec<u8>, String> {
     Ok(uint8_array.to_vec())
 }
 
-fn dbp(main: PathBuf, rel: PathBuf) -> PathBuf {
-    let mut full_path = main;
-    full_path.push(rel);
-    full_path.to_path_buf()
+fn full_pb(main: PathBuf, rel: PathBuf) -> PathBuf {
+    let mut p = main;
+    p.push(rel);
+    p.to_path_buf()
+}
+
+fn get_sorted_f_keys<T>(map: &HashMap<String, T>) -> Vec<&String> {
+    let mut keys: Vec<&String> = map.keys().collect();
+    keys.sort_by(|a, b| {
+        let num_a = a[2..].parse::<i32>().unwrap_or(0);
+        let num_b = b[2..].parse::<i32>().unwrap_or(0);
+        num_a.cmp(&num_b)
+    });
+    keys
 }
 
 // let p = dbp(stat.get_untracked().db_path, selected_ref.get_untracked().unwrap());
@@ -1108,4 +1323,13 @@ fn key_convert(r: &str) -> String {
         }
         Err(e) => set_now(now,format!("{}: {} - {}", tu_string!(i18n, create.er_create), &name,e))
     }
+
+// Использование
+async fn delete_reference(name: String) {
+    match invoke("del_ref", &tauri_args!("val" => name.clone())).await {
+        Ok(_) => log!("Deleted"),
+        Err(e) => log!("Error: {:?}", e),
+    }
+}
+
 });*/

@@ -274,3 +274,72 @@ pub fn fetch_data(conn: &Connection) -> Result<Vec<String>> {
   },
   "rust-analyzer.trace.server": "verbose"
 }
+
+// Использование - &tauri_args!("pb": pb)
+async fn delete_reference(name: String) {
+    match invoke("del_ref", &tauri_args!("val": name.clone())).await {
+        Ok(_) => log!("Deleted"),
+        Err(e) => log!("Error: {:?}", e),
+    }
+}
+
+==========================================
+Итерация Option:
+
+ 1      <For
+            each=move || data.get().unwrap_or_default()
+            key=|rec: &DataRecord| rec.id
+
+ 2      if let Some(records) = data.get() {
+            for record in records {
+                // ...
+            }
+        }
+ 3      <For
+            each=move || data.get().into_iter().flatten().collect::<Vec<_>>()
+            key=|rec: &DataRecord| rec.id
+            children=/* ... */
+        />
+===============================================
+META:
+[Info] info: Loaded( (refer-ui-13796e628898e136.js, line 403)
+    TableMeta {
+        field_names: {
+            "f_0": "caliber",
+            "f_1": "bullet_mass_g",
+            "f_3": "bc_g1",
+            "f_4": "cross_section_cm2",
+            "f_2": "muzzle_velocity",
+        },
+        field_types: {
+            "f_0": Text,
+            "f_1": Number,
+            "f_3": Number,
+            "f_2": Number,
+            "f_4": Number,
+        },
+        operations: [
+            Operation {
+                name: "Energy (J)",
+                description: "Kinetic energy in Joules",
+                expression: "f_1 * f_2 * f_2 / 2000",
+            },
+            Operation {
+                name: "Sectional Density",
+                description: "Bullet mass / cross-sectional area",
+                expression: "f_1 / (f_4 * 1000)",
+            },
+        ],
+        search_config: [
+            "f_0",
+        ],
+        count_data: 10,
+    },
+)
+
+{
+    let metaclon = meta.clone().field_names;
+    for key in get_sorted_f_keys(&metaclon) {
+        log::debug!("{}: {}", key, metaclon[key]);
+    }
+}

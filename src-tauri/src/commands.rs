@@ -1,6 +1,5 @@
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
-use std::collections::HashMap;
 use std::fs::File;
 use std::fs::{self};
 use std::io::{self, Read};
@@ -48,9 +47,15 @@ pub async fn get_settings(app: tauri::AppHandle) -> Result<SettingsStore, String
         .to_string();
 
     let color = json.get("color").and_then(|v| v.as_str()).unwrap_or("blue").to_string();
+    let log = json.get("log").and_then(|v| v.as_str()).unwrap_or("false").to_string();
     //let settings: SettingsStore = serde_json::from_value(json).unwrap_or_default();
 
-    Ok(SettingsStore { theme, language, color })
+    Ok(SettingsStore {
+        theme,
+        language,
+        color,
+        log,
+    })
 }
 
 #[tauri::command]
@@ -249,25 +254,36 @@ fn try_remove(path: &std::path::Path) -> io::Result<()> {
 }
 
 #[tauri::command]
-pub fn get_meta(val: PathBuf, state: State<'_, Mutex<DbState>>) -> Result<TableMeta, String> {
-    let mut state_lock = state.lock().map_err(|e| e.to_string())?;
-    let _ = state_lock.get_conn(val)?;
-    let res = state_lock.meta.clone().unwrap();
-    println!("1.get_meta: {:?}", &res);
-    Ok(res)
+pub fn get_meta(pb: PathBuf, state: State<'_, Mutex<DbState>>) -> Result<TableMeta, String> {
+    let mut db = state.lock().map_err(|e| e.to_string())?;
+    db.with_conn(pb, |_conn, meta| {
+        let Some(meta_ref) = meta else {
+            error!("Error: table meta not available");
+            return Err("Error: table meta not available".into());
+        };
+        Ok(meta_ref.clone())
+    })
 }
 
+//search_items
 #[tauri::command]
-pub fn get_db_info(val: PathBuf, state: State<'_, Mutex<DbState>>) -> Result<HashMap<String, Vec<String>>, String> {
+pub fn search_items(pb: PathBuf, query: String, state: State<'_, Mutex<DbState>>) -> Result<Vec<DataRecord>, String> {
     let mut db = state.lock().map_err(|e| e.to_string())?;
-    println!("2.db.meta: {:?}", db.meta);
+    db.with_conn(pb, |conn, meta| {
+        let Some(meta) = meta else {
+            error!("Error: table meta not available");
+            return Err("Error: table meta not available".into());
+        };
 
-    // Выполняем запрос через обертку
-    db.with_conn(val, |conn| match sql::get_db_stats(conn).map_err(|e| e.to_string()) {
-        Ok(h) => Ok(h),
-        Err(e) => {
-            error!("{}", e);
-            Err(e)
+        match sql::search_items(conn, meta, &query).map_err(|e| e.to_string()) {
+            Ok(h) => {
+                //info!("search_items ok: {}", serde_json::to_string(&h).unwrap());
+                Ok(h)
+            }
+            Err(e) => {
+                error!("{}", e);
+                Err(e)
+            }
         }
     })
 }

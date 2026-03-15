@@ -20,7 +20,8 @@ pub const APP_EXT: &str = "refer";
 pub struct SettingsStore {
     pub theme: String,
     pub language: String,
-    pub color: String
+    pub color: String,
+    log: String,
 }
 
 impl Default for SettingsStore {
@@ -28,7 +29,8 @@ impl Default for SettingsStore {
         Self {
             theme: "light".to_string(),
             language: "en".to_string(),
-            color: "blue".to_string()
+            color: "blue".to_string(),
+            log: "false".to_string(),
         }
     }
 }
@@ -65,8 +67,8 @@ pub fn run() {
             get_log,
             clear_log,
             create,
-            get_db_info,
-            get_meta
+            get_meta,
+            search_items
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
