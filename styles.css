@@ -7,7 +7,7 @@ header{flex-shrink: 0;padding-block:0!important;height:6rem;}
 .main {display: grid;grid-template-columns: 1fr;overflow-y:auto;justify-items: stretch;padding:0;}
 .top-nav {display: grid;grid-template-columns: 1fr 4fr 1fr;width: 100%;gap: 2rem;padding: 0.2rem;}
 .top-nav button {white-space: nowrap;min-width: 0;}
-h1,h2,h3,h4,h5,.center{text-align: center;}
+h1,h2,h3,h4,h5,h6,.center{text-align: center;}
 .grid2{display: grid;grid-auto-columns: 1fr; grid-template-columns: 1fr 1fr;align-items: baseline;}
 .grida{display: grid;gap: 1rem;grid-template-columns: repeat(auto-fit, minmax(min(30vw, 150px), 1fr));width: 100%;overflow: hidden;align-items: center;}
 .gridl{display: grid;grid-auto-columns: 1fr; grid-template-columns: 1fr 2fr;gap: 1rem;align-items: center;}
@@ -53,6 +53,8 @@ border-top:1px dashed var(--pico-color);}
 .ffull{display: flex;justify-content: space-between;}
 .info {position: relative;}
 .info::before {content: "ℹ️";position: absolute;top: 0.2rem;right: 0.3rem;}
+.ref_fields{padding-right:1rem;}
+.ref_fields > *{display: grid;grid-template-columns: 3fr 2fr 1fr;gap: 1rem 1rem;}
 
 
 /* COLORS */
