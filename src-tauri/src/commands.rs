@@ -288,6 +288,66 @@ pub fn search_items(pb: PathBuf, query: String, state: State<'_, Mutex<DbState>>
     })
 }
 
+#[tauri::command]
+pub fn save_search_config(pb: PathBuf, vec: Vec<String>, state: State<'_, Mutex<DbState>>)-> Result<(), String> {
+    let mut db = state.lock().map_err(|e| e.to_string())?;
+    db.with_conn(pb, |conn, _meta| {
+        match sql::save_search_config(conn, &vec) {
+            Ok(()) => {
+                info!("Search config saved: {:?}", vec);
+                Ok(())
+            },
+            Err(e) => {
+                error!("Failed to save search config: {}", e);
+                Err(e.to_string())
+            }
+        }
+    })
+}
+
+#[tauri::command]
+pub fn add_field(
+    pb: PathBuf,
+    display_name: String,
+    field_type: String,
+    state: State<'_, Mutex<DbState>>
+) -> Result<String, String> {
+    // 1. Получаем доступ к состоянию
+    let mut db = state.lock().map_err(|e| e.to_string())?;
+    
+    // 2. Вычисляем next_index из текущего meta
+    let next_index = db.meta.as_ref()
+        .map(|m| m.field_names.len() + 1)
+        .unwrap_or(1);
+    
+    // 3. Получаем соединение (но не через with_conn, чтобы не заимствовать db)
+    let conn = match db.conn.as_ref() {
+        Some(c) => c,
+        None => return Err("No active connection".to_string()),
+    };
+    
+    // Проверяем путь
+    if db.current_path.as_ref() != Some(&pb) {
+        return Err("Wrong database".to_string());
+    }
+    
+    // 4. Добавляем поле в БД
+    let field_name = sql::add_field(conn, next_index, Some(&display_name), &field_type)
+        .map_err(|e| e.to_string())?;
+    
+    // 5. Обновляем meta в памяти (прямая модификация state)
+    if let Some(meta) = db.meta.as_mut() {
+        meta.field_names.insert(field_name.clone(), display_name);
+        meta.field_types.insert(field_name.clone(), 
+            match field_type.as_str() {
+                "number" => FieldType::Number,
+                _ => FieldType::Text,
+            }
+        );
+    }
+    
+    Ok(field_name)
+}
 /*
    let mut path = root.join(String::from("example"));
    let _ = std::fs::create_dir_all(&path);

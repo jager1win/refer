@@ -121,6 +121,25 @@ impl DbState {
             count_data,
         })
     }
+
+    pub fn update_meta<F>(&mut self, path: &PathBuf, f: F) -> Result<(), String>
+    where
+        F: FnOnce(&mut TableMeta) -> Result<(), String>
+    {
+        // Проверяем, что работаем с той же базой
+        if self.current_path.as_ref() != Some(path) {
+            return Err("Database not opened".to_string());
+        }
+        
+        let conn = self.conn.as_ref().ok_or("No connection")?;
+        let meta = self.meta.as_mut().ok_or("No meta loaded")?;
+        
+        // Применяем изменения к meta в памяти
+        f(meta)?;
+        
+        // Сохраняем изменения в БД (если нужно)
+        Ok(())
+    }
 }
 
 pub fn search_items(conn: &Connection, meta: &TableMeta, query: &str) -> Result<Vec<DataRecord>, String> {
@@ -166,6 +185,19 @@ pub fn search_items(conn: &Connection, meta: &TableMeta, query: &str) -> Result<
         .map_err(|e| e.to_string())?;
 
     Ok(records)
+}
+
+pub fn save_search_config(conn: &Connection, vec: &Vec<String>) -> Result<()> {
+    let config_json = serde_json::to_string(vec)
+        .map_err(|e| rusqlite::Error::ToSqlConversionFailure(Box::new(e)))?;
+    
+    conn.execute(
+        "INSERT INTO meta (key, value) VALUES ('search_config', ?1)
+         ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+        params![config_json],
+    )?;
+    
+    Ok(())
 }
 
 // Получить один элемент по ID

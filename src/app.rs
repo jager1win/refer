@@ -532,6 +532,7 @@ fn Ref() -> impl IntoView {
     search_items(pb.clone(), "".to_string());
 
     let to_search = move |field: String| {
+        let pb = full_pb(stat.get_untracked().db_path, selected_ref.get_untracked().unwrap());
         meta.update(|state| {
             if let MetaState::Loaded(meta) = state {
                 if let Some(pos) = meta.search_config.iter().position(|f| f == &field) {
@@ -549,7 +550,8 @@ fn Ref() -> impl IntoView {
                 let _ = invoke(
                     "save_search_config",
                     &tauri_args! {
-                        "search_config": meta.search_config
+                        "pb": pb,
+                        "vec": meta.search_config
                     },
                 )
                 .await;

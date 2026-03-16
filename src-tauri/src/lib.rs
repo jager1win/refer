@@ -68,7 +68,8 @@ pub fn run() {
             clear_log,
             create,
             get_meta,
-            search_items
+            search_items,
+            save_search_config
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
