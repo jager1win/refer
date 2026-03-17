@@ -343,3 +343,29 @@ META:
         log::debug!("{}: {}", key, metaclon[key]);
     }
 }
+=============================
+Some получение:
+если известно что Some: 
+1 .unwrap()
+2 .as_ref().unwrap()    если не забирать владение
+
+если неизвестно что Some:
+1 
+if let Some(value) = option {
+    f2name(vec, value.field_names);
+} else {
+    // обработка None
+}
+2
+match option {
+    Some(value) => f2name(vec, value.field_names),
+    None => { /* обработка */ }
+}
+3 если нужно преобразовать
+option.map(|value| f2name(vec, value.field_names));
+4 and_then(), unwrap_or(), unwrap_or_else()
+
+
+если функция возвращает Result, Option
+- .?  
+=============================  

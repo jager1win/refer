@@ -17,6 +17,7 @@ div.now p{flex: 1 1 auto;white-space: nowrap;padding: 0;margin:0;margin-bottom: 
 .sp_close{flex: 0 0 auto;cursor:pointer;padding-left:1rem;}
 div.now.error p, span.error, small.error{color:red;}
 button:not(.navb){padding:0.4rem}
+.ref{overflow: hidden;}
 .ar_lang, .ar_color{display:flex;gap: 1rem;flex-wrap: wrap;}
 .ar_lang button, .ar_color button{min-height: 1.2rem;min-width: 1.2rem;}
 .settings_block{display:grid;gap: 1rem;}
@@ -40,7 +41,7 @@ input.csv_deli{width: 2rem!important;padding: 0.4rem!important;}
     opacity: 0;visibility: hidden;transition: opacity 0.2s ease;background-color: var( --pico-background-color);}
 .tab-content.active {opacity: 1;pointer-events: auto;visibility: visible;}
 .tab-content > * {max-height: 90vh;overflow-y: auto;}
-.main-content {width: 100%;height: 100%;}
+.main-content {width: 100%;height: 100%;overflow-y: auto;overflow-x: hidden;}
 /*logs*/
 .log-viewer-wrapper {position: fixed;bottom: 0;left: 0;z-index: 200;}
 .log-trigger-btn {position: fixed;bottom: 1rem;z-index: 201;right: 1rem;width: 3rem;height: 3rem;
@@ -56,6 +57,44 @@ border-top:1px dashed var(--pico-color);}
 .ref_fields{padding-right:1rem;}
 .ref_fields > *{display: grid;grid-template-columns: 3fr 2fr 1fr;gap: 1rem 1rem;}
 small{color:var(--pico-muted-color)}
+/*
+.search_results {
+  display: grid;
+  grid-template-columns: repeat(auto-fit);
+  grid-auto-rows: auto;
+  overflow-x: auto;
+  gap: 0.5rem 1rem;
+  max-width: 100%;
+  padding-bottom: 1rem;
+}
+
+.search_results > .row {
+  display: grid;
+  grid-auto-flow: column;
+}
+
+.search_results > .row > *{text-align: left;white-space: nowrap;}*/
+.search_results {display: inline-grid;width: 100%;
+    gap:0.6rem;
+    /* Колонки: минимум по контенту, но свободное место делят поровну (1fr) */
+    grid-template-columns: repeat(var(--cols), minmax(max-content, 1fr));
+    
+    overflow-x: auto;
+    padding-bottom: 1rem;
+}
+
+.search_results .row {
+    grid-column: 1 / span var(--cols);
+    display: grid;
+    grid-template-columns: subgrid;
+    padding:0.3rem;
+    width: 100%;
+    min-width: max-content;
+}
+.search_results .row:first-child {text-align: center;}
+.search_results .row > div {white-space: nowrap;}
+
+
 
 /* COLORS */
 .warn{color: oklch(70.5% 0.213 47.604);}

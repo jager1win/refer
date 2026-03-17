@@ -1,4 +1,4 @@
-use crate::{func::*, i18n::*, refs::*};
+use crate::{functions::*, i18n::*, ref_view::*};
 use leptos::prelude::*;
 use leptos::task::spawn_local;
 use serde::{Deserialize, Serialize};
@@ -414,13 +414,7 @@ fn Refs() -> impl IntoView {
     let i18n = use_i18n();
     let stat = use_context::<RwSignal<StatisticsState>>().expect("stat not found");
     let selected_ref = use_context::<RwSignal<Option<PathBuf>>>().expect("selected not found");
-    //let now: RwSignal<String> = use_context::<RwSignal<String>>().expect("now not found");
     let patterns = ["fail", "error"];
-
-    //upd_stat(stat,now);
-    /*Effect::new(move |_| {
-        log::info!("stat2: {:?}", stat.get());
-    });*/
 
     view! {
         <div class="refs-list grid2 gr">
@@ -438,17 +432,17 @@ fn Refs() -> impl IntoView {
         </div>
 
         <div class="grid1a stat_table gr info">
-            <b>{t!(i18n, references.st_path)}": "</b>
+            <b>{t!(i18n, refs.st_path)}": "</b>
             <span>{move || stat.get().db_path.display().to_string()}</span>
-            <b>{t!(i18n, references.st_access)}": "</b>
+            <b>{t!(i18n, refs.st_access)}": "</b>
             <span class:error=move || {
                 patterns.iter().any(|p| stat.get().db_path_ok.to_lowercase().contains(p))
             }>{move || stat.get().db_path_ok}</span>
-            <b>{t!(i18n, references.st_count)}": "</b>
+            <b>{t!(i18n, refs.st_count)}": "</b>
             <span>{move || stat.get().db_list.len()}</span>
-            <b>{t!(i18n, references.st_size)}": "</b>
+            <b>{t!(i18n, refs.st_size)}": "</b>
             <span>{move || read_size(stat.get().db_path_size)}</span>
-            <b>{t!(i18n, references.st_log)}": "</b>
+            <b>{t!(i18n, refs.st_log)}": "</b>
             <span>{move || stat.get().log_path}</span>
         </div>
     }

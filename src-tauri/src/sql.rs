@@ -153,6 +153,7 @@ pub fn search_items(conn: &Connection, meta: &TableMeta, query: &str) -> Result<
     } else {
         meta.search_config.clone()
     };
+    //println!("sf: {:?}",search_fields);
 
     if search_fields.is_empty() {
         return Err("No search fields defined.".to_string());
@@ -162,7 +163,7 @@ pub fn search_items(conn: &Connection, meta: &TableMeta, query: &str) -> Result<
     let conditions: Vec<String> = search_fields.iter().map(|f| format!("{} LIKE ?1", f)).collect();
 
     let where_clause = if conditions.is_empty() {
-        String::from("") // или "WHERE 1" если нужно явно
+        String::from("")
     } else {
         format!("WHERE {}", conditions.join(" OR "))
     };

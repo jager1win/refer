@@ -40,11 +40,7 @@
     "ttp_table": ".csv, .xls, .xlsx, .ods | один лист",
     "ttp_sqlite": ".sqlite, .sqlite3, .db | одна таблица"
    },
-  "references": {
-    "ready": "Готов",
-    "loading": "Загрузка...",
-    "show_logs": "Показать логи",
-    "clear_logs": "Очистить логи",
+  "refs": {
     "st_path": "Путь",
     "st_access": "Доступ",
     "st_count": "Количество",

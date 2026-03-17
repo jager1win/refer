@@ -1,5 +1,6 @@
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
+use std::collections::HashMap;
 use std::fs::File;
 use std::fs::{self};
 use std::io::{self, Read};
@@ -245,14 +246,6 @@ pub fn build_and_create_refer_path(root: &Path, p: &Path, example: bool) -> Resu
     Ok(full)
 }
 
-fn try_remove(path: &std::path::Path) -> io::Result<()> {
-    match fs::remove_file(path) {
-        Ok(()) => Ok(()),
-        Err(e) if e.kind() == io::ErrorKind::NotFound => Ok(()), // нет файла — нормально
-        Err(e) => Err(e),
-    }
-}
-
 #[tauri::command]
 pub fn get_meta(pb: PathBuf, state: State<'_, Mutex<DbState>>) -> Result<TableMeta, String> {
     let mut db = state.lock().map_err(|e| e.to_string())?;
@@ -265,7 +258,6 @@ pub fn get_meta(pb: PathBuf, state: State<'_, Mutex<DbState>>) -> Result<TableMe
     })
 }
 
-//search_items
 #[tauri::command]
 pub fn search_items(pb: PathBuf, query: String, state: State<'_, Mutex<DbState>>) -> Result<Vec<DataRecord>, String> {
     let mut db = state.lock().map_err(|e| e.to_string())?;
@@ -291,10 +283,16 @@ pub fn search_items(pb: PathBuf, query: String, state: State<'_, Mutex<DbState>>
 #[tauri::command]
 pub fn save_search_config(pb: PathBuf, vec: Vec<String>, state: State<'_, Mutex<DbState>>)-> Result<(), String> {
     let mut db = state.lock().map_err(|e| e.to_string())?;
-    db.with_conn(pb, |conn, _meta| {
+
+    db.update_meta(&pb, |meta| {
+        meta.search_config = vec.clone();
+        Ok(())
+    })?;
+
+    db.with_conn(pb, |conn, meta| {
         match sql::save_search_config(conn, &vec) {
             Ok(()) => {
-                info!("Search config saved: {:?}", vec);
+                info!("Search config saved: {:?}", f2name(vec,meta.as_ref().unwrap().field_names.clone()));
                 Ok(())
             },
             Err(e) => {
@@ -347,6 +345,24 @@ pub fn add_field(
     }
     
     Ok(field_name)
+}
+
+fn f2name(v:Vec<String>, names:HashMap<String, String>)->Vec<String>{
+    let mut res: Vec<String> = Vec::new(); 
+    for f in v{
+        if names.contains_key(&f){
+            res.push(names[&f].clone());
+        }
+    }
+    res
+}
+
+fn try_remove(path: &std::path::Path) -> io::Result<()> {
+    match fs::remove_file(path) {
+        Ok(()) => Ok(()),
+        Err(e) if e.kind() == io::ErrorKind::NotFound => Ok(()), // нет файла — нормально
+        Err(e) => Err(e),
+    }
 }
 /*
    let mut path = root.join(String::from("example"));

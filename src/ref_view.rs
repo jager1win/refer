@@ -1,8 +1,8 @@
+use crate::{app::*, functions::*, i18n::*, tauri_args};
 use leptos::prelude::*;
-use crate::{app::*, func::*, i18n::*, tauri_args};
-use std::path::{PathBuf};
 use leptos::task::spawn_local;
-use serde_wasm_bindgen::{from_value};
+use serde_wasm_bindgen::from_value;
+use std::path::PathBuf;
 
 #[component]
 pub fn Ref() -> impl IntoView {
@@ -28,7 +28,7 @@ pub fn Ref() -> impl IntoView {
             }
             Err(js) => {
                 let error_msg = from_value::<String>(js).unwrap_or_else(|_| "Unknown error".into());
-                now.set(format!("{} {}", "Failed get meta:", &error_msg));
+                now.set(format!("{} {}", "", &error_msg));
                 meta.set(MetaState::Invalid(error_msg));
             }
         };
@@ -44,13 +44,13 @@ pub fn Ref() -> impl IntoView {
                 }
                 Err(js) => {
                     let error_msg = from_value::<String>(js).unwrap_or_else(|_| "Unknown error".into());
-                    now.set(format!("{} {}", "Failed search:", error_msg));
+                    now.set(format!("{} {}", "", error_msg));
                 }
             };
         });
     };
 
-    search_items(pb.clone(), "".to_string());
+    //search_items(pb.clone(), "".to_string());
 
     let to_search = move |field: String| {
         let pb = full_pb(stat.get_untracked().db_path, selected_ref.get_untracked().unwrap());
@@ -81,18 +81,21 @@ pub fn Ref() -> impl IntoView {
     };
 
     Effect::new(move |_| {
-        //log::info!("meta: {:#?}", meta.get());
-        //log::info!("data: {:#?}", data.get());
-        log::info!("info: {:#?}", meta.get());
+        log::info!("meta: {:#?}", meta.get());
     });
     // debounce for search
     Effect::new(move |_| {
+        // Зависимости: query_string И meta (для search_config)
+        let _ = query_string.get(); // триггерим на изменение query
+        let _ = meta.get(); // триггерим на изменение meta (и search_config)
+
         let pbclon = pb.clone();
-        let current_query = query_string.get();
+        let current_query = query_string.get_untracked(); // текущий query без триггера
 
         set_timeout(
             move || {
-                if query_string.get() == current_query {
+                // Проверяем, что query не изменился за время debounce
+                if query_string.get_untracked() == current_query {
                     search_items(pbclon, current_query);
                 }
             },
@@ -152,21 +155,26 @@ pub fn Ref() -> impl IntoView {
                                     }
                                 }
 
+                                // search result
                                 {match meta_for.clone().is_empty() {
-                                    true => view! { "" }.into_any(),
+                                    true => view! { <div class="search_results">""</div> }.into_any(),
                                     false => {
+                                        let col_count = meta_for.clone().len();
+                                        let names = table_meta.clone().field_names;
                                         view! {
-                                            <div class="search_result grid">
+                                            <div class="search_results" style=format!("--cols: {}", col_count)>
+                                                <div class="row">
+                                                    {{ f2name(meta_for.clone(),names).into_iter().map(|n| view! { <small>{n}</small> }).collect_view() }}
+                                                </div>
                                                 <For
                                                     each=move || data.get().unwrap_or_default()
                                                     key=|rec: &DataRecord| rec.id
                                                     children=move |rec: DataRecord| {
                                                         let search_fields = meta_for.clone();
 
+                                                        // rec.id.to_string()
                                                         view! {
-                                                            <div class=rec
-                                                                .id
-                                                                .to_string()>
+                                                            <button class="row">
                                                                 {search_fields
                                                                     .into_iter()
                                                                     .filter_map(|k| { rec.fields.get(&k).map(|v| (k, v.clone())) })
@@ -176,10 +184,10 @@ pub fn Ref() -> impl IntoView {
                                                                             FieldValue::Number(n) => n.to_string(),
                                                                             FieldValue::Null => String::new(),
                                                                         };
-                                                                        view! { <span>{val_str}</span> }
+                                                                        view! { <div>{val_str}</div> }
                                                                     })
                                                                     .collect_view()}
-                                                            </div>
+                                                            </button>
                                                         }
                                                     }
                                                 />
@@ -188,8 +196,6 @@ pub fn Ref() -> impl IntoView {
                                             .into_any()
                                     }
                                 }}
-
-                            // search result
                             </div>
 
                             <div class="grid1a stat_table gr info">
@@ -277,7 +283,7 @@ pub fn Ref() -> impl IntoView {
                                             }}
                                         </div>
 
-                                        <b>{t!(i18n, references.st_count)}</b>
+                                        <b>{t!(i18n, refs.st_count)}</b>
                                         <span>{table_meta.count_data}</span>
                                     }
                                 }
@@ -287,6 +293,15 @@ pub fn Ref() -> impl IntoView {
                     }
                 }
             }}
+        </div>
+    }
+}
+
+#[component]
+pub fn Ref_el() -> impl IntoView {
+    view! {
+        <div class="ref_el">
+            <h4>Ref element</h4>
         </div>
     }
 }

@@ -116,6 +116,16 @@ pub fn sort_f_keys_v(keys: Vec<String>) -> Vec<String> {
     sorted
 }
 
+pub fn f2name(v:Vec<String>, names:HashMap<String, String>)->Vec<String>{
+    let mut res: Vec<String> = Vec::new(); 
+    for f in v{
+        if names.contains_key(&f){
+            res.push(names[&f].clone());
+        }
+    }
+    res
+}
+
 // let p = dbp(stat.get_untracked().db_path, selected_ref.get_untracked().unwrap());
 /*fn ensure_utf8_path(p: &std::path::Path) -> Result<&str, &'static str> {
     p.to_str().ok_or("Имя файла содержит недопустимые (не UTF-8) символы.")
