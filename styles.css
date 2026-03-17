@@ -55,7 +55,7 @@ border-top:1px dashed var(--pico-color);}
 .info::before {content: "ℹ️";position: absolute;top: 0.2rem;right: 0.3rem;}
 .ref_fields{padding-right:1rem;}
 .ref_fields > *{display: grid;grid-template-columns: 3fr 2fr 1fr;gap: 1rem 1rem;}
-
+small{color:var(--pico-muted-color)}
 
 /* COLORS */
 .warn{color: oklch(70.5% 0.213 47.604);}

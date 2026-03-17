@@ -256,10 +256,10 @@ fn try_remove(path: &std::path::Path) -> io::Result<()> {
 #[tauri::command]
 pub fn get_meta(pb: PathBuf, state: State<'_, Mutex<DbState>>) -> Result<TableMeta, String> {
     let mut db = state.lock().map_err(|e| e.to_string())?;
-    db.with_conn(pb, |_conn, meta| {
+    db.with_conn(pb.clone(), |_conn, meta| {
         let Some(meta_ref) = meta else {
-            error!("Error: table meta not available");
-            return Err("Error: table meta not available".into());
+            error!("Error: table meta not available for {:?}",pb);
+            return Err(format!("Error: table meta not available for {:?}",pb));
         };
         Ok(meta_ref.clone())
     })
@@ -269,10 +269,10 @@ pub fn get_meta(pb: PathBuf, state: State<'_, Mutex<DbState>>) -> Result<TableMe
 #[tauri::command]
 pub fn search_items(pb: PathBuf, query: String, state: State<'_, Mutex<DbState>>) -> Result<Vec<DataRecord>, String> {
     let mut db = state.lock().map_err(|e| e.to_string())?;
-    db.with_conn(pb, |conn, meta| {
+    db.with_conn(pb.clone(), |conn, meta| {
         let Some(meta) = meta else {
-            error!("Error: table meta not available");
-            return Err("Error: table meta not available".into());
+            error!("Error: table meta not available for {:?}",pb);
+            return Err(format!("Error: table meta not available for {:?}",pb));
         };
 
         match sql::search_items(conn, meta, &query).map_err(|e| e.to_string()) {

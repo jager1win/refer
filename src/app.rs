@@ -1,23 +1,22 @@
-use crate::i18n::*;
-use leptos::prelude::{With, *};
-use leptos::serde_json;
+use crate::{func::*, i18n::*, refs::*};
+use leptos::prelude::*;
 use leptos::task::spawn_local;
 use serde::{Deserialize, Serialize};
-use serde_wasm_bindgen::{from_value, to_value};
+use serde_wasm_bindgen::from_value;
 use std::collections::HashMap;
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 use wasm_bindgen::prelude::*;
 
 #[wasm_bindgen]
 extern "C" {
     #[wasm_bindgen(js_namespace = ["window", "__TAURI__", "core"], catch)]
-    async fn invoke(cmd: &str, args: &JsValue) -> Result<JsValue, JsValue>;
+    pub async fn invoke(cmd: &str, args: &JsValue) -> Result<JsValue, JsValue>;
 }
 
+#[macro_export]
 macro_rules! tauri_args {
     ($($key:literal : $val:expr),* $(,)?) => {{
-        use serde_wasm_bindgen::to_value;
-        to_value(&serde_json::json!({ $($key: $val),* })).unwrap()
+        ::serde_wasm_bindgen::to_value(&::leptos::serde_json::json!({ $($key: $val),* })).unwrap()
     }};
 }
 
@@ -29,13 +28,8 @@ struct AppSettings {
     log: String,
 }
 
-#[derive(Serialize)]
-struct SettingsBack {
-    new: AppSettings,
-}
-
 #[derive(Default, Debug, Clone, Serialize, Deserialize)]
-struct StatisticsState {
+pub struct StatisticsState {
     pub db_path: PathBuf,
     pub db_path_size: u64,
     pub db_list: Vec<PathBuf>,
@@ -52,15 +46,10 @@ struct CreateForm {
     file_data: Option<Vec<u8>>,     // содержимое файла
 }
 
-#[derive(Serialize)]
-struct CreateFormBack {
-    val: CreateForm,
-}
-
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct DataRecord {
     pub id: u32,
-    pub fields: HashMap<String, FieldValue>, // field_0, field_1 и т.д.
+    pub fields: HashMap<String, FieldValue>, // f_0, f_1 и т.д.
 }
 
 // Разные типы полей для гибкой обработки
@@ -96,7 +85,7 @@ pub struct Operation {
 }
 
 #[derive(Clone, Debug)]
-enum MetaState {
+pub enum MetaState {
     Pending,
     Loaded(TableMeta),
     Invalid(String), // причина невалидности
@@ -278,11 +267,7 @@ fn Settings() -> impl IntoView {
                 current.theme = "light".to_string();
             }
             spawn_local(async move {
-                let args = to_value(&SettingsBack {
-                    new: settings.get_untracked(),
-                })
-                .unwrap();
-                let _ = invoke("set_settings", &args).await;
+                let _ = invoke("set_settings", &tauri_args!("new": settings.get_untracked())).await;
             });
         });
     };
@@ -295,11 +280,7 @@ fn Settings() -> impl IntoView {
                 current.log = "false".to_string();
             }
             spawn_local(async move {
-                let args = to_value(&SettingsBack {
-                    new: settings.get_untracked(),
-                })
-                .unwrap();
-                let _ = invoke("set_settings", &args).await;
+                let _ = invoke("set_settings", &tauri_args!("new": settings.get_untracked())).await;
             });
         });
     };
@@ -308,11 +289,7 @@ fn Settings() -> impl IntoView {
         settings.update(|current| {
             current.color = color.to_string();
             spawn_local(async move {
-                let args = to_value(&SettingsBack {
-                    new: settings.get_untracked(),
-                })
-                .unwrap();
-                let _ = invoke("set_settings", &args).await;
+                let _ = invoke("set_settings", &tauri_args!("new": settings.get_untracked())).await;
             });
         });
     };
@@ -363,13 +340,7 @@ fn Settings() -> impl IntoView {
                                                     .update(|current| {
                                                         current.language = loc.as_str().to_string();
                                                     });
-                                                let args = to_value(
-                                                        &SettingsBack {
-                                                            new: settings.get_untracked(),
-                                                        },
-                                                    )
-                                                    .unwrap();
-                                                let _ = invoke("set_settings", &args).await;
+                                                let _ = invoke("set_settings", &tauri_args!("new": settings.get_untracked())).await;
                                             });
                                         }
                                     }
@@ -479,293 +450,6 @@ fn Refs() -> impl IntoView {
             <span>{move || read_size(stat.get().db_path_size)}</span>
             <b>{t!(i18n, references.st_log)}": "</b>
             <span>{move || stat.get().log_path}</span>
-        </div>
-    }
-}
-
-#[component]
-fn Ref() -> impl IntoView {
-    let i18n = use_i18n();
-    let selected_ref = use_context::<RwSignal<Option<PathBuf>>>().expect("selected not found");
-    let edit_ref = use_context::<RwSignal<bool>>().expect("reference not found");
-    let stat = use_context::<RwSignal<StatisticsState>>().expect("stat not found");
-    let now = use_context::<RwSignal<String>>().expect("now not found");
-    let pb = full_pb(stat.get_untracked().db_path, selected_ref.get_untracked().unwrap());
-    let query_string = RwSignal::new("".to_string());
-    let meta = RwSignal::new(MetaState::Pending);
-    let data = RwSignal::new(None::<Vec<DataRecord>>);
-
-    //let selected_el =
-
-    // get meta
-    spawn_local(async move {
-        let pb = full_pb(stat.get_untracked().db_path, selected_ref.get_untracked().unwrap());
-        match invoke("get_meta", &tauri_args!("pb": pb)).await {
-            Ok(js) => {
-                let s = from_value::<TableMeta>(js).unwrap();
-                meta.set(MetaState::Loaded(s))
-            }
-            Err(js) => {
-                let error_msg = from_value::<String>(js).unwrap_or_else(|_| "Unknown error".into());
-                now.set(format!("{} {}", "Failed get meta:", &error_msg));
-                meta.set(MetaState::Invalid(error_msg));
-            }
-        };
-    });
-
-    // get data. init - first 10 el. then - by search
-    let search_items = move |pb: PathBuf, query: String| {
-        spawn_local(async move {
-            match invoke("search_items", &tauri_args!("pb": pb, "query": query)).await {
-                Ok(js) => {
-                    let s = from_value::<Vec<DataRecord>>(js).unwrap();
-                    data.set(Some(s));
-                }
-                Err(js) => {
-                    let error_msg = from_value::<String>(js).unwrap_or_else(|_| "Unknown error".into());
-                    now.set(format!("{} {}", "Failed search:", error_msg));
-                }
-            };
-        });
-    };
-
-    search_items(pb.clone(), "".to_string());
-
-    let to_search = move |field: String| {
-        let pb = full_pb(stat.get_untracked().db_path, selected_ref.get_untracked().unwrap());
-        meta.update(|state| {
-            if let MetaState::Loaded(meta) = state {
-                if let Some(pos) = meta.search_config.iter().position(|f| f == &field) {
-                    meta.search_config.remove(pos);
-                } else {
-                    meta.search_config.push(field);
-                }
-            }
-        });
-
-        spawn_local({
-            let meta = meta.get_untracked();
-            let MetaState::Loaded(meta) = meta else { return };
-            async move {
-                let _ = invoke(
-                    "save_search_config",
-                    &tauri_args! {
-                        "pb": pb,
-                        "vec": meta.search_config
-                    },
-                )
-                .await;
-            }
-        });
-    };
-
-    Effect::new(move |_| {
-        //log::info!("meta: {:#?}", meta.get());
-        //log::info!("data: {:#?}", data.get());
-        log::info!("info: {:#?}", meta.get());
-    });
-    // debounce for search
-    Effect::new(move |_| {
-        let pbclon = pb.clone();
-        let current_query = query_string.get();
-
-        set_timeout(
-            move || {
-                if query_string.get() == current_query {
-                    search_items(pbclon, current_query);
-                }
-            },
-            std::time::Duration::from_millis(250),
-        );
-    });
-    view! {
-        <div class="ref">
-            {move || {
-                match meta.get() {
-                    MetaState::Invalid(msg) => view! { <h5 class="error gr">"🚫 "{msg}</h5> }.into_any(),
-                    MetaState::Pending => view! { <span class="gr" aria-busy="true"></span> }.into_any(),
-                    MetaState::Loaded(table_meta) => {
-                        let meta_for = sort_f_keys_v(table_meta.clone().search_config);
-                        view! {
-                            <div class="gr">
-                                <h3 class="ffull ">
-                                    <button on:click=move |_| selected_ref.set(None)>"←"</button>
-                                    {move || remove_refer_ext(&selected_ref.get().unwrap_or_default())}
-                                    <button on:click=move |_| edit_ref.set(true)>"✎"</button>
-                                </h3>
-
-                                // input. remove if empty search_config or count = 0
-                                {
-                                    let metaclon = meta_for.clone();
-                                    move || {
-                                        if metaclon.is_empty() {
-                                            view! {
-                                                <h5 class="warn">"⚠ Нет полей для поиска"</h5>
-                                                <h6 class="warn">
-                                                    "1-2 полей обычно достаточно. Но выбор за вами. Отметьте нужные:"
-                                                </h6>
-                                            }
-                                                .into_any()
-                                        } else {
-                                            let has_data = data.get().is_some_and(|d| !d.is_empty());
-                                            let query_len = query_string.get().len();
-                                            let text = match (query_len, has_data) {
-                                                (0, true) => " Первые элементы справочника ",
-                                                (0, false) => " Справочник пустой ",
-                                                (_, true) => " Найдено ",
-                                                (_, false) => " Ничего не найдено ",
-                                            };
-
-                                            view! {
-                                                <input
-                                                    type="text"
-                                                    on:input:target=move |ev| {
-                                                        query_string.set(ev.target().value());
-                                                    }
-                                                    prop:value=move || query_string.get()
-                                                />
-                                                <small>{text}</small>
-                                            }
-                                                .into_any()
-                                        }
-                                    }
-                                }
-
-                                {match meta_for.clone().is_empty() {
-                                    true => view! { "" }.into_any(),
-                                    false => {
-                                        view! {
-                                            <div class="search_result grid">
-                                                <For
-                                                    each=move || data.get().unwrap_or_default()
-                                                    key=|rec: &DataRecord| rec.id
-                                                    children=move |rec: DataRecord| {
-                                                        let search_fields = meta_for.clone();
-
-                                                        view! {
-                                                            <div class=rec
-                                                                .id
-                                                                .to_string()>
-                                                                {search_fields
-                                                                    .into_iter()
-                                                                    .filter_map(|k| { rec.fields.get(&k).map(|v| (k, v.clone())) })
-                                                                    .map(|(_k, v)| {
-                                                                        let val_str = match v {
-                                                                            FieldValue::Text(s) => s,
-                                                                            FieldValue::Number(n) => n.to_string(),
-                                                                            FieldValue::Null => String::new(),
-                                                                        };
-                                                                        view! { <span>{val_str}</span> }
-                                                                    })
-                                                                    .collect_view()}
-                                                            </div>
-                                                        }
-                                                    }
-                                                />
-                                            </div>
-                                        }
-                                            .into_any()
-                                    }
-                                }}
-
-                            // search result
-                            </div>
-
-                            <div class="grid1a stat_table gr info">
-                                {
-                                    let names = table_meta.clone().field_names;
-                                    let oper = table_meta.clone().operations;
-                                    view! {
-                                        <b>"Поля"</b>
-                                        <div class="ref_fields">
-                                            {match names.is_empty() {
-                                                true => view! { <span>"-"</span> }.into_any(),
-                                                false => {
-                                                    let header = // Сначала создаем заголовок
-                                                    view! {
-                                                        <small>
-                                                            <span>"name"</span>
-                                                            <span>"type"</span>
-                                                            <span>"in search"</span>
-                                                        </small>
-                                                    };
-                                                    let names = table_meta.field_names.clone();
-                                                    let mut sorted_keys: Vec<String> = names.keys().cloned().collect();
-                                                    sorted_keys
-                                                        .sort_by(|a, b| {
-                                                            let num_a = a[2..].parse::<i32>().unwrap_or(0);
-                                                            let num_b = b[2..].parse::<i32>().unwrap_or(0);
-                                                            num_a.cmp(&num_b)
-                                                        });
-                                                    let list = sorted_keys
-                                                        .into_iter()
-                                                        .filter_map(|key| {
-                                                            let name = names.get(&key)?;
-                                                            let ft = table_meta.field_types.get(&key)?;
-                                                            Some((name.clone(), ft.clone(), key))
-                                                        })
-                                                        .map(|(name, ft, k)| {
-                                                            view! {
-                                                                <li>
-                                                                    <span>{name}</span>
-                                                                    <span>{format!("{:?}", ft)}</span>
-                                                                    <label>
-                                                                        <input
-                                                                            type="checkbox"
-                                                                            prop:checked={
-                                                                                let k = k.clone();
-                                                                                move || {
-                                                                                    meta.with(|state| {
-                                                                                        match state {
-                                                                                            MetaState::Loaded(inner_meta) => {
-                                                                                                inner_meta.search_config.contains(&k)
-                                                                                            }
-                                                                                            _ => false,
-                                                                                        }
-                                                                                    })
-                                                                                }
-                                                                            }
-                                                                            on:click={
-                                                                                let k = k.clone();
-                                                                                move |_| { to_search(k.clone()) }
-                                                                            }
-                                                                        />
-                                                                    </label>
-                                                                </li>
-                                                            }
-                                                        })
-                                                        .collect_view();
-
-                                                    view! { <>{header} {list}</> }
-                                                        .into_any()
-                                                }
-                                            }}
-                                        </div>
-
-                                        <b>"Операции"</b>
-                                        <div>
-                                            {if oper.is_empty() {
-                                                view! { <span>"-"</span> }.into_any()
-                                            } else {
-                                                oper.into_iter()
-                                                    .map(|k| {
-                                                        view! { <div>{k.name}" : "{k.expression}</div> }
-                                                    })
-                                                    .collect_view()
-                                                    .into_any()
-                                            }}
-                                        </div>
-
-                                        <b>{t!(i18n, references.st_count)}</b>
-                                        <span>{table_meta.count_data}</span>
-                                    }
-                                }
-                            </div>
-                        }
-                            .into_any()
-                    }
-                }
-            }}
         </div>
     }
 }
@@ -954,8 +638,8 @@ fn Create() -> impl IntoView {
                 }
             }
 
-            let args = to_value(&CreateFormBack { val: final_data }).unwrap();
-            match invoke("create", &args).await {
+            //let args = to_value(&CreateFormBack { val: final_data }).unwrap();
+            match invoke("create", &tauri_args!("val": final_data)).await {
                 Ok(_s) => {
                     now.set(format!(
                         "{}: {}",
@@ -986,8 +670,9 @@ fn Create() -> impl IntoView {
             ..Default::default()
         };
         spawn_local(async move {
-            let args = to_value(&CreateFormBack { val: form_data }).unwrap();
-            match invoke("create", &args).await {
+            //let args = to_value(&CreateFormBack { val: form_data }).unwrap();
+            // let _ = invoke("set_settings", &tauri_args!("new": settings.get_untracked())).await;
+            match invoke("create", &tauri_args!("val": form_data)).await {
                 Ok(_js) => {
                     now.set(format!("{}: {:?}", tu_string!(i18n, create.ok_create), &name));
                     upd_stat(stat, now);
@@ -1136,38 +821,6 @@ fn Create() -> impl IntoView {
     }
 }
 
-pub fn validate_relative_refer_path(p: &Path) -> Result<(), ()> {
-    let s = p.to_string_lossy();
-
-    // не должен начинаться или заканчиваться на '/'
-    if s.starts_with('/') || s.ends_with('/') {
-        return Err(());
-    }
-    // запрещаем ':' и обратный слеш
-    if s.contains(':') || s.contains('\\') || s.contains("//") {
-        return Err(());
-    }
-
-    // каждый компонент не пустой, не "..", без управляющих символов и длина 1..=255
-    for comp in s.split('/') {
-        if comp.is_empty() {
-            return Err(());
-        }
-        if comp == ".." {
-            return Err(());
-        }
-        if comp.chars().any(|c| c.is_control()) {
-            return Err(());
-        }
-        let len = comp.chars().count();
-        if len == 0 || len > 255 {
-            return Err(());
-        }
-    }
-
-    Ok(())
-}
-
 #[component]
 fn LogViewer() -> impl IntoView {
     let logs = RwSignal::new(None::<String>);
@@ -1208,174 +861,3 @@ fn LogViewer() -> impl IntoView {
         </div>
     }
 }
-
-fn read_size(bytes: u64) -> String {
-    const KB: f64 = 1024.0;
-    let b = bytes as f64;
-    if b < KB * 10.0 {
-        // показывать в байтах до ~10 KiB как целое
-        format!("{} B", bytes)
-    } else if b < KB * KB {
-        // KiB с 1 знаком
-        format!("{:.1} KiB", b / KB)
-    } else {
-        // MiB с 1 знаком (и дальше можно дополнять GiB и т.д.)
-        format!("{:.1} MiB", b / (KB * KB))
-    }
-}
-
-fn upd_stat(stat: RwSignal<StatisticsState>, now: RwSignal<String>) {
-    spawn_local(async move {
-        match invoke("get_stat", &JsValue::NULL).await {
-            Ok(js) => {
-                let res = from_value::<StatisticsState>(js).unwrap_or_default();
-                stat.set(res);
-            }
-            Err(js) => {
-                let error_msg = from_value::<String>(js).unwrap_or_else(|_| "Unknown error".into());
-                now.set(format!("Err: {}", error_msg));
-            }
-        };
-    });
-}
-
-fn remove_refer_ext(p: &Path) -> String {
-    let mut s = p.display().to_string();
-    if s.ends_with(".refer") {
-        s.truncate(s.len() - ".refer".len());
-    }
-    s
-}
-
-fn get_file_extension(filename: &str) -> String {
-    filename.rsplit('.').next().unwrap_or("").to_string()
-}
-
-async fn read_file_as_bytes(file: &web_sys::File) -> Result<Vec<u8>, String> {
-    let array_buffer_promise = file.array_buffer();
-    let array_buffer = wasm_bindgen_futures::JsFuture::from(array_buffer_promise)
-        .await
-        .map_err(|e| format!("Ошибка чтения файла: {:?}", e))?;
-
-    let uint8_array = js_sys::Uint8Array::new(&array_buffer);
-    Ok(uint8_array.to_vec())
-}
-
-fn full_pb(main: PathBuf, rel: PathBuf) -> PathBuf {
-    let mut p = main;
-    p.push(rel);
-    p.to_path_buf()
-}
-
-fn sort_f_keys_h<T>(map: &HashMap<String, T>) -> Vec<&String> {
-    let mut keys: Vec<&String> = map.keys().collect();
-    keys.sort_by(|a, b| {
-        let num_a = a[2..].parse::<i32>().unwrap_or(0);
-        let num_b = b[2..].parse::<i32>().unwrap_or(0);
-        num_a.cmp(&num_b)
-    });
-    keys
-}
-
-fn sort_f_keys_v(keys: Vec<String>) -> Vec<String> {
-    let mut sorted = keys;
-    sorted.sort_by(|a, b| {
-        let num_a = a[2..].parse::<i32>().unwrap_or(0);
-        let num_b = b[2..].parse::<i32>().unwrap_or(0);
-        num_a.cmp(&num_b)
-    });
-    sorted
-}
-
-// let p = dbp(stat.get_untracked().db_path, selected_ref.get_untracked().unwrap());
-/*fn ensure_utf8_path(p: &std::path::Path) -> Result<&str, &'static str> {
-    p.to_str().ok_or("Имя файла содержит недопустимые (не UTF-8) символы.")
-}*/
-//let result: Result<(), String> = from_value(js).map_err(|e| format!("deserialize failed: {e}"));
-// app.rs или отдельный модуль helpers.rs
-/*
-    /*Effect::new(move |_| {
-        log::info!("stat00: {:?}", stat.get());
-        log::info!("set00: {:?}", settings.get());
-        log::info!("now00: {:?}", now.get());
-    });*/
-
-fn show_success(now: RwSignal<String>, i18n: &I18nContext<Locale, I18nKeys>, key: impl Into<String>) {
-    now.set(t_string!(i18n, key).to_string());
-    clear_after_delay(now.clone(), 3000);
-}
-
-fn show_error(now: RwSignal<String>, i18n: &I18nContext<Locale, I18nKeys>, key: &str, details: &str) {
-    now.set(format!("{}: {}", t_string!(i18n, key), details));
-    clear_after_delay(now.clone(), 5000);
-}
-
-fn clear_after_delay(now: RwSignal<String>, ms: u32) {
-    set_timeout(
-        move || now.set("".to_string()),
-        std::time::Duration::from_millis(ms as u64)
-    );
-}*/
-
-// convert code 2 lang
-/*
-fn key_convert(r: &str) -> String {
-    let i18n = use_i18n();
-    match r {
-        "err_test" => t_string!(i18n, err.err_test).to_string(),
-        _ => t_string!(i18n, err.err_unknown).to_string(),
-    }
-}
-
-                            <span
-                                data-placement="right"
-                                data-tooltip=t_string!(i18n, create.ttp_path)
-                            >
-                                "?"
-                            </span>
-
-
-    "crate_title": "Create",
-    "edit_title": "Edit"
-    let stat: RwSignal<StatisticsState> = use_context::<RwSignal<StatisticsState>>().expect("stat not found");
-    let selected_ref: RwSignal<String> = use_context::<RwSignal<String>>().expect("selected not found");
-
-        spawn_local(async move {
-            let commands = commands.get_untracked();
-            let args = to_value(&SaveBackArgs { commands }).unwrap();
-            let js = invoke("set_commands", args).await;
-            let result: Result<String, String> = from_value(js).map_err(|e| format!("deserialize failed: {e}"));
-            match result {
-                Ok(_) => { set_status.set("Ok( Commands saved )".to_string());}
-                Err(e) => set_status.set(format!("Err( Save failed: {e} )")),
-            }
-            let _ = invoke("request_restart", JsValue::NULL).await;
-        });
-
-
-*/
-// remove_refer_ext(item.clone().display().to_string())
-/*spawn_local(async move {
-    let args = to_value(&CreateFormBack { val: form_data }).unwrap();
-    let js = invoke("create", args).await;
-    let result: Result<String, String> = from_value(js).map_err(|e| format!("deserialize failed: {e}"));
-    log::debug!("{:?}", &result);
-    match result {
-        Ok(_) => {
-            log::info!("create_ex: {}", &name);
-            set_now(now,format!("{}: {}", tu_string!(i18n, create.ok_create), &name));
-            //selected_ref.set(Some("abook.refer".to_string()));
-            //active_tab.set(1);
-        }
-        Err(e) => set_now(now,format!("{}: {} - {}", tu_string!(i18n, create.er_create), &name,e))
-    }
-
-// Использование
-async fn delete_reference(name: String) {
-    match invoke("del_ref", &tauri_args!("val" => name.clone())).await {
-        Ok(_) => log!("Deleted"),
-        Err(e) => log!("Error: {:?}", e),
-    }
-}
-
-});*/

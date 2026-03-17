@@ -1,4 +1,6 @@
 mod app;
+mod func;
+mod refs;
 use app::*;
 use leptos::prelude::*;
 include!(concat!(env!("OUT_DIR"), "/i18n/mod.rs"));
