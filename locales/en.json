@@ -47,7 +47,18 @@
     "st_size": "Size",
     "st_log": "Log"
   },
-  "ref_view": {
-    
+  "ref_main": {
+    "no_fields_selected": "⚠ No fields selected for search",
+    "fields_hint": "1-2 fields are usually enough. The choice is yours. Selected fields will be saved for the next session.",
+    "first_records": "First records of the reference",
+    "ref_empty": "The reference is empty",
+    "found": "Found",
+    "nothing_found": "Nothing found",
+    "columns": "Fields",
+    "column_name": "name",
+    "column_type": "type",
+    "column_in_search": "in search",
+    "operations": "Operations",
+    "total_records": "Total records"
   }
 }

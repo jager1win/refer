@@ -241,7 +241,7 @@ fn ReferencesContainer() -> impl IntoView {
         <div class="references-container">
             <Show when=move || selected_ref.get().is_some() fallback=|| view! { <Refs /> }>
                 <Show when=move || !edit_ref.get() fallback=|| view! { <Edit /> }>
-                    <Ref />
+                    <Ref_main />
                 </Show>
             </Show>
         </div>

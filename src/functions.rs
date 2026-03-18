@@ -1,9 +1,9 @@
-use std::path::{Path, PathBuf};
-use std::collections::HashMap;
-use leptos::prelude::*;
 use crate::app::*;
+use leptos::prelude::*;
 use leptos::task::spawn_local;
-use serde_wasm_bindgen::{from_value};
+use serde_wasm_bindgen::from_value;
+use std::collections::HashMap;
+use std::path::{Path, PathBuf};
 use wasm_bindgen::prelude::*;
 
 pub fn validate_relative_refer_path(p: &Path) -> Result<(), ()> {
@@ -116,10 +116,10 @@ pub fn sort_f_keys_v(keys: Vec<String>) -> Vec<String> {
     sorted
 }
 
-pub fn f2name(v:Vec<String>, names:HashMap<String, String>)->Vec<String>{
-    let mut res: Vec<String> = Vec::new(); 
-    for f in v{
-        if names.contains_key(&f){
+pub fn f2name_v(v: Vec<String>, names: HashMap<String, String>) -> Vec<String> {
+    let mut res: Vec<String> = Vec::new();
+    for f in v {
+        if names.contains_key(&f) {
             res.push(names[&f].clone());
         }
     }

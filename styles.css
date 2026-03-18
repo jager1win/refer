@@ -57,32 +57,7 @@ border-top:1px dashed var(--pico-color);}
 .ref_fields{padding-right:1rem;}
 .ref_fields > *{display: grid;grid-template-columns: 3fr 2fr 1fr;gap: 1rem 1rem;}
 small{color:var(--pico-muted-color)}
-/*
-.search_results {
-  display: grid;
-  grid-template-columns: repeat(auto-fit);
-  grid-auto-rows: auto;
-  overflow-x: auto;
-  gap: 0.5rem 1rem;
-  max-width: 100%;
-  padding-bottom: 1rem;
-}
-
-.search_results > .row {
-  display: grid;
-  grid-auto-flow: column;
-}
-
-.search_results > .row > *{text-align: left;white-space: nowrap;}*/
-.search_results {display: inline-grid;width: 100%;
-    gap:0.6rem;
-    /* Колонки: минимум по контенту, но свободное место делят поровну (1fr) */
-    grid-template-columns: repeat(var(--cols), minmax(max-content, 1fr));
-    
-    overflow-x: auto;
-    padding-bottom: 1rem;
-}
-
+.search_results {display: inline-grid;width: 100%;grid-template-columns: repeat(var(--cols), minmax(max-content, 1fr));overflow-x: auto;}
 .search_results .row {
     grid-column: 1 / span var(--cols);
     display: grid;
@@ -90,6 +65,7 @@ small{color:var(--pico-muted-color)}
     padding:0.3rem;
     width: 100%;
     min-width: max-content;
+    margin-bottom:0.8rem;
 }
 .search_results .row:first-child {text-align: center;}
 .search_results .row > div {white-space: nowrap;}
