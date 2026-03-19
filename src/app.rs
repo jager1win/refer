@@ -70,6 +70,8 @@ pub enum FieldType {
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct TableMeta {
+    pub name: String,
+    pub desc: String,
     pub field_names: HashMap<String, String>,
     pub field_types: HashMap<String, FieldType>,
     pub operations: Vec<Operation>,
@@ -104,7 +106,7 @@ pub fn App() -> impl IntoView {
     let edit_ref: RwSignal<bool> = RwSignal::new(false);
     let active_tab: RwSignal<i32> = RwSignal::new(1);
     let now: RwSignal<String> = RwSignal::new(String::from(""));
-    let er_pat = ["fail", "error", "warning", "invalid"];
+    let er_pat = ["fail", "error", "warning", "invalid", "unknown"];
 
     provide_context(settings);
     provide_context(stat);
@@ -403,7 +405,6 @@ fn Settings() -> impl IntoView {
             </div>
         </div>
         <div class="settings_block gr">
-            <h5>"Создано с помощью Rust, Tauri, Leptos, Picocss."</h5>
             <p>"Заполнить блок - содержимое About"</p>
         </div>
     }
@@ -583,7 +584,7 @@ fn Create() -> impl IntoView {
 
             match form_data.mode.as_str() {
                 "sheet" => {
-                    let allowed = ["csv", "xls", "xlsx", "ods"];
+                    let allowed = ["csv", "tsv", "xls", "xlsx", "ods"];
                     if !allowed.contains(&extension.as_str()) {
                         err_form.set(format!(
                             "!!! {} = {}",
@@ -761,7 +762,7 @@ fn Create() -> impl IntoView {
                                                 "?"
                                             </span>
                                         </label>
-                                        <input id="sheet_file" type="file" name="file" accept=".csv,.xls,.xlsx,.ods" required />
+                                        <input id="sheet_file" type="file" name="file" accept=".csv,.tsv,.xls,.xlsx,.ods" required />
                                     </div>
                                     <div class="gridl">
                                         <label>

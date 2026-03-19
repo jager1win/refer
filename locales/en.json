@@ -37,7 +37,7 @@
     "fheader": "Header",
     "ttp_path": "You can use subfolders (e.g. tmp/my_refer)",
     "ttp_header": "Use first row as column names",
-    "ttp_table": ".csv, .xls, .xlsx, .ods | single sheet",
+    "ttp_table": ".csv, .tsv, .xls, .xlsx, .ods | single sheet",
     "ttp_sqlite": ".sqlite, .sqlite3, .db | single table"
   },
   "refs": {
@@ -48,6 +48,8 @@
     "st_log": "Log"
   },
   "ref_main": {
+    "name": "Name",
+    "desc": "Description",
     "no_fields_selected": "⚠ No fields selected for search",
     "fields_hint": "1-2 fields are usually enough. The choice is yours. Selected fields will be saved for the next session.",
     "first_records": "First records of the reference",

@@ -29,7 +29,7 @@ button:not(.navb){padding:0.4rem}
 .err_send{display: inline-block; width: 100%; min-height:1rem;color:#AD6400;text-align: center;}
 .required {color: red; margin-left: 0.25rem;}
 .w1{width: 1rem!important;}
-.form_new input[type=text]{height: 2rem;}
+input[type=text]{height: 2rem;}
 .ml1, [data-tooltip]{margin-left: 1rem;}
 input.csv_deli{width: 2rem!important;padding: 0.4rem!important;}
 .gr{border:1px solid oklch(55.1% 0.027 264.364 / 0.3);border-radius: 0.4rem;padding:0.6rem;margin:0.6rem}
@@ -65,12 +65,14 @@ small{color:var(--pico-muted-color)}
     padding:0.3rem;
     width: 100%;
     min-width: max-content;
-    margin-bottom:0.8rem;
+    margin-bottom:0.4rem;
 }
-.search_results .row:first-child {text-align: center;}
+.search_results .row:first-child {text-align: center;padding: 0;margin:0;}
 .search_results .row > div {white-space: nowrap;}
-
-
+.header-row {display: flex;align-items: center;justify-content: space-between;width: 100%;padding-bottom: 0.2rem;}
+.title-group {flex: 1;text-align: center;min-width: 0;}
+.meta {display:flex; white-space: nowrap;overflow: hidden;text-overflow: ellipsis;gap: 2ch;justify-content: center;}
+.meta span {display: inline;flex-shrink: 1; overflow: hidden;text-overflow: ellipsis;}
 
 /* COLORS */
 .warn{color: oklch(70.5% 0.213 47.604);}

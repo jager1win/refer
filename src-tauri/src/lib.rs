@@ -7,7 +7,7 @@ use std::sync::Mutex;
 use tauri::Manager;
 pub mod sql;
 pub mod commands;
-pub mod errors;
+pub mod import;
 use crate::commands::*;
 use crate::sql::DbState;
 use tracing_subscriber::{fmt, EnvFilter};

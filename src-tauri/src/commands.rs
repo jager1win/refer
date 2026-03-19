@@ -150,7 +150,7 @@ pub fn clear_log(app: tauri::AppHandle) -> Result<String, String> {
 }
 
 #[tauri::command]
-pub fn create(val: CreateForm, stat_state: State<'_, Mutex<StatisticsState>>) -> Result<String, String> {
+pub fn create(val: CreateForm, stat_state: State<'_, Mutex<StatisticsState>>) -> Result<(), String> {
     let stat_state = stat_state.lock().unwrap();
     let mut root = stat_state.db_path.clone();
 
@@ -162,14 +162,15 @@ pub fn create(val: CreateForm, stat_state: State<'_, Mutex<StatisticsState>>) ->
         }
     }
 
-    //println!("val.mode: {:?}, val.db_name: {:?}", &val.mode, &val.db_name);
+    println!("val.mode: {:?}, val.db_name: {:?}, header:{:?}, file_ext: {:?}", &val.mode, &val.db_name, &val.has_header, &val.file_extension);
     match val.mode.as_str() {
         "empty" => match create_empty_database(&root) {
             Ok(()) => {
                 info!("Empty database created: {:?}", &val.db_name);
-                Ok(String::from("ok"))
+                Ok(())
             }
             Err(e) => {
+                let _ = fs::remove_file(&root);
                 error!("Failed to create empty db: {}", e);
                 Err(format!("Failed to create db: {}", e))
             }
@@ -179,17 +180,36 @@ pub fn create(val: CreateForm, stat_state: State<'_, Mutex<StatisticsState>>) ->
             match create_example_database(demo_name, &root) {
                 Ok(()) => {
                     info!("Demo database '{}' created", demo_name);
-                    Ok(String::from("ok"))
+                    Ok(())
                 }
                 Err(e) => {
+                    let _ = fs::remove_file(&root);
                     error!("Failed to create demo db '{}': {}", demo_name, e);
                     Err(format!("Failed to create demo db: {}", e))
                 }
             }
         }
-        "from_file" => match create_from_file(&root, &val) {
-            Ok(()) => Ok(String::from("ok")),
-            Err(e) => Err(format!("Failed to create db: {:?}", e)),
+        "sheet" => match create_from_sheet(&root, &val) {
+            Ok(()) => {
+                info!("Database '{:?}' from file created", &val.db_name);
+                Ok(())
+            }
+            Err(e) => {
+                let _ = fs::remove_file(&root);
+                error!("Failed to create db from file: {}", e);
+                Err(format!("Failed to create db from file: {:?}", e))
+            }
+        },
+        "sqlite" => match create_from_sqlite(&root, &val) {
+            Ok(()) => {
+                info!("Database '{:?}' from sqlite created", &val.db_name);
+                Ok(())
+            }
+            Err(e) => {
+                let _ = fs::remove_file(&root);
+                error!("Failed to create db from sqlite: {}", e);
+                Err(format!("Failed to create db from sqlite: {:?}", e))
+            }
         },
         _ => Err(format!("Unknown operation: {}", val.mode)),
     }

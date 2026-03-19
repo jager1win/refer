@@ -110,11 +110,21 @@ pub fn Ref_main() -> impl IntoView {
                             let meta_for = sort_f_keys_v(table_meta.clone().search_config);
                             view! {
                                 <div class="gr">
-                                    <h3 class="ffull ">
+                                    <div class="header-row">
                                         <button on:click=move |_| selected_ref.set(None)>"←"</button>
-                                        {move || remove_refer_ext(&selected_ref.get().unwrap_or_default())}
+
+                                        <div class="title-group">
+                                            <span>
+                                                {move || remove_refer_ext(&selected_ref.get().unwrap_or_default())}
+                                            </span>
+                                            <small class="meta grid">
+                                                <span>{table_meta.name.clone()}</span>
+                                                <span>{table_meta.desc.clone()}</span>
+                                            </small>
+                                        </div>
+
                                         <button on:click=move |_| edit_ref.set(true)>"✎"</button>
-                                    </h3>
+                                    </div>
 
                                     // input. remove if empty search_config or count = 0
                                     {
@@ -130,12 +140,12 @@ pub fn Ref_main() -> impl IntoView {
                                                 let has_data = data.get().is_some_and(|d| !d.is_empty());
                                                 let query_len = query_string.get().len();
                                                 let text = match (query_len, has_data) {
-                                                    (0, true) => {tu_string!(i18n, ref_main.first_records)},
-                                                    (0, false) => {tu_string!(i18n, ref_main.ref_empty)},
-                                                    (_, true) => {tu_string!(i18n, ref_main.found)},
-                                                    (_, false) => {tu_string!(i18n, ref_main.nothing_found)},
+                                                    (0, true) => tu_string!(i18n, ref_main.first_records),
+                                                    (0, false) => tu_string!(i18n, ref_main.ref_empty),
+                                                    (_, true) => tu_string!(i18n, ref_main.found),
+                                                    (_, false) => tu_string!(i18n, ref_main.nothing_found),
                                                 };
-                                                
+
                                                 view! {
                                                     <input
                                                         type="text"
@@ -144,7 +154,7 @@ pub fn Ref_main() -> impl IntoView {
                                                         }
                                                         prop:value=move || query_string.get()
                                                     />
-                                                    <small>{text}</small>
+                                                    <small class="m0">{text}</small>
                                                 }
                                                     .into_any()
                                             }

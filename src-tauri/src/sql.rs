@@ -31,6 +31,8 @@ pub enum FieldValue {
 // Метаданные таблицы из таблицы meta
 #[derive(Default, Clone, Debug, Deserialize, Serialize)]
 pub struct TableMeta {
+    pub name: String,
+    pub desc: String,
     pub field_names: HashMap<String, String>,    // f_0 -> "Name", f_1 -> "Age"
     pub field_types: HashMap<String, FieldType>, // f_0 -> Text, f_1 -> Number
     pub operations: Vec<Operation>,              // вычисляемые поля
@@ -90,6 +92,9 @@ impl DbState {
             meta_data.insert(key, value);
         }
 
+        let name = meta_data.get("name").cloned().unwrap_or_default();
+        let desc = meta_data.get("desc").cloned().unwrap_or_default();
+
         // Парсим с обработкой ошибок, но не паникуем
         let field_names: HashMap<String, String> = match meta_data.get("field_names") {
             Some(s) => serde_json::from_str(s).unwrap_or_default(),
@@ -114,6 +119,8 @@ impl DbState {
         let count_data: u32 = conn.query_row(&format!("SELECT COUNT(*) FROM \"{}\"", "data"), [], |r| r.get(0))?;
 
         Ok(TableMeta {
+            name,
+            desc,
             field_names,
             field_types,
             operations,
@@ -124,19 +131,18 @@ impl DbState {
 
     pub fn update_meta<F>(&mut self, path: &PathBuf, f: F) -> Result<(), String>
     where
-        F: FnOnce(&mut TableMeta) -> Result<(), String>
+        F: FnOnce(&mut TableMeta) -> Result<(), String>,
     {
         // Проверяем, что работаем с той же базой
         if self.current_path.as_ref() != Some(path) {
             return Err("Database not opened".to_string());
         }
-        
-        let conn = self.conn.as_ref().ok_or("No connection")?;
+
         let meta = self.meta.as_mut().ok_or("No meta loaded")?;
-        
+
         // Применяем изменения к meta в памяти
         f(meta)?;
-        
+
         // Сохраняем изменения в БД (если нужно)
         Ok(())
     }
@@ -189,20 +195,19 @@ pub fn search_items(conn: &Connection, meta: &TableMeta, query: &str) -> Result<
 }
 
 pub fn save_search_config(conn: &Connection, vec: &Vec<String>) -> Result<()> {
-    let config_json = serde_json::to_string(vec)
-        .map_err(|e| rusqlite::Error::ToSqlConversionFailure(Box::new(e)))?;
-    
+    let config_json = serde_json::to_string(vec).map_err(|e| rusqlite::Error::ToSqlConversionFailure(Box::new(e)))?;
+
     conn.execute(
         "INSERT INTO meta (key, value) VALUES ('search_config', ?1)
          ON CONFLICT(key) DO UPDATE SET value = excluded.value",
         params![config_json],
     )?;
-    
+
     Ok(())
 }
 
 // Получить один элемент по ID
-pub fn get_item(conn: &Connection, id: u32) -> Result<Option<DataRecord>, String> {
+pub fn get_el(conn: &Connection, id: u32) -> Result<Option<DataRecord>, String> {
     let mut stmt = conn
         .prepare("SELECT * FROM data WHERE id = ?1")
         .map_err(|e| e.to_string())?;
@@ -213,28 +218,6 @@ pub fn get_item(conn: &Connection, id: u32) -> Result<Option<DataRecord>, String
         Err(e) => Err(e.to_string()),
     }
 }
-
-/*fn row_to_record(row: &Row) -> Result<DataRecord> {
-    let id = row.get(0)?;
-    let mut fields = HashMap::new();
-
-    // Получаем все колонки, начиная с 1 (после id)
-    let column_count = row.as_ref().column_count();
-    for i in 1..column_count {
-        let column_name = row.as_ref().column_name(i)?.to_string();
-
-        // Пробуем получить как число, если не получается - как текст
-        if let Ok(num) = row.get::<_, f64>(i) {
-            fields.insert(column_name, FieldValue::Number(num));
-        } else if let Ok(text) = row.get::<_, String>(i) {
-            fields.insert(column_name, FieldValue::Text(text));
-        } else {
-            fields.insert(column_name, FieldValue::Null);
-        }
-    }
-    // println!("rtr: {}, {:?}", &id, &fields);
-    Ok(DataRecord { id, fields })
-}*/
 
 fn row_to_record(row: &Row) -> Result<DataRecord> {
     let id: u32 = row.get(0)?;
@@ -265,37 +248,6 @@ fn row_to_record(row: &Row) -> Result<DataRecord> {
     Ok(DataRecord { id, fields })
 }
 
-/*pub fn get_all_items(conn: &Connection) -> Result<Vec<Item>> {
-    let mut stmt = conn.prepare("SELECT * FROM items ORDER BY name")?;
-    let items = stmt.query_map([], |row| {
-        Ok(Item {
-            id: row.get(0)?,
-            name: row.get(1)?,
-            description: row.get(2)?,
-        })
-    })?;
-
-    let mut result = Vec::new();
-    for item in items {
-        result.push(item?);
-    }
-    Ok(result)
-}*/
-// mutex db conn
-/*n open_db(path: String, db_state: tauri::State<'_, DbState>) -> Result<(), String> {
-    use rusqlite::Connection;
-    let conn = Connection::open(&path)
-        .map_err(|e| format!("Ошибка открытия БД: {}", e))?;
-
-    // 2. Обновляем DbState (активное соединение)
-    let mut db_lock = db_state.0.lock().unwrap();
-    *db_lock = Some(conn);
-
-    Ok(())
-}*/
-
-// ==================== Базовые операции с БД ====================
-
 // Создание пустой базы
 pub fn create_empty_database(path: &PathBuf) -> Result<()> {
     let conn = Connection::open(path)?;
@@ -322,16 +274,16 @@ pub fn create_empty_database(path: &PathBuf) -> Result<()> {
 
     conn.execute(
         "INSERT INTO meta (key, value) VALUES 
-         ('table_name', ?1),
-         ('table_description', ?2),
+         ('name', ?1),
+         ('desc', ?2),
          ('field_names', ?3),
          ('field_types', ?4),
          ('operations', ?5),
          ('search_config', ?6),
          ('created_at', ?7)",
         params![
-            "",   // table_name - пустое, юзер сам заполнит
-            "",   // table_description - пустое
+            "",   // name - пустое, юзер сам заполнит
+            "",   // desc - пустое
             "{}", // field_names - пустой JSON объект
             "{}", // field_types - пустой JSON объект
             "[]", // operations - пустой JSON массив
@@ -343,7 +295,30 @@ pub fn create_empty_database(path: &PathBuf) -> Result<()> {
     Ok(())
 }
 
-pub fn create_from_file(path: &PathBuf, val: &CreateForm) -> Result<()> {
+pub fn create_from_sheet(path: &PathBuf, val: &CreateForm) -> Result<()> {
+    match val.file_extension.clone().unwrap().as_str() {
+        "csv" | "tsv" => create_from_csv_file(path, val),
+        "xls" | "xlsx" | "ods" => create_from_sheet_file(path, val),
+        &_ => Err(Error::SqliteFailure(
+            rusqlite::ffi::Error::new(1),
+            Some("Unknown file ext".to_string()),
+        )),
+    }
+}
+
+pub fn create_from_csv_file(path: &PathBuf, val: &CreateForm) -> Result<()> {
+    create_empty_database(path)?;
+    let conn = Connection::open(path)?;
+    Ok(())
+}
+
+pub fn create_from_sheet_file(path: &PathBuf, val: &CreateForm) -> Result<()> {
+    // TODO: реализовать
+    Ok(())
+}
+
+pub fn create_from_sqlite(path: &PathBuf, val: &CreateForm) -> Result<()> {
+    // TODO: реализовать
     Ok(())
 }
 
@@ -371,7 +346,7 @@ pub fn add_field(
 
     let mut names: serde_json::Value = serde_json::from_str(&names_json).unwrap_or(json!({}));
     if let Some(obj) = names.as_object_mut() {
-        let name = display_name.unwrap_or(&format!("Field {}", field_index)).to_string();
+        let name = display_name.unwrap_or(&format!("#{}", field_index)).to_string();
         obj.insert(field_name.clone(), json!(name));
     }
 
@@ -414,7 +389,7 @@ pub fn import_csv(conn: &Connection, csv_data: &str, has_header: bool) -> Result
         let first_line = lines.clone().next().unwrap_or("");
         let col_count = first_line.split(',').count();
         (0..col_count)
-            .map(|i| Box::leak(format!("Field_{}", i + 1).into_boxed_str()) as &str)
+            .map(|i| Box::leak(format!("#{}", i + 1).into_boxed_str()) as &str)
             .collect()
     };
 
@@ -451,6 +426,15 @@ pub fn import_csv(conn: &Connection, csv_data: &str, has_header: bool) -> Result
     Ok(field_names)
 }
 
+pub fn import_csv_from_bytes(conn: &Connection, bytes: &[u8], has_header: bool) -> Result<Vec<String>> {
+    // Конвертируем Vec<u8> в &str
+    let csv_str = std::str::from_utf8(bytes)
+        .map_err(|e| rusqlite::Error::InvalidParameterName(format!("Invalid UTF-8 in file: {}", e)))?;
+
+    // Вызываем твою существующую функцию
+    import_csv(conn, csv_str, has_header)
+}
+
 // Добавление операции
 pub fn add_operation(conn: &Connection, name: &str, expression: &str, description: Option<&str>) -> Result<()> {
     let ops_json: String = conn.query_row("SELECT value FROM meta WHERE key = 'operations'", [], |row| row.get(0))?;
@@ -474,20 +458,7 @@ pub fn add_operation(conn: &Connection, name: &str, expression: &str, descriptio
     Ok(())
 }
 
-// ==================== Создание демо-баз ====================
-
-// Данные для баллистики
-const BALLISTICS_CSV: &str = "caliber,bullet_mass_g,muzzle_velocity,bc_g1,cross_section_cm2
-.308 Winchester,11.3,800,0.475,0.48
-.338 Lapua Mag,16.2,900,0.648,0.57
-7.62x54R LPS,9.6,830,0.420,0.48
-5.45x39 7N6,3.4,900,0.347,0.23
-.223 Remington,4.0,930,0.304,0.25
-6.5 Creedmoor,8.9,860,0.520,0.34
-.300 Win Mag,11.7,880,0.590,0.42
-9x19 Parabellum,8.0,360,0.150,0.12
-.45 ACP,15.0,260,0.180,0.16
-12 gauge slug,28.0,480,0.210,2.15";
+// ==================== Create demo ====================
 
 pub fn create_ballistics_database(path: &PathBuf) -> Result<()> {
     // Создаем пустую базу
@@ -495,14 +466,14 @@ pub fn create_ballistics_database(path: &PathBuf) -> Result<()> {
 
     let conn = Connection::open(path)?;
 
-    // Обновляем table_name и table_description
+    // Обновляем name и desc
     conn.execute(
-        "UPDATE meta SET value = ?1 WHERE key = 'table_name'",
+        "UPDATE meta SET value = ?1 WHERE key = 'name'",
         params!["Ballistics Data"],
     )?;
 
     conn.execute(
-        "UPDATE meta SET value = ?1 WHERE key = 'table_description'",
+        "UPDATE meta SET value = ?1 WHERE key = 'desc'",
         params!["Ballistic trajectory calculator demo data"],
     )?;
 
@@ -556,3 +527,16 @@ pub fn create_example_database(name: &str, path: &PathBuf) -> Result<()> {
         )),
     }
 }
+
+// Данные для баллистики
+const BALLISTICS_CSV: &str = "caliber,bullet_mass_g,muzzle_velocity,bc_g1,cross_section_cm2
+.308 Winchester,11.3,800,0.475,0.48
+.338 Lapua Mag,16.2,900,0.648,0.57
+7.62x54R LPS,9.6,830,0.420,0.48
+5.45x39 7N6,3.4,900,0.347,0.23
+.223 Remington,4.0,930,0.304,0.25
+6.5 Creedmoor,8.9,860,0.520,0.34
+.300 Win Mag,11.7,880,0.590,0.42
+9x19 Parabellum,8.0,360,0.150,0.12
+.45 ACP,15.0,260,0.180,0.16
+12 gauge slug,28.0,480,0.210,2.15";
