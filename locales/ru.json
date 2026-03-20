@@ -2,7 +2,8 @@
   "all": {
     "reference": "Справочник",
     "references": "Справочники",
-    "err_unknown": "неизвестная ошибка"
+    "err_unknown": "неизвестная ошибка",
+    "del": "Удалить"
   },
   "settings": {
     "title": "Настройки приложения",
@@ -19,7 +20,8 @@
     "er_del_ref": "Ошибка удаления"
   },
   "create": {
-    "title": "Создать",
+    "button": "Создать",
+    "button_file": "Выбрать файл и импортировать",
     "main_error": "Вы не можете создавать справочники так как есть проблемы с доступом к папке приложения",
     "ref_from_empty": "Пустой",
     "ref_from_table": "Таблица",
@@ -32,13 +34,14 @@
     "example_desc_2": "example_desc_2",
     "example_desc_3": "example_desc_3",
     "fname": "Название файла",
-    "fsqlite": "Файл SQLite",
-    "ftable": "Файл таблицы",
     "fheader": "Заголовок",
     "ttp_path": "Можно указать подпапку (например, tmp/my_refer)",
     "ttp_header": "Первая строка — названия столбцов",
-    "ttp_table": ".csv, .tsv, .xls, .xlsx, .ods | один лист",
-    "ttp_sqlite": ".sqlite, .sqlite3, .db | одна таблица"
+    "fsqlite": "SQLite: sqlite, sqlite3, db",
+    "ftable": "Таблицы: csv, tsv, xls, xlsx, ods",
+    "ttp_table": "Один или несколько однотипных листов. Без формул.",
+    "ttp_sqlite": "Одна или несколько однотипных таблиц",
+    "ttp_empty": "Создание справочника с нуля"
    },
   "refs": {
     "st_path": "Путь",

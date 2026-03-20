@@ -2,17 +2,17 @@ use serde::{Deserialize, Serialize};
 use std::fs::{self, File, OpenOptions};
 use std::io::{self, Write};
 use std::path::{Path, PathBuf};
-use std::time::{SystemTime, UNIX_EPOCH};
 use std::sync::Mutex;
-use tauri::Manager;
-pub mod sql;
+use std::time::{SystemTime, UNIX_EPOCH};
+use tauri::{Manager, State};
 pub mod commands;
 pub mod import;
+pub mod sql;
 use crate::commands::*;
 use crate::sql::DbState;
-use tracing_subscriber::{fmt, EnvFilter};
+use tracing::{debug, error, info, warn};
 use tracing_appender::non_blocking::WorkerGuard;
-use tracing::{debug, error, warn, info};
+use tracing_subscriber::{fmt, prelude::*, EnvFilter, Layer};
 
 pub const APP_EXT: &str = "refer";
 
@@ -37,12 +37,12 @@ impl Default for SettingsStore {
 
 #[derive(Default, Debug, Clone, Serialize, Deserialize)]
 pub struct StatisticsState {
-    pub db_path: PathBuf,  // путь где хранятся базы
-    pub db_path_size: u64, // размер всех баз
+    pub db_path: PathBuf,      // путь где хранятся базы
+    pub db_path_size: u64,     // размер всех баз
     pub db_list: Vec<PathBuf>, // список имен баз включая пути от папки refer
-    pub log_path: PathBuf,  // файл логов куда пишет tracing
-    pub db_path_ok: String, // Пустое если еще не проверяли, "Ok" если всё хорошо, иначе сообщение об ошибке
-    pub initialized: bool,  // Флаг, что инициализация уже выполнена
+    pub log_path: PathBuf,     // файл логов куда пишет tracing
+    pub db_path_ok: String,    // Пустое если еще не проверяли, "Ok" если всё хорошо, иначе сообщение об ошибке
+    pub initialized: bool,     // Флаг, что инициализация уже выполнена
 }
 
 // Храним WorkerGuard, чтобы логи не терялись при выходе
@@ -51,6 +51,7 @@ static LOG_GUARD: std::sync::OnceLock<WorkerGuard> = std::sync::OnceLock::new();
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
+        .plugin(tauri_plugin_dialog::init())
         .setup(|app| {
             init_tracing(app.handle())?;
             app.manage(Mutex::new(StatisticsState::default()));
@@ -65,8 +66,9 @@ pub fn run() {
             get_stat,
             del_ref,
             get_log,
-            clear_log,
-            create,
+            create_from_file,
+            create_empty,
+            create_example,
             get_meta,
             search_items,
             save_search_config
@@ -93,7 +95,7 @@ fn init_stat_all(app: &tauri::AppHandle) -> Result<(), Box<dyn std::error::Error
             // Проверяем доступность директории
             let check_result = check_writable_dir(&path);
             state.db_path_ok = check_result;
-            
+
             // Логируем результат проверки
             if state.db_path_ok == "Ok" {
                 info!("Directory /refer check: OK - {}", path.display());
@@ -113,7 +115,7 @@ fn init_stat_all(app: &tauri::AppHandle) -> Result<(), Box<dyn std::error::Error
             state.db_list = Vec::new();
         }
     }
-    
+
     // Устанавливаем путь для логов
     match app.path().app_log_dir() {
         Ok(mut path) => {
@@ -124,23 +126,26 @@ fn init_stat_all(app: &tauri::AppHandle) -> Result<(), Box<dyn std::error::Error
             error!("Failed to get log directory: {}", e);
         }
     }
-    
+
     state.initialized = true;
-    
+
     Ok(())
 }
 
 // Обновление статистики (вызывается по запросу с фронтенда)
-pub fn update_stat_all(app: &tauri::AppHandle) {
-    let state = app.state::<Mutex<StatisticsState>>();
-    let mut state = state.lock().unwrap();
+pub async fn update_stat_all(stat_state: &State<'_, Mutex<StatisticsState>>) {
+    let mut state = stat_state.lock().unwrap();
 
     // Обновляем только информацию о файлах (список и размер)
     if !state.db_path.as_os_str().is_empty() && state.db_path.is_dir() {
         let t = get_db_path_info(&state.db_path);
         state.db_path_size = t.0;
         state.db_list = t.1;
-        debug!("Statistics updated: {} files, {} bytes", state.db_list.len(), state.db_path_size);
+        debug!(
+            "Statistics updated: {} files, {} bytes",
+            state.db_list.len(),
+            state.db_path_size
+        );
     }
 }
 
@@ -215,45 +220,37 @@ fn init_tracing(app: &tauri::AppHandle) -> Result<(), Box<dyn std::error::Error>
             write!(w, "{}", now.format("%Y-%m-%dT%H:%M:%S%.3f"))
         }
     }
-    // 1. Получаем путь к директории логов, специфичной для приложения и ОС
     let log_dir = app.path().app_log_dir()?;
     std::fs::create_dir_all(&log_dir).ok();
-    
-    // 2. Создаем путь к файлу логов
     let log_file_path = log_dir.join("app.log");
-    
-    // 4. Создаем новый файл логов (перезаписываем старый)
-    let file = OpenOptions::new()
-        .create(true)
-        .write(true)
-        .truncate(true)
-        .open(&log_file_path)?;
-    
-    // 5. Создаем неблокирующий writer
-    let (non_blocking, guard) = tracing_appender::non_blocking(file);
-    
-    // 6. Сохраняем guard, чтобы логи не терялись
-    let _ = LOG_GUARD.set(guard);
-    
-    // 7. Настраиваем фильтр: info и выше (info, warn, error)
-    let filter = EnvFilter::try_from_default_env()
-        .or_else(|_| EnvFilter::try_new("info"))
-        .unwrap_or_else(|_| EnvFilter::new("info"));
 
-    // 8. Создаем и устанавливаем подписчика
-    let subscriber = fmt::Subscriber::builder()
-        .with_env_filter(filter)
+    let file = OpenOptions::new()
+        .create(true).write(true).truncate(true)
+        .open(&log_file_path)?;
+
+    let (non_blocking, guard) = tracing_appender::non_blocking(file);
+    let _ = LOG_GUARD.set(guard);
+
+    // 1. Слой для КОНСОЛИ (пишет в stdout по умолчанию)
+    let console_layer = fmt::layer()
+        .with_timer(MyTime)
+        .with_ansi(true) // В консоли цвета полезны
+        .with_filter(EnvFilter::new("debug")); // Здесь DEBUG
+
+    // 2. Слой для ФАЙЛА
+    let file_layer = fmt::layer()
         .with_writer(non_blocking)
         .with_timer(MyTime)
-        .with_ansi(false) // Отключаем ANSI-коды для файла
-        .compact()
-        .finish();
+        .with_ansi(false) // В файле цвета не нужны
+        .with_filter(EnvFilter::new("info")); // Здесь только INFO и выше
 
-    tracing::subscriber::set_global_default(subscriber)?;
-    
-    // 9. Записываем заголовок с информацией о запуске
+    // 3. Собираем всё в единый Registry
+    tracing_subscriber::registry()
+        .with(console_layer)
+        .with(file_layer)
+        .init();
+
     info!("= Refer App started =");
-    
     Ok(())
 }
 
@@ -275,17 +272,14 @@ fn check_writable_dir(dir: &Path) -> String {
         .duration_since(UNIX_EPOCH)
         .map(|d| d.as_nanos())
         .unwrap_or(0);
-    
+
     let test_filename = format!(".refer_write_test_{}.tmp", timestamp);
     let test_file_path = dir.join(test_filename);
 
     // Пытаемся создать и записать тестовый файл
     let result = (|| -> io::Result<()> {
-        let mut file = File::options()
-            .create_new(true)
-            .write(true)
-            .open(&test_file_path)?;
-        
+        let mut file = File::options().create_new(true).write(true).open(&test_file_path)?;
+
         file.write_all(b"test")?;
         file.sync_all()?;
         Ok(())

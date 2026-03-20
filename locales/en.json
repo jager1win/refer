@@ -2,7 +2,8 @@
   "all": {
     "reference":  "Reference",
     "references": "References",
-    "err_unknown": "unknown error"
+    "err_unknown": "unknown error",
+    "del": "Delete"
   },
   "settings": {
     "title": "App settings",
@@ -19,7 +20,8 @@
     "er_del_ref": "Failed delete reference"
   },
   "create": {
-    "title": "Create",
+    "button": "Create",
+    "button_file": "Select file and import",
     "main_error": "You cannot create references because there are problems accessing the application folder",
     "ref_from_empty": "Empty",
     "ref_from_table": "Spreadsheet",
@@ -32,13 +34,14 @@
     "example_desc_2": "example_desc_2",
     "example_desc_3": "example_desc_3",
     "fname": "File name",
-    "fsqlite": "SQLite file",
-    "ftable": "Spreadsheet file",
     "fheader": "Header",
     "ttp_path": "You can use subfolders (e.g. tmp/my_refer)",
     "ttp_header": "Use first row as column names",
-    "ttp_table": ".csv, .tsv, .xls, .xlsx, .ods | single sheet",
-    "ttp_sqlite": ".sqlite, .sqlite3, .db | single table"
+    "fsqlite": "SQLite: sqlite, sqlite3, db",
+    "ftable": "Tables: csv, tsv, xls, xlsx, ods",
+    "ttp_table": "One or multiple sheets of the same type. No formulas.",
+    "ttp_sqlite": "One or multiple tables of the same type",
+    "ttp_empty": "Create a reference from scratch"
   },
   "refs": {
     "st_path": "Path",

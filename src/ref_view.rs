@@ -20,6 +20,7 @@ pub fn Ref_main() -> impl IntoView {
     // get meta
     spawn_local(async move {
         let pb = full_pb(stat.get_untracked().db_path, selected_ref.get_untracked().unwrap());
+        log::info!("pb info-{:?}", &pb);
         match invoke("get_meta", &tauri_args!("pb": pb)).await {
             Ok(js) => {
                 let s = from_value::<TableMeta>(js).unwrap();
@@ -77,8 +78,33 @@ pub fn Ref_main() -> impl IntoView {
         });
     };
 
+    let del_ref = move |name: PathBuf| {
+        spawn_local(async move {
+            match invoke("del_ref", &tauri_args!("val" : name.clone())).await {
+                Ok(_s) => {
+                    now.set(format!("{}: {:?}", tu_string!(i18n, edit.ok_del_ref), &name));
+                    selected_ref.set(None::<PathBuf>);
+                    edit_ref.set(false);
+                    upd_stat(stat, now);
+                }
+                Err(js) => {
+                    let error_msg = from_value::<String>(js).unwrap_or_else(|_| "Unknown error".into());
+                    now.set(format!(
+                        "{}: {:?} - {}",
+                        tu_string!(i18n, edit.er_del_ref),
+                        &name,
+                        error_msg
+                    ));
+                }
+            }
+        });
+    };
+
     Effect::new(move |_| {
         log::info!("meta: {:#?}", meta.get());
+        log::info!("selected_ref: {:#?}", selected_ref.get());
+        //log::info!("stat: {:#?}", stat.get());
+        //log::info!("data: {:#?}", data.get());
     });
 
     // debounce for search. run if upd query_string || meta
@@ -104,7 +130,17 @@ pub fn Ref_main() -> impl IntoView {
             <div class="ref">
                 {move || {
                     match meta.get() {
-                        MetaState::Invalid(msg) => view! { <h5 class="error gr">"🚫 "{msg}</h5> }.into_any(),
+                        MetaState::Invalid(msg) => {
+                            view! {
+                                <div class="gr">
+                                    <h5 class="error">"🚫 "{msg}</h5>
+                                    <p class="err_send">
+                                        <button on:click=move |_| del_ref(selected_ref.get().unwrap())>{t!(i18n, all.del)}</button>
+                                    </p>
+                                </div>
+                            }
+                                .into_any()
+                        }
                         MetaState::Pending => view! { <span class="gr" aria-busy="true"></span> }.into_any(),
                         MetaState::Loaded(table_meta) => {
                             let meta_for = sort_f_keys_v(table_meta.clone().search_config);
@@ -114,9 +150,7 @@ pub fn Ref_main() -> impl IntoView {
                                         <button on:click=move |_| selected_ref.set(None)>"←"</button>
 
                                         <div class="title-group">
-                                            <span>
-                                                {move || remove_refer_ext(&selected_ref.get().unwrap_or_default())}
-                                            </span>
+                                            <span>{move || remove_refer_ext(&selected_ref.get().unwrap_or_default())}</span>
                                             <small class="meta grid">
                                                 <span>{table_meta.name.clone()}</span>
                                                 <span>{table_meta.desc.clone()}</span>

@@ -1,9 +1,10 @@
 use crate::commands::CreateForm;
-use rusqlite::{Connection, Error, Result, Row, params, types::ValueRef};
+use rusqlite::{Connection, Error as RError, Result, Row, params, types::ValueRef};
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 use std::collections::HashMap;
 use std::path::PathBuf;
+use csv::{ReaderBuilder, Error as CsvError};
 
 // Представляет одну запись из таблицы data
 #[derive(Debug, Serialize, Deserialize)]
@@ -214,7 +215,7 @@ pub fn get_el(conn: &Connection, id: u32) -> Result<Option<DataRecord>, String> 
 
     match stmt.query_row([id], row_to_record) {
         Ok(record) => Ok(Some(record)),
-        Err(Error::QueryReturnedNoRows) => Ok(None),
+        Err(RError::QueryReturnedNoRows) => Ok(None),
         Err(e) => Err(e.to_string()),
     }
 }
@@ -249,8 +250,8 @@ fn row_to_record(row: &Row) -> Result<DataRecord> {
 }
 
 // Создание пустой базы
-pub fn create_empty_database(path: &PathBuf) -> Result<()> {
-    let conn = Connection::open(path)?;
+pub fn create_empty_database(path: &PathBuf) -> Result<(), String> {
+    let conn = Connection::open(path).map_err(|e| e.to_string())?;
 
     // Таблица data - только ID
     conn.execute(
@@ -258,7 +259,7 @@ pub fn create_empty_database(path: &PathBuf) -> Result<()> {
             id INTEGER PRIMARY KEY AUTOINCREMENT
         )",
         [],
-    )?;
+    ).map_err(|e| e.to_string())?;
 
     // Таблица meta - вся информация в формате ключ-значение
     conn.execute(
@@ -267,7 +268,7 @@ pub fn create_empty_database(path: &PathBuf) -> Result<()> {
             value TEXT NOT NULL
         )",
         [],
-    )?;
+    ).map_err(|e| e.to_string())?;
 
     // Базовая meta для пустой базы
     let now = chrono::Local::now().to_rfc3339();
@@ -290,29 +291,50 @@ pub fn create_empty_database(path: &PathBuf) -> Result<()> {
             "{}", // fields to search
             &now,
         ],
-    )?;
+    ).map_err(|e| e.to_string())?;
 
     Ok(())
 }
 
-pub fn create_from_sheet(path: &PathBuf, val: &CreateForm) -> Result<()> {
+pub fn create_from_sheet(path: &PathBuf, val: &CreateForm) -> Result<(), String> {
     match val.file_extension.clone().unwrap().as_str() {
         "csv" | "tsv" => create_from_csv_file(path, val),
         "xls" | "xlsx" | "ods" => create_from_sheet_file(path, val),
-        &_ => Err(Error::SqliteFailure(
+        &_ => Err(RError::SqliteFailure(
             rusqlite::ffi::Error::new(1),
             Some("Unknown file ext".to_string()),
-        )),
+        ).to_string()),
     }
 }
 
-pub fn create_from_csv_file(path: &PathBuf, val: &CreateForm) -> Result<()> {
+pub fn create_from_csv_file(path: &PathBuf, val: &CreateForm) -> Result<(), String> {
     create_empty_database(path)?;
-    let conn = Connection::open(path)?;
+    let mut conn = Connection::open(path).map_err(|e| e.to_string())?;
+
+    // add default search field
+    conn.execute(
+        "UPDATE meta SET value = ?1 WHERE key = 'search_config'",
+        params![serde_json::to_string(&vec!["f_0"]).unwrap()],
+    ).map_err(|e| e.to_string())?;
+
+    let mut reader = csv::ReaderBuilder::new()
+        .has_headers(val.has_header)
+        .from_path(path)
+        .map_err(|e| e.to_string())?;
+
+    let tx = conn.transaction().map_err(|e| e.to_string())?;
+    
+    for result in reader.records() {
+        let record = result.map_err(|e| e.to_string())?;
+        // Нативная вставка: tx.execute("INSERT ...", ...)
+    }
+    
+    tx.commit().map_err(|e| e.to_string())?;
+
     Ok(())
 }
 
-pub fn create_from_sheet_file(path: &PathBuf, val: &CreateForm) -> Result<()> {
+pub fn create_from_sheet_file(path: &PathBuf, val: &CreateForm) -> Result<(), String> {
     // TODO: реализовать
     Ok(())
 }
@@ -426,15 +448,6 @@ pub fn import_csv(conn: &Connection, csv_data: &str, has_header: bool) -> Result
     Ok(field_names)
 }
 
-pub fn import_csv_from_bytes(conn: &Connection, bytes: &[u8], has_header: bool) -> Result<Vec<String>> {
-    // Конвертируем Vec<u8> в &str
-    let csv_str = std::str::from_utf8(bytes)
-        .map_err(|e| rusqlite::Error::InvalidParameterName(format!("Invalid UTF-8 in file: {}", e)))?;
-
-    // Вызываем твою существующую функцию
-    import_csv(conn, csv_str, has_header)
-}
-
 // Добавление операции
 pub fn add_operation(conn: &Connection, name: &str, expression: &str, description: Option<&str>) -> Result<()> {
     let ops_json: String = conn.query_row("SELECT value FROM meta WHERE key = 'operations'", [], |row| row.get(0))?;
@@ -460,31 +473,31 @@ pub fn add_operation(conn: &Connection, name: &str, expression: &str, descriptio
 
 // ==================== Create demo ====================
 
-pub fn create_ballistics_database(path: &PathBuf) -> Result<()> {
+pub fn create_ballistics_database(path: &PathBuf) -> Result<(), String> {
     // Создаем пустую базу
     create_empty_database(path)?;
 
-    let conn = Connection::open(path)?;
+    let conn = Connection::open(path).map_err(|e| e.to_string())?;
 
     // Обновляем name и desc
     conn.execute(
         "UPDATE meta SET value = ?1 WHERE key = 'name'",
         params!["Ballistics Data"],
-    )?;
+    ).map_err(|e| e.to_string())?;
 
     conn.execute(
         "UPDATE meta SET value = ?1 WHERE key = 'desc'",
         params!["Ballistic trajectory calculator demo data"],
-    )?;
+    ).map_err(|e| e.to_string())?;
 
     // add search field
     conn.execute(
         "UPDATE meta SET value = ?1 WHERE key = 'search_config'",
         params![serde_json::to_string(&vec!["f_0"]).unwrap()],
-    )?;
+    ).map_err(|e| e.to_string())?;
 
     // Импортируем CSV с заголовком
-    import_csv(&conn, BALLISTICS_CSV, true)?;
+    import_csv(&conn, BALLISTICS_CSV, true).map_err(|e| e.to_string())?;
 
     // Добавляем операции
     add_operation(
@@ -492,39 +505,39 @@ pub fn create_ballistics_database(path: &PathBuf) -> Result<()> {
         "Energy (J)",
         "f_1 * f_2 * f_2 / 2000", // bullet_mass_g * velocity^2 / 2000
         Some("Kinetic energy in Joules"),
-    )?;
+    ).map_err(|e| e.to_string())?;
 
     add_operation(
         &conn,
         "Sectional Density",
         "f_1 / (f_4 * 1000)", // mass / cross_section_cm2 * 1000
         Some("Bullet mass / cross-sectional area"),
-    )?;
+    ).map_err(|e| e.to_string())?;
 
     Ok(())
 }
 
 // Заглушки для будущих демо-баз
-pub fn create_recipes_database(path: &PathBuf) -> Result<()> {
+pub fn create_recipes_database(path: &PathBuf) -> Result<(), String> {
     // TODO: реализовать
     Ok(())
 }
 
-pub fn create_inventory_database(path: &PathBuf) -> Result<()> {
+pub fn create_inventory_database(path: &PathBuf) -> Result<(), String> {
     // TODO: реализовать
     Ok(())
 }
 
 // Основная функция создания демо-базы по имени
-pub fn create_example_database(name: &str, path: &PathBuf) -> Result<()> {
+pub fn create_example_database(name: &str, path: &PathBuf) -> Result<(), String> {
     match name {
         "example/ballistics.refer" => create_ballistics_database(path),
         "recipes" => create_recipes_database(path),
         "inventory" => create_inventory_database(path),
-        _ => Err(Error::SqliteFailure(
+        _ => Err(RError::SqliteFailure(
             rusqlite::ffi::Error::new(1),
-            Some(format!("Unknown demo database: {}", name)),
-        )),
+            Some("Unknown file ext".to_string()),
+        ).to_string()),
     }
 }
 

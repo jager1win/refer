@@ -76,20 +76,6 @@ pub fn remove_refer_ext(p: &Path) -> String {
     s
 }
 
-pub fn get_file_extension(filename: &str) -> String {
-    filename.rsplit('.').next().unwrap_or("").to_string()
-}
-
-pub async fn read_file_as_bytes(file: &web_sys::File) -> Result<Vec<u8>, String> {
-    let array_buffer_promise = file.array_buffer();
-    let array_buffer = wasm_bindgen_futures::JsFuture::from(array_buffer_promise)
-        .await
-        .map_err(|e| format!("Ошибка чтения файла: {:?}", e))?;
-
-    let uint8_array = js_sys::Uint8Array::new(&array_buffer);
-    Ok(uint8_array.to_vec())
-}
-
 pub fn full_pb(main: PathBuf, rel: PathBuf) -> PathBuf {
     let mut p = main;
     p.push(rel);
@@ -125,7 +111,22 @@ pub fn f2name_v(v: Vec<String>, names: HashMap<String, String>) -> Vec<String> {
     }
     res
 }
+/*
 
+pub fn get_file_extension(filename: &str) -> String {
+    filename.rsplit('.').next().unwrap_or("").to_string()
+}
+
+pub async fn read_file_as_bytes(file: &web_sys::File) -> Result<Vec<u8>, String> {
+    let array_buffer_promise = file.array_buffer();
+    let array_buffer = wasm_bindgen_futures::JsFuture::from(array_buffer_promise)
+        .await
+        .map_err(|e| format!("Ошибка чтения файла: {:?}", e))?;
+
+    let uint8_array = js_sys::Uint8Array::new(&array_buffer);
+    Ok(uint8_array.to_vec())
+}
+*/
 // let p = dbp(stat.get_untracked().db_path, selected_ref.get_untracked().unwrap());
 /*fn ensure_utf8_path(p: &std::path::Path) -> Result<&str, &'static str> {
     p.to_str().ok_or("Имя файла содержит недопустимые (не UTF-8) символы.")

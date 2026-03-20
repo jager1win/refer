@@ -1,3 +1,5 @@
+use crate::sql::{self, *};
+use crate::{APP_EXT, DbState, SettingsStore, StatisticsState};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::collections::HashMap;
@@ -7,9 +9,7 @@ use std::io::{self, Read};
 use std::path::{Component, Path, PathBuf};
 use std::sync::Mutex;
 use tauri::{Manager, State};
-
-use crate::sql::{self, *};
-use crate::{APP_EXT, DbState, SettingsStore, StatisticsState};
+use tauri_plugin_dialog::{DialogExt};
 use tracing::{error, info};
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -18,7 +18,7 @@ pub struct CreateForm {
     pub db_name: PathBuf,
     pub has_header: bool,
     pub file_extension: Option<String>,
-    pub file_data: Option<Vec<u8>>,
+    pub file_path: Option<PathBuf>,
 }
 
 #[tauri::command]
@@ -75,10 +75,9 @@ pub async fn set_settings(app: tauri::AppHandle, new: SettingsStore) -> Result<(
 }
 
 #[tauri::command]
-pub async fn get_stat(app: tauri::AppHandle) -> Result<StatisticsState, String> {
-    crate::update_stat_all(&app);
-    let state = app.state::<Mutex<StatisticsState>>();
-    let state = state.lock().unwrap();
+pub async fn get_stat(stat_state: State<'_, Mutex<StatisticsState>>) -> Result<StatisticsState, String> {
+    crate::update_stat_all(&stat_state).await;
+    let state = stat_state.lock().unwrap();
     let result: StatisticsState = state.clone();
     Ok(result)
 }
@@ -102,7 +101,7 @@ pub async fn del_ref(app: tauri::AppHandle, val: PathBuf) -> Result<String, Stri
 
 /// Команда для получения содержимого лог-файла
 #[tauri::command]
-pub fn get_log(app: tauri::AppHandle) -> Result<String, String> {
+pub async fn get_log(app: tauri::AppHandle) -> Result<String, String> {
     let state = app.state::<Mutex<StatisticsState>>();
     let state = state.lock().unwrap();
 
@@ -126,33 +125,10 @@ pub fn get_log(app: tauri::AppHandle) -> Result<String, String> {
     }
 }
 
-/// Команда для очистки лог-файла (без перезапуска приложения)
 #[tauri::command]
-pub fn clear_log(app: tauri::AppHandle) -> Result<String, String> {
-    let state = app.state::<Mutex<StatisticsState>>();
-    let state = state.lock().unwrap();
-
-    let log_path = &state.log_path;
-
-    // Проверяем, существует ли файл логов
-    if !log_path.exists() {
-        return Err("Log file does not exist".to_string());
-    }
-
-    // Пытаемся очистить файл
-    match fs::write(log_path, "") {
-        Ok(_) => Ok("Log file cleared successfully".to_string()),
-        Err(e) if e.kind() == io::ErrorKind::PermissionDenied => Ok(
-            "Note: Log file may be locked by another application. It will be cleared on next app restart.".to_string(),
-        ),
-        Err(e) => Err(format!("Failed to clear log file: {}", e)),
-    }
-}
-
-#[tauri::command]
-pub fn create(val: CreateForm, stat_state: State<'_, Mutex<StatisticsState>>) -> Result<(), String> {
-    let stat_state = stat_state.lock().unwrap();
-    let mut root = stat_state.db_path.clone();
+pub async fn create_empty(val: CreateForm, stat_state: State<'_, Mutex<StatisticsState>>) -> Result<(), String> {
+    let s_state = stat_state.lock().unwrap();
+    let mut root = s_state.db_path.clone();
 
     match build_and_create_refer_path(&root, &val.db_name, val.mode == "example") {
         Ok(p) => root = p,
@@ -162,33 +138,97 @@ pub fn create(val: CreateForm, stat_state: State<'_, Mutex<StatisticsState>>) ->
         }
     }
 
-    println!("val.mode: {:?}, val.db_name: {:?}, header:{:?}, file_ext: {:?}", &val.mode, &val.db_name, &val.has_header, &val.file_extension);
-    match val.mode.as_str() {
-        "empty" => match create_empty_database(&root) {
-            Ok(()) => {
-                info!("Empty database created: {:?}", &val.db_name);
-                Ok(())
-            }
-            Err(e) => {
-                let _ = fs::remove_file(&root);
-                error!("Failed to create empty db: {}", e);
-                Err(format!("Failed to create db: {}", e))
-            }
-        },
-        "example" => {
-            let demo_name = &val.db_name.display().to_string();
-            match create_example_database(demo_name, &root) {
-                Ok(()) => {
-                    info!("Demo database '{}' created", demo_name);
-                    Ok(())
-                }
-                Err(e) => {
-                    let _ = fs::remove_file(&root);
-                    error!("Failed to create demo db '{}': {}", demo_name, e);
-                    Err(format!("Failed to create demo db: {}", e))
-                }
-            }
+    println!(
+        "val.mode: {:?}, val.db_name: {:?}, header:{:?}, file_ext: {:?}",
+        &val.mode, &val.db_name, &val.has_header, &val.file_extension
+    );
+
+    match create_empty_database(&root) {
+        Ok(()) => {
+            info!("Empty database created: {:?}", &val.db_name);
+            Ok(())
         }
+        Err(e) => {
+            let _ = fs::remove_file(&root);
+            error!("Failed to create empty db: {}", e);
+            Err(format!("Failed to create db: {}", e))
+        }
+    }
+}
+
+#[tauri::command]
+pub async fn create_example(val: CreateForm, stat_state: State<'_, Mutex<StatisticsState>>) -> Result<(), String> {
+    let s_state = stat_state.lock().unwrap();
+    let mut root = s_state.db_path.clone();
+
+    match build_and_create_refer_path(&root, &val.db_name, val.mode == "example") {
+        Ok(p) => root = p,
+        Err(e) => {
+            error!("Failed to create path: {}", e);
+            return Err(format!("Failed to create path: {:?}", e));
+        }
+    }
+
+    println!(
+        "val.mode: {:?}, val.db_name: {:?}, header:{:?}, file_ext: {:?}",
+        &val.mode, &val.db_name, &val.has_header, &val.file_extension
+    );
+
+    let demo_name = &val.db_name.display().to_string();
+    match create_example_database(demo_name, &root) {
+        Ok(()) => {
+            info!("Demo database '{}' created", demo_name);
+            Ok(())
+        }
+        Err(e) => {
+            let _ = fs::remove_file(&root);
+            error!("Failed to create demo db '{}': {}", demo_name, e);
+            Err(format!("Failed to create demo db: {}", e))
+        }
+    }
+}
+
+
+#[tauri::command]
+pub async fn create_from_file(mut val: CreateForm, app: tauri::AppHandle, stat_state: State<'_, Mutex<StatisticsState>>) -> Result<(), String> {
+    let s_state = stat_state.lock().unwrap();
+    let mut root = s_state.db_path.clone();
+
+    match build_and_create_refer_path(&root, &val.db_name, val.mode == "example") {
+        Ok(p) => root = p,
+        Err(e) => {
+            error!("Failed to create path: {}", e);
+            return Err(format!("Failed to create path: {:?}", e));
+        }
+    }
+    println!("1. root: {:?}" , &root);
+    // 1. Настраиваем фильтры диалога
+    let mut dialog = app.dialog().file();
+    dialog = match val.mode.as_str() {
+        "sheet" => dialog.add_filter("Tables", &["csv", "tsv", "xls", "xlsx", "ods"]),
+        "sqlite" => dialog.add_filter("SQLite DB", &["sqlite", "sqlite3", "db"]),
+        _ => dialog,
+    };
+    println!("2. dialog: ok");
+
+    let file_path = dialog.blocking_pick_file();
+    println!("3. file_path: {:?}" , &file_path);
+    let Some(path_obj) = file_path else { return Err("CANCELLED".into()); };
+    let path = path_obj.as_path().ok_or("Invalid Path")?;
+    println!("4. file_path: {:?}" , &path);
+    
+
+    // 2. Проверка расширения (на всякий случай, если в ОС нет фильтров)
+    let ext = path.extension()
+        .and_then(|e| e.to_str())
+        .unwrap_or("")
+        .to_lowercase();
+
+    println!(
+        "val.mode: {:?}, val.db_name: {:?}, header:{:?}, file_ext: {:?}, path: {:?}",
+        &val.mode, &val.db_name, &val.has_header, &ext, &path
+    );
+    match val.mode.as_str() {
         "sheet" => match create_from_sheet(&root, &val) {
             Ok(()) => {
                 info!("Database '{:?}' from file created", &val.db_name);
@@ -215,7 +255,7 @@ pub fn create(val: CreateForm, stat_state: State<'_, Mutex<StatisticsState>>) ->
     }
 }
 
-pub fn build_and_create_refer_path(root: &Path, p: &Path, example: bool) -> Result<PathBuf, io::Error> {
+fn build_and_create_refer_path(root: &Path, p: &Path, example: bool) -> Result<PathBuf, io::Error> {
     // Reject absolute on target platform or any prefix/root components
     if p.is_absolute() {
         return Err(io::Error::new(io::ErrorKind::InvalidInput, "incoming path is absolute"));
@@ -267,24 +307,24 @@ pub fn build_and_create_refer_path(root: &Path, p: &Path, example: bool) -> Resu
 }
 
 #[tauri::command]
-pub fn get_meta(pb: PathBuf, state: State<'_, Mutex<DbState>>) -> Result<TableMeta, String> {
+pub async fn get_meta(pb: PathBuf, state: State<'_, Mutex<DbState>>) -> Result<TableMeta, String> {
     let mut db = state.lock().map_err(|e| e.to_string())?;
     db.with_conn(pb.clone(), |_conn, meta| {
         let Some(meta_ref) = meta else {
-            error!("Error: table meta not available for {:?}",pb);
-            return Err(format!("Error: table meta not available for {:?}",pb));
+            error!("Error: table meta not available for {:?}", pb);
+            return Err(format!("Error: table meta not available for {:?}", pb));
         };
         Ok(meta_ref.clone())
     })
 }
 
 #[tauri::command]
-pub fn search_items(pb: PathBuf, query: String, state: State<'_, Mutex<DbState>>) -> Result<Vec<DataRecord>, String> {
+pub async fn search_items(pb: PathBuf, query: String, state: State<'_, Mutex<DbState>>) -> Result<Vec<DataRecord>, String> {
     let mut db = state.lock().map_err(|e| e.to_string())?;
     db.with_conn(pb.clone(), |conn, meta| {
         let Some(meta) = meta else {
-            error!("Error: table meta not available for {:?}",pb);
-            return Err(format!("Error: table meta not available for {:?}",pb));
+            error!("Error: table meta not available for {:?}", pb);
+            return Err(format!("Error: table meta not available for {:?}", pb));
         };
 
         match sql::search_items(conn, meta, &query).map_err(|e| e.to_string()) {
@@ -301,7 +341,7 @@ pub fn search_items(pb: PathBuf, query: String, state: State<'_, Mutex<DbState>>
 }
 
 #[tauri::command]
-pub fn save_search_config(pb: PathBuf, vec: Vec<String>, state: State<'_, Mutex<DbState>>)-> Result<(), String> {
+pub async fn save_search_config(pb: PathBuf, vec: Vec<String>, state: State<'_, Mutex<DbState>>) -> Result<(), String> {
     let mut db = state.lock().map_err(|e| e.to_string())?;
 
     db.update_meta(&pb, |meta| {
@@ -309,68 +349,64 @@ pub fn save_search_config(pb: PathBuf, vec: Vec<String>, state: State<'_, Mutex<
         Ok(())
     })?;
 
-    db.with_conn(pb, |conn, meta| {
-        match sql::save_search_config(conn, &vec) {
-            Ok(()) => {
-                info!("Search config saved: {:?}", f2name(vec,meta.as_ref().unwrap().field_names.clone()));
-                Ok(())
-            },
-            Err(e) => {
-                error!("Failed to save search config: {}", e);
-                Err(e.to_string())
-            }
+    db.with_conn(pb, |conn, meta| match sql::save_search_config(conn, &vec) {
+        Ok(()) => {
+            info!(
+                "Search config saved: {:?}",
+                f2name(vec, meta.as_ref().unwrap().field_names.clone())
+            );
+            Ok(())
+        }
+        Err(e) => {
+            error!("Failed to save search config: {}", e);
+            Err(e.to_string())
         }
     })
 }
 
 #[tauri::command]
-pub fn add_field(
-    pb: PathBuf,
-    display_name: String,
-    field_type: String,
-    state: State<'_, Mutex<DbState>>
+pub async fn add_field(
+    pb: PathBuf, display_name: String, field_type: String, state: State<'_, Mutex<DbState>>,
 ) -> Result<String, String> {
     // 1. Получаем доступ к состоянию
     let mut db = state.lock().map_err(|e| e.to_string())?;
-    
+
     // 2. Вычисляем next_index из текущего meta
-    let next_index = db.meta.as_ref()
-        .map(|m| m.field_names.len() + 1)
-        .unwrap_or(1);
-    
+    let next_index = db.meta.as_ref().map(|m| m.field_names.len() + 1).unwrap_or(1);
+
     // 3. Получаем соединение (но не через with_conn, чтобы не заимствовать db)
     let conn = match db.conn.as_ref() {
         Some(c) => c,
         None => return Err("No active connection".to_string()),
     };
-    
+
     // Проверяем путь
     if db.current_path.as_ref() != Some(&pb) {
         return Err("Wrong database".to_string());
     }
-    
+
     // 4. Добавляем поле в БД
-    let field_name = sql::add_field(conn, next_index, Some(&display_name), &field_type)
-        .map_err(|e| e.to_string())?;
-    
+    let field_name = sql::add_field(conn, next_index, Some(&display_name), &field_type).map_err(|e| e.to_string())?;
+
     // 5. Обновляем meta в памяти (прямая модификация state)
     if let Some(meta) = db.meta.as_mut() {
         meta.field_names.insert(field_name.clone(), display_name);
-        meta.field_types.insert(field_name.clone(), 
+        meta.field_types.insert(
+            field_name.clone(),
             match field_type.as_str() {
                 "number" => FieldType::Number,
                 _ => FieldType::Text,
-            }
+            },
         );
     }
-    
+
     Ok(field_name)
 }
 
-fn f2name(v:Vec<String>, names:HashMap<String, String>)->Vec<String>{
-    let mut res: Vec<String> = Vec::new(); 
-    for f in v{
-        if names.contains_key(&f){
+fn f2name(v: Vec<String>, names: HashMap<String, String>) -> Vec<String> {
+    let mut res: Vec<String> = Vec::new();
+    for f in v {
+        if names.contains_key(&f) {
             res.push(names[&f].clone());
         }
     }

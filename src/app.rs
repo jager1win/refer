@@ -43,7 +43,7 @@ struct CreateForm {
     db_name: PathBuf,               // имя БД
     has_header: bool,               // есть заголовок
     file_extension: Option<String>, // расширение файла
-    file_data: Option<Vec<u8>>,     // содержимое файла
+    file_path: Option<PathBuf>,     // содержимое файла
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -192,10 +192,11 @@ pub fn App() -> impl IntoView {
                     class="navb"
                     class:active=move || active_tab.get() == 2
                     on:click=move |_| {
+                        upd_stat(stat, now);
+                        clean();
                         if active_tab.get() == 2 {
                             active_tab.set(1);
                         } else {
-                            upd_stat(stat, now);
                             active_tab.set(2);
                         }
                     }
@@ -405,7 +406,7 @@ fn Settings() -> impl IntoView {
             </div>
         </div>
         <div class="settings_block gr">
-            <p>"Заполнить блок - содержимое About"</p>
+            <p class="gridl"><span>"Github"</span><a href="https://github.com/jager1win/refer" target="_blank">"https://github.com/jager1win/refer"</a></p>
         </div>
     }
 }
@@ -482,7 +483,7 @@ fn Edit() -> impl IntoView {
         <h3>{t!(i18n, edit.test)}</h3>
 
         <button on:click=move |_| { edit_ref.set(false) }>"✎ Save "</button>
-        <button on:click=move |_| del_ref(selected_ref.get().unwrap())>"Del"</button>
+        <button on:click=move |_| del_ref(selected_ref.get().unwrap())>{t!(i18n, all.del)}</button>
     }
 }
 
@@ -495,13 +496,16 @@ fn Create() -> impl IntoView {
     let active_tab = use_context::<RwSignal<i32>>().expect("active_tab not found");
     let selected_ref = use_context::<RwSignal<Option<PathBuf>>>().expect("selected not found");
     let err_form: RwSignal<String> = RwSignal::new("".to_string());
+    let is_loading = RwSignal::new(false);
     // mode: "empty" | "sheet" | "sqlite"
-    let mode = RwSignal::new("empty".to_string());
+    let mode = RwSignal::new("sheet".to_string());
     let form_ref = NodeRef::<leptos::html::Form>::new();
     // send create
     let submit = move |ev: SubmitEvent| {
         ev.prevent_default();
-
+        if is_loading.get() {
+            return;
+        }
         let Some(form) = form_ref.get() else { return };
 
         // 1. СОБИРАЕМ ДАННЫЕ
@@ -549,102 +553,31 @@ fn Create() -> impl IntoView {
             return;
         }
 
-        // 3. РАБОТА С ФАЙЛОМ (только для sheet/sqlite)
-        let selected_file = if form_data.mode != "empty" {
-            // Выбираем селектор в зависимости от режима
-            let selector = match form_data.mode.as_str() {
-                "sheet" => "#sheet_file",
-                "sqlite" => "#sqlite_file",
-                _ => "",
-            };
-
-            // Получаем файл - селектор 100% валидный для своего режима
-            let file_input = form
-                .query_selector(selector)
-                .ok()
-                .flatten()
-                .and_then(|el| el.dyn_into::<web_sys::HtmlInputElement>().ok())
-                .unwrap();
-
-            // Получаем первый файл
-            let file = match file_input.files().and_then(|f| f.get(0)) {
-                Some(f) => f,
-                None => {
-                    match form_data.mode.as_str() {
-                        "sheet" => err_form.set(format!("👉 {}", t_string!(i18n, create.ftable))),
-                        "sqlite" => err_form.set(format!("👉 {}", t_string!(i18n, create.fsqlite))),
-                        _ => {}
-                    }
-                    return;
-                }
-            };
-
-            // Проверяем расширение
-            let extension = get_file_extension(&file.name()).to_lowercase();
-
-            match form_data.mode.as_str() {
-                "sheet" => {
-                    let allowed = ["csv", "tsv", "xls", "xlsx", "ods"];
-                    if !allowed.contains(&extension.as_str()) {
-                        err_form.set(format!(
-                            "!!! {} = {}",
-                            t_string!(i18n, create.ftable),
-                            t_string!(i18n, create.ttp_table)
-                        ));
-                        return;
-                    }
-                    form_data.file_extension = Some(extension);
-                }
-                "sqlite" => {
-                    let allowed = ["sqlite", "sqlite3", "db"];
-                    if !allowed.contains(&extension.as_str()) {
-                        err_form.set(format!(
-                            "!!! {} = {}",
-                            t_string!(i18n, create.fsqlite),
-                            t_string!(i18n, create.ttp_sqlite)
-                        ));
-                        return;
-                    }
-                    form_data.file_extension = Some(extension);
-                }
-                _ => {}
-            }
-
-            Some(file)
+        let command_name = if form_data.mode == "empty" {
+            "create_empty"
         } else {
-            None
+            "create_from_file"
         };
-
+        now.set("⏳".to_string());
+        is_loading.set(true);
         spawn_local(async move {
-            let mut final_data = form_data.clone();
-
-            if let Some(file) = selected_file {
-                match read_file_as_bytes(&file).await {
-                    Ok(bytes) => final_data.file_data = Some(bytes),
-                    Err(e) => {
-                        now.set(format!(
-                            "{}: {} - {}",
-                            tu_string!(i18n, create.er_create),
-                            final_data.db_name.to_string_lossy(),
-                            e
-                        ));
-                        return;
-                    }
-                }
-            }
-
-            //let args = to_value(&CreateFormBack { val: final_data }).unwrap();
-            match invoke("create", &tauri_args!("val": final_data)).await {
+            match invoke(command_name, &tauri_args!("val": form_data)).await {
                 Ok(_s) => {
+                    log::info!("ok return");
                     now.set(format!(
                         "{}: {}",
                         tu_string!(i18n, create.ok_create),
                         form_data.db_name.to_string_lossy()
                     ));
+                    if let Some(f) = form_ref.get_untracked() {
+                        f.reset();
+                    }
+                    is_loading.set(false);
                     selected_ref.set(Some(form_data.db_name));
                     active_tab.set(1);
                 }
                 Err(js) => {
+                    is_loading.set(false);
                     let error_msg = from_value::<String>(js).unwrap_or_else(|_| "Unknown error".into());
                     now.set(format!(
                         "{}: {} - {}",
@@ -655,19 +588,16 @@ fn Create() -> impl IntoView {
                 }
             }
         });
-        form.reset();
     };
     // send create examle
-    let create_ex = move |name: PathBuf| {
+    let create_example = move |name: PathBuf| {
         let form_data = CreateForm {
             mode: "example".to_string(),
             db_name: name.to_path_buf(),
             ..Default::default()
         };
         spawn_local(async move {
-            //let args = to_value(&CreateFormBack { val: form_data }).unwrap();
-            // let _ = invoke("set_settings", &tauri_args!("new": settings.get_untracked())).await;
-            match invoke("create", &tauri_args!("val": form_data)).await {
+            match invoke("create_example", &tauri_args!("val": form_data)).await {
                 Ok(_js) => {
                     now.set(format!("{}: {:?}", tu_string!(i18n, create.ok_create), &name));
                     upd_stat(stat, now);
@@ -708,17 +638,7 @@ fn Create() -> impl IntoView {
             <div class="gr">
                 <span class="err_send">{move || err_form.get()}</span>
                 <form class="form_new" on:submit=submit node_ref=form_ref novalidate>
-                    <fieldset class="grida">
-                        <label>
-                            <input
-                                type="radio"
-                                name="mode"
-                                value="empty"
-                                checked=move || mode.get() == "empty"
-                                on:change=move |_| mode.set("empty".to_string())
-                            />
-                            {tu!(i18n, create.ref_from_empty)}
-                        </label>
+                    <fieldset class="grida m0">
                         <label>
                             <input
                                 type="radio"
@@ -739,7 +659,47 @@ fn Create() -> impl IntoView {
                             />
                             {tu!(i18n, create.ref_from_db)}
                         </label>
+                        <label>
+                            <input
+                                type="radio"
+                                name="mode"
+                                value="empty"
+                                checked=move || mode.get() == "empty"
+                                on:change=move |_| mode.set("empty".to_string())
+                            />
+                            {tu!(i18n, create.ref_from_empty)}
+                        </label>
                     </fieldset>
+
+                    {move || {
+                        match mode.get().as_str() {
+                            "empty" => view! { <h6>{tu!(i18n, create.ttp_empty)}</h6> }.into_any(),
+                            "sheet" => {
+                                view! {
+                                    <h6>{tu!(i18n, create.ftable)}</h6>
+                                    <h6>{tu!(i18n, create.ttp_table)}</h6>
+                                    <div class="gridl">
+                                        <label>
+                                            {t!(i18n, create.fheader)}
+                                            <span data-placement="right" data-tooltip=t_string!(i18n, create.ttp_header)>
+                                                "?"
+                                            </span>
+                                        </label>
+                                        <input type="checkbox" class="" name="has_header" checked />
+                                    </div>
+                                }
+                                    .into_any()
+                            }
+                            "sqlite" => {
+                                view! {
+                                    <h6>{tu!(i18n, create.fsqlite)}</h6>
+                                    <h6>{tu!(i18n, create.ttp_sqlite)}</h6>
+                                }
+                                    .into_any()
+                            }
+                            _ => view! { <div></div> }.into_any(),
+                        }
+                    }}
 
                     <div class="block gridl">
                         <label>
@@ -751,51 +711,16 @@ fn Create() -> impl IntoView {
                         <input type="text" name="db_name" placeholder="my_refer" required />
                     </div>
 
-                    {move || {
-                        match mode.get().as_str() {
-                            "sheet" => {
-                                view! {
-                                    <div class="gridl">
-                                        <label for="file">
-                                            {t!(i18n, create.ftable)}
-                                            <span data-placement="right" data-tooltip=t_string!(i18n, create.ttp_table)>
-                                                "?"
-                                            </span>
-                                        </label>
-                                        <input id="sheet_file" type="file" name="file" accept=".csv,.tsv,.xls,.xlsx,.ods" required />
-                                    </div>
-                                    <div class="gridl">
-                                        <label>
-                                            {t!(i18n, create.fheader)}
-                                            <span data-placement="right" data-tooltip=t_string!(i18n, create.ttp_header)>
-                                                "?"
-                                            </span>
-                                        </label>
-                                        <input type="checkbox" class="" name="has_header" />
-                                    </div>
-                                }
-                                    .into_any()
-                            }
-                            "sqlite" => {
-                                view! {
-                                    <div class="gridl">
-                                        <label for="sqlite_file">
-                                            {t!(i18n, create.fsqlite)}
-                                            <span data-placement="right" data-tooltip=t_string!(i18n, create.ttp_sqlite)>
-                                                "?"
-                                            </span>
-                                        </label>
-                                        <input id="sqlite_file" type="file" name="file" accept=".sqlite,.sqlite3,.db" required />
-                                    </div>
-                                }
-                                    .into_any()
-                            }
-                            _ => view! { <div></div> }.into_any(),
-                        }
-                    }}
-
                     <div class="actions">
-                        <button type="submit">{t!(i18n, create.title)}</button>
+                        <button type="submit" disabled=move || is_loading.get()>
+                            {move || {
+                                if mode.get() == "empty" {
+                                    { t!(i18n, create.button) }.into_any()
+                                } else {
+                                    { t!(i18n, create.button_file) }.into_any()
+                                }
+                            }}
+                        </button>
                     </div>
                 </form>
             </div>
@@ -804,11 +729,11 @@ fn Create() -> impl IntoView {
                 <h5>{t!(i18n, create.example)}</h5>
                 <p class="center">{t!(i18n, create.example_replace)}</p>
                 <div class="test_create gridl">
-                    <button on:click=move |_| create_ex(PathBuf::from("example/ballistics.refer"))>"Ballistics Data"</button>
+                    <button on:click=move |_| create_example(PathBuf::from("example/ballistics.refer"))>"Ballistics Data"</button>
                     <span>{t!(i18n, create.example_desc_1)}</span>
-                    <button on:click=move |_| create_ex(PathBuf::from("example/222.refer"))>"222"</button>
+                    <button on:click=move |_| create_example(PathBuf::from("example/222.refer"))>"222"</button>
                     <span>{t!(i18n, create.example_desc_2)}</span>
-                    <button on:click=move |_| create_ex(PathBuf::from("example/333.refer"))>"333"</button>
+                    <button on:click=move |_| create_example(PathBuf::from("example/333.refer"))>"333"</button>
                     <span>{t!(i18n, create.example_desc_3)}</span>
                 </div>
             </div>

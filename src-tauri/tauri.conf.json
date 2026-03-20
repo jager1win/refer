@@ -12,6 +12,7 @@
   "bundle": {
     "active": true,
     "targets": "all",
-    "android": {} 
+    "android": {},
+    "externalBin": []
   }
 }

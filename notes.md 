@@ -369,3 +369,85 @@ option.map(|value| f2name(vec, value.field_names));
 если функция возвращает Result, Option
 - .?  
 =============================  
+Отлично, что перешли на Tauri v2 + Rust-диалоги. Это решило проблему с интерфейсом: теперь он не «висит», так как браузер (WASM) не перемалывает гигабайты JSON.
+1. Как надежно читать файлы (Архитектура)
+Поскольку вы используете rusqlite, csv и calamine, забудьте про Vec<u8> (чтение всего файла в память). Если пользователь выберет CSV на 2 ГБ, ваше приложение может упасть с ошибкой нехватки памяти (OOM).
+Правильный подход: Стриминг (Потоковое чтение).
+
+* CSV/TSV: Используйте csv::Reader::from_path. Он читает файл по кусочкам (буферизованно). Вы перебираете записи и сразу записываете их в SQLite внутри одной транзакции.
+* Excel (xlsx/ods): Крейт calamine открывает файл с диска. Для XLSX он читает XML-структуры внутри архива. Здесь тоже лучше использовать методы чтения листов, не загружая всё в память, если это возможно.
+* SQLite (импорт из другой БД): Если вы импортируете из одной SQLite в другую, лучше всего использовать команду ATTACH DATABASE прямо в SQL — это мгновенно и делается силами самого движка.
+
+2. Реализация в команде (v2) с проверкой расширений
+Вот как доработать вашу команду, чтобы она была быстрой и безопасной:
+
+use tauri_plugin_dialog::DialogExt;use std::path::Path;
+
+#[tauri::command]async fn create_with_dialog(app: tauri::AppHandle, mut val: CreateForm) -> Result<(), String> {
+    // 1. Настраиваем фильтры диалога
+    let mut dialog = app.dialog().file();
+    
+    dialog = match val.mode.as_str() {
+        "sheet" => dialog.add_filter("Tables", &["csv", "tsv", "xls", "xlsx", "ods"]),
+        "sqlite" => dialog.add_filter("SQLite DB", &["sqlite", "sqlite3", "db"]),
+        _ => dialog,
+    };
+
+    let file_path = dialog.blocking_pick_file();
+    let Some(path_obj) = file_path else { return Err("CANCELLED".into()); };
+    let path = path_obj.as_path().ok_or("Invalid Path")?;
+
+    // 2. Проверка расширения (на всякий случай, если в ОС нет фильтров)
+    let ext = path.extension()
+        .and_then(|e| e.to_str())
+        .unwrap_or("")
+        .to_lowercase();
+
+    // 3. Выбор метода обработки (БЕЗ чтения всего файла в Vec<u8>)
+    match val.mode.as_str() {
+        "sheet" => {
+            if ext == "csv" || ext == "tsv" {
+                import_csv_to_sqlite(path, &val)?;
+            } else {
+                import_excel_to_sqlite(path, &val)?;
+            }
+        },
+        "sqlite" => {
+            import_entire_sqlite(path, &val)?;
+        },
+        _ => return Err("Unknown mode".into()),
+    }
+
+    Ok(())
+}
+
+3. Пример быстрой функции импорта (CSV)
+
+fn import_csv_to_sqlite(path: &Path, info: &CreateForm) -> Result<(), String> {
+    let mut reader = csv::ReaderBuilder::new()
+        .has_headers(info.has_header)
+        .from_path(path)
+        .map_err(|e| e.to_string())?;
+
+    let mut conn = rusqlite::Connection::open(&info.db_name).map_err(|e| e.to_string())?;
+    
+    // ВАЖНО: Используйте транзакцию! Без неё 1000 строк будут писаться минуту, с ней — долю секунды.
+    let tx = conn.transaction().map_err(|e| e.to_string())?;
+    
+    for result in reader.records() {
+        let record = result.map_err(|e| e.to_string())?;
+        // Нативная вставка: tx.execute("INSERT ...", ...)
+    }
+    
+    tx.commit().map_err(|e| e.to_string())?;
+    Ok(())
+}
+
+Почему это «надежнее и быстрее»:
+
+   1. Память: Потребление RAM стабильно (несколько МБ), даже если файл весит 10 ГБ.
+   2. Транзакции: rusqlite работает очень медленно на одиночных INSERT. Всегда оборачивайте цикл импорта в conn.transaction().
+   3. Ошибки: Вы сразу узнаете, если файл поврежден на 100-й строке, не дожидаясь загрузки всего файла.
+
+Какой из форматов (CSV или Excel) у вас в приоритете? Могу помочь с кодом парсинга через calamine для Excel, там есть свои нюансы с типами данных.
+
