@@ -61,6 +61,7 @@ pub fn run() {
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
+            get_app_info,
             get_settings,
             set_settings,
             get_stat,
@@ -141,11 +142,11 @@ pub async fn update_stat_all(stat_state: &State<'_, Mutex<StatisticsState>>) {
         let t = get_db_path_info(&state.db_path);
         state.db_path_size = t.0;
         state.db_list = t.1;
-        debug!(
+        /*debug!(
             "Statistics updated: {} files, {} bytes",
             state.db_list.len(),
             state.db_path_size
-        );
+        );*/
     }
 }
 

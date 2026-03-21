@@ -1,4 +1,8 @@
-cargo tauri android build
+================================
+cargo tauri android dev build
+пароль телефона 1111
+cargo tauri android dev
+adb devices      -- ce38666d
 
 Если сборка пройдёт успешно, установите APK на телефон:
 debug версия:
@@ -451,3 +455,59 @@ fn import_csv_to_sqlite(path: &Path, info: &CreateForm) -> Result<(), String> {
 
 Какой из форматов (CSV или Excel) у вас в приоритете? Могу помочь с кодом парсинга через calamine для Excel, там есть свои нюансы с типами данных.
 
+===========================================================
+use leptos::*;
+use exmex::prelude::*;
+
+#[component]
+pub fn Calculator(formula_from_db: String, initial_data: Vec<f64>) -> impl IntoView {
+    // 1. Храним "скомпилированную" формулу. 
+    // Если формула из БД валидна, FlatEx<f64> будет жить здесь.
+    let expr = create_memo(move |_| {
+        // Парсим один раз при изменении строки formula_from_db
+        exmex::parse_val::<f64>(&formula_from_db).ok()
+    });
+
+    // 2. Сигналы для входных данных (инпутов)
+    let (data, set_data) = create_signal(initial_data);
+
+    // 3. Реактивный результат
+    let display_result = create_memo(move |_| {
+        match expr.get() {
+            Some(e) => {
+                // Вычисляем на лету при изменении данных
+                e.eval(&data.get()).map(|v| v.to_string()).unwrap_or_else(|_| "Ошибка вычислений".to_string())
+            }
+            None => "Ошибка в формуле".to_string(),
+        }
+    });
+
+    view! {
+        <div>
+            <p>"Результат: " {display_result}</p>
+        </div>
+    }
+}
+
+
+
+use exmex::prelude::*;
+use std::collections::HashMap;
+
+// Допустим, это пришло из БД или инпутов (как строки)
+let raw_data: HashMap<&str, &str> = [
+    ("price", "100.50"),
+    ("count", "2")
+].into_iter().collect();
+
+// 1. Конвертируем строки в f64 заранее
+let values: Vec<f64> = raw_data.values()
+    .map(|v| v.parse::<f64>().unwrap_or(0.0))
+    .collect();
+let names: Vec<&str> = raw_data.keys().cloned().collect();
+
+// 2. Парсим формулу с учетом этих имен
+let expr = exmex::parse_with_vars::<f64>("price * count", &names).unwrap();
+
+// 3. Считаем
+let result = expr.eval(&values).unwrap();

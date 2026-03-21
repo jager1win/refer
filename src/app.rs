@@ -261,6 +261,20 @@ fn Settings() -> impl IntoView {
         "taupe", "mauve", "mist", "olive",
     ];
     /* Possible color choices: orange, lime, green, cyan, blue, indigo, purple, fuchsia, pink, rose, slate, zinc, taupe, mauve, mist, olive*/
+    let info = RwSignal::new(Vec::<String>::new());
+    spawn_local(async move {
+        match invoke("get_app_info", &JsValue::NULL).await {
+            Ok(js) => {
+                let s = from_value::<Vec<String>>(js).unwrap_or_default();
+                info.set(s);
+            }
+            Err(js) => {
+                let error_msg = from_value::<String>(js).unwrap_or_else(|_| "Unknown error".into());
+                let v = vec!["Failed get app info:".to_string(), error_msg];
+                info.set(v);
+            }
+        };
+    });
 
     let toggle_theme = move |_| {
         settings.update(|current| {
@@ -405,8 +419,15 @@ fn Settings() -> impl IntoView {
                 </div>
             </div>
         </div>
-        <div class="settings_block gr">
-            <p class="gridl"><span>"Github"</span><a href="https://github.com/jager1win/refer" target="_blank">"https://github.com/jager1win/refer"</a></p>
+        <div class="gr info">
+            {move || {
+                info.get()
+                    .into_iter()
+                    .map(|n| {
+                        view! { <p>{n}</p> }
+                    })
+                    .collect_view()
+            }}
         </div>
     }
 }

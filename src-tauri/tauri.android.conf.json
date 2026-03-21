@@ -4,8 +4,6 @@
     "windows": [
       {
         "title": "Refer",
-        "width": 600,
-        "height": 800,
         "resizable": true,
         "fullscreen": false
       }

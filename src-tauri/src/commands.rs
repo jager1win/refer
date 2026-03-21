@@ -9,8 +9,8 @@ use std::io::{self, Read};
 use std::path::{Component, Path, PathBuf};
 use std::sync::Mutex;
 use tauri::{Manager, State};
-use tauri_plugin_dialog::{DialogExt};
-use tracing::{error, info};
+use tauri_plugin_dialog::DialogExt;
+use tracing::{debug, error, warn, info};
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct CreateForm {
@@ -19,6 +19,17 @@ pub struct CreateForm {
     pub has_header: bool,
     pub file_extension: Option<String>,
     pub file_path: Option<PathBuf>,
+}
+
+#[tauri::command]
+pub async fn get_app_info() -> Vec<String> {
+    let mut result = Vec::new();
+    result.push(format!("Version: {}", env!("CARGO_PKG_VERSION")));
+    result.push(format!("Author: {}", env!("CARGO_PKG_AUTHORS")));
+    result.push(format!("License: {}", env!("CARGO_PKG_LICENSE")));
+    result.push(format!("Githab: {}", env!("CARGO_PKG_REPOSITORY")));
+
+    result
 }
 
 #[tauri::command]
@@ -188,9 +199,10 @@ pub async fn create_example(val: CreateForm, stat_state: State<'_, Mutex<Statist
     }
 }
 
-
 #[tauri::command]
-pub async fn create_from_file(mut val: CreateForm, app: tauri::AppHandle, stat_state: State<'_, Mutex<StatisticsState>>) -> Result<(), String> {
+pub async fn create_from_file(
+    mut val: CreateForm, app: tauri::AppHandle, stat_state: State<'_, Mutex<StatisticsState>>,
+) -> Result<(), String> {
     let s_state = stat_state.lock().unwrap();
     let mut root = s_state.db_path.clone();
 
@@ -201,7 +213,7 @@ pub async fn create_from_file(mut val: CreateForm, app: tauri::AppHandle, stat_s
             return Err(format!("Failed to create path: {:?}", e));
         }
     }
-    println!("1. root: {:?}" , &root);
+
     // 1. Настраиваем фильтры диалога
     let mut dialog = app.dialog().file();
     dialog = match val.mode.as_str() {
@@ -209,24 +221,22 @@ pub async fn create_from_file(mut val: CreateForm, app: tauri::AppHandle, stat_s
         "sqlite" => dialog.add_filter("SQLite DB", &["sqlite", "sqlite3", "db"]),
         _ => dialog,
     };
-    println!("2. dialog: ok");
 
     let file_path = dialog.blocking_pick_file();
-    println!("3. file_path: {:?}" , &file_path);
-    let Some(path_obj) = file_path else { return Err("CANCELLED".into()); };
+    let Some(path_obj) = file_path else {
+        return Err("CANCELLED".into());
+    };
     let path = path_obj.as_path().ok_or("Invalid Path")?;
-    println!("4. file_path: {:?}" , &path);
-    
 
     // 2. Проверка расширения (на всякий случай, если в ОС нет фильтров)
-    let ext = path.extension()
-        .and_then(|e| e.to_str())
-        .unwrap_or("")
-        .to_lowercase();
+    let ext = path.extension().and_then(|e| e.to_str()).unwrap_or("").to_lowercase();
+    if val.file_extension != Some(ext.clone()) {
+        val.file_extension = Some(ext);
+    }
 
-    println!(
-        "val.mode: {:?}, val.db_name: {:?}, header:{:?}, file_ext: {:?}, path: {:?}",
-        &val.mode, &val.db_name, &val.has_header, &ext, &path
+    debug!(
+        "val.mode: {:?}, val.db_name: {:?}, header:{:?}, val.file_extension: {:?}, path: {:?}",
+        &val.mode, &val.db_name, &val.has_header, &val.file_extension, &path
     );
     match val.mode.as_str() {
         "sheet" => match create_from_sheet(&root, &val) {
@@ -319,7 +329,9 @@ pub async fn get_meta(pb: PathBuf, state: State<'_, Mutex<DbState>>) -> Result<T
 }
 
 #[tauri::command]
-pub async fn search_items(pb: PathBuf, query: String, state: State<'_, Mutex<DbState>>) -> Result<Vec<DataRecord>, String> {
+pub async fn search_items(
+    pb: PathBuf, query: String, state: State<'_, Mutex<DbState>>,
+) -> Result<Vec<DataRecord>, String> {
     let mut db = state.lock().map_err(|e| e.to_string())?;
     db.with_conn(pb.clone(), |conn, meta| {
         let Some(meta) = meta else {
@@ -329,11 +341,10 @@ pub async fn search_items(pb: PathBuf, query: String, state: State<'_, Mutex<DbS
 
         match sql::search_items(conn, meta, &query).map_err(|e| e.to_string()) {
             Ok(h) => {
-                //info!("search_items ok: {}", serde_json::to_string(&h).unwrap());
                 Ok(h)
             }
             Err(e) => {
-                error!("{}", e);
+                warn!("{}", e);
                 Err(e)
             }
         }

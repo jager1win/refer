@@ -4,7 +4,7 @@ version = "1.0.0"
 description = "Reference Builder"
 authors = ["Yuriy (Jager) Lysov"]
 edition = "2024"
-license = "GPL-3.0"
+license = "GPL-3"
 repository = "https://github.com/jager1win/refer"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html

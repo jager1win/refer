@@ -20,7 +20,6 @@ pub fn Ref_main() -> impl IntoView {
     // get meta
     spawn_local(async move {
         let pb = full_pb(stat.get_untracked().db_path, selected_ref.get_untracked().unwrap());
-        log::info!("pb info-{:?}", &pb);
         match invoke("get_meta", &tauri_args!("pb": pb)).await {
             Ok(js) => {
                 let s = from_value::<TableMeta>(js).unwrap();
@@ -110,7 +109,9 @@ pub fn Ref_main() -> impl IntoView {
     // debounce for search. run if upd query_string || meta
     Effect::new(move |_| {
         let _ = query_string.get();
-        let _ = meta.get();
+        let MetaState::Loaded(_) = meta.get() else {
+            return;
+        };
 
         let pbclon = pb.clone();
         let current_query = query_string.get_untracked();
