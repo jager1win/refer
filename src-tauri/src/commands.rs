@@ -1,3 +1,4 @@
+use crate::import::run_import;
 use crate::sql::{self, *};
 use crate::{APP_EXT, DbState, SettingsStore, StatisticsState};
 use serde::{Deserialize, Serialize};
@@ -10,14 +11,14 @@ use std::path::{Component, Path, PathBuf};
 use std::sync::Mutex;
 use tauri::{Manager, State};
 use tauri_plugin_dialog::DialogExt;
-use tracing::{debug, error, warn, info};
+use tracing::{debug, error, info, warn};
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct CreateForm {
     pub mode: String, // "empty", "sheet", "sqlite"
     pub db_name: PathBuf,
     pub has_header: bool,
-    pub file_extension: Option<String>,
+    pub file_extension: String,
     pub file_path: Option<PathBuf>,
 }
 
@@ -227,18 +228,28 @@ pub async fn create_from_file(
         return Err("CANCELLED".into());
     };
     let path = path_obj.as_path().ok_or("Invalid Path")?;
+    val.file_path = Some(path.to_path_buf());
+    val.db_name = root;
 
     // 2. Проверка расширения (на всякий случай, если в ОС нет фильтров)
-    let ext = path.extension().and_then(|e| e.to_str()).unwrap_or("").to_lowercase();
-    if val.file_extension != Some(ext.clone()) {
-        val.file_extension = Some(ext);
-    }
+    val.file_extension = path.extension().and_then(|e| e.to_str()).unwrap_or("").to_lowercase();
 
     debug!(
         "val.mode: {:?}, val.db_name: {:?}, header:{:?}, val.file_extension: {:?}, path: {:?}",
         &val.mode, &val.db_name, &val.has_header, &val.file_extension, &path
     );
-    match val.mode.as_str() {
+    match create_from_csv_file(&val){
+        Ok(()) => {
+            info!("Database '{:?}' from file created", &val.db_name);
+            Ok(())
+        }
+        Err(e) => {
+            let _ = fs::remove_file(&val.db_name);
+            error!("Failed to create db from file: {}", e);
+            Err(format!("Failed to create db from file: {:?}", e))
+        }
+    }
+    /*match val.mode.as_str() {
         "sheet" => match create_from_sheet(&root, &val) {
             Ok(()) => {
                 info!("Database '{:?}' from file created", &val.db_name);
@@ -262,7 +273,7 @@ pub async fn create_from_file(
             }
         },
         _ => Err(format!("Unknown operation: {}", val.mode)),
-    }
+    }*/
 }
 
 fn build_and_create_refer_path(root: &Path, p: &Path, example: bool) -> Result<PathBuf, io::Error> {
@@ -340,9 +351,7 @@ pub async fn search_items(
         };
 
         match sql::search_items(conn, meta, &query).map_err(|e| e.to_string()) {
-            Ok(h) => {
-                Ok(h)
-            }
+            Ok(h) => Ok(h),
             Err(e) => {
                 warn!("{}", e);
                 Err(e)

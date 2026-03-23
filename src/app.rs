@@ -42,7 +42,7 @@ struct CreateForm {
     mode: String,                   // "empty", "sheet", "sqlite"
     db_name: PathBuf,               // имя БД
     has_header: bool,               // есть заголовок
-    file_extension: Option<String>, // расширение файла
+    file_extension: String, // расширение файла
     file_path: Option<PathBuf>,     // содержимое файла
 }
 
@@ -522,7 +522,7 @@ fn Create() -> impl IntoView {
     let mode = RwSignal::new("sheet".to_string());
     let form_ref = NodeRef::<leptos::html::Form>::new();
     // send create
-    let submit = move |ev: SubmitEvent| {
+    let create_refer = move |ev: SubmitEvent| {
         ev.prevent_default();
         if is_loading.get() {
             return;
@@ -557,7 +557,7 @@ fn Create() -> impl IntoView {
 
         // check simbols
         match validate_relative_refer_path(&form_data.db_name) {
-            Ok(()) => log::debug!("simbols: ok"),
+            Ok(()) => {},
             Err(()) => {
                 err_form.set(format!("🖉 {}", t_string!(i18n, create.fname)));
                 return;
@@ -658,7 +658,7 @@ fn Create() -> impl IntoView {
         >
             <div class="gr">
                 <span class="err_send">{move || err_form.get()}</span>
-                <form class="form_new" on:submit=submit node_ref=form_ref novalidate>
+                <form class="form_new" on:submit=create_refer node_ref=form_ref novalidate>
                     <fieldset class="grida m0">
                         <label>
                             <input

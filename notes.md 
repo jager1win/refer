@@ -252,7 +252,7 @@ pub fn fetch_data(conn: &Connection) -> Result<Vec<String>> {
 * Бизнес-логика живет в отдельном файле и легко тестируется.
 
 Показать, как правильно настроить сериализацию структур (через serde), чтобы данные из sql.rs улетали на фронтенд без ошибок? Да / Нет
-
+=======================================================
 {
   "emmet.includeLanguages": {
     "rust": "html"
@@ -278,7 +278,7 @@ pub fn fetch_data(conn: &Connection) -> Result<Vec<String>> {
   },
   "rust-analyzer.trace.server": "verbose"
 }
-
+===============================================
 // Использование - &tauri_args!("pb": pb)
 async fn delete_reference(name: String) {
     match invoke("del_ref", &tauri_args!("val": name.clone())).await {
