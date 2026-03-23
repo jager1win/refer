@@ -1,6 +1,6 @@
-use crate::import::run_import;
 use crate::sql::{self, *};
 use crate::{APP_EXT, DbState, SettingsStore, StatisticsState};
+use crate::import::*;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::collections::HashMap;
@@ -238,7 +238,7 @@ pub async fn create_from_file(
         "val.mode: {:?}, val.db_name: {:?}, header:{:?}, val.file_extension: {:?}, path: {:?}",
         &val.mode, &val.db_name, &val.has_header, &val.file_extension, &path
     );
-    match create_from_csv_file(&val){
+    /*match create_from_csv_file(&val){
         Ok(()) => {
             info!("Database '{:?}' from file created", &val.db_name);
             Ok(())
@@ -248,32 +248,43 @@ pub async fn create_from_file(
             error!("Failed to create db from file: {}", e);
             Err(format!("Failed to create db from file: {:?}", e))
         }
-    }
-    /*match val.mode.as_str() {
-        "sheet" => match create_from_sheet(&root, &val) {
+    }*/
+    match val.file_extension.as_ref() {
+        "csv" | "tsv" => match create_from_csv_file(&val) {
             Ok(()) => {
-                info!("Database '{:?}' from file created", &val.db_name);
+                info!("Database '{:?}' from csv file created", &val.db_name);
                 Ok(())
             }
             Err(e) => {
-                let _ = fs::remove_file(&root);
-                error!("Failed to create db from file: {}", e);
-                Err(format!("Failed to create db from file: {:?}", e))
+                let _ = fs::remove_file(&val.db_name);
+                error!("Failed to create db from csv file: {}", e);
+                Err(format!("Failed to create db from csv file: {:?}", e))
             }
         },
-        "sqlite" => match create_from_sqlite(&root, &val) {
+        "xlsx" | "ods" | "xls" => match create_from_sheet_file(&val) {
+            Ok(()) => {
+                info!("Database '{:?}' from sheet file created", &val.db_name);
+                Ok(())
+            }
+            Err(e) => {
+                let _ = fs::remove_file(&val.db_name);
+                error!("Failed to create db from sheet file: {}", e);
+                Err(format!("Failed to create db from sheet file: {:?}", e))
+            }
+        }
+        "sqlite" | "sqlite3" | "db" => match create_from_sqlite(&val) {
             Ok(()) => {
                 info!("Database '{:?}' from sqlite created", &val.db_name);
                 Ok(())
             }
             Err(e) => {
-                let _ = fs::remove_file(&root);
+                let _ = fs::remove_file(&val.db_name);
                 error!("Failed to create db from sqlite: {}", e);
                 Err(format!("Failed to create db from sqlite: {:?}", e))
             }
         },
         _ => Err(format!("Unknown operation: {}", val.mode)),
-    }*/
+    }
 }
 
 fn build_and_create_refer_path(root: &Path, p: &Path, example: bool) -> Result<PathBuf, io::Error> {

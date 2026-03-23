@@ -38,7 +38,7 @@
     "ttp_path": "Можно указать подпапку (например, tmp/my_refer)",
     "ttp_header": "Первая строка — названия столбцов",
     "fsqlite": "SQLite: sqlite, sqlite3, db",
-    "ftable": "Таблицы: csv, tsv, xls, xlsx, ods",
+    "ftable": "Таблицы: csv(разделители: , ; | tab), tsv, xls, xlsx, ods",
     "ttp_table": "Один или несколько однотипных листов. Без формул.",
     "ttp_sqlite": "Одна или несколько однотипных таблиц",
     "ttp_empty": "Создание справочника с нуля"

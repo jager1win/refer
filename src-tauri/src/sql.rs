@@ -1,6 +1,4 @@
-use crate::commands::CreateForm;
-use csv::{Error as CsvError, ReaderBuilder};
-use rusqlite::{Connection, Error as RError, Result, Row, Transaction, params, types::ValueRef};
+use rusqlite::{Connection, Error as RError, Result, Row, params, types::ValueRef};
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 use std::collections::HashMap;
@@ -249,6 +247,79 @@ fn row_to_record(row: &Row) -> Result<DataRecord> {
     Ok(DataRecord { id, fields })
 }
 
+// Добавление поля в существующую базу
+pub fn add_field(
+    conn: &Connection, field_index: usize, display_name: Option<&str>, field_type: &str,
+) -> Result<String> {
+    let field_name = format!("f_{}", field_index);
+
+    // Добавляем колонку в data
+    let sql = format!(
+        "ALTER TABLE data ADD COLUMN {} {}",
+        field_name,
+        match field_type {
+            "number" | "real" => "REAL",
+            "integer" => "INTEGER",
+            _ => "TEXT",
+        }
+    );
+    conn.execute(&sql, [])?;
+
+    // Обновляем field_names в meta
+    let names_json: String =
+        conn.query_row("SELECT value FROM meta WHERE key = 'field_names'", [], |row| row.get(0))?;
+
+    let mut names: serde_json::Value = serde_json::from_str(&names_json).unwrap_or(json!({}));
+    if let Some(obj) = names.as_object_mut() {
+        let name = display_name.unwrap_or(&format!("#{}", field_index)).to_string();
+        obj.insert(field_name.clone(), json!(name));
+    }
+
+    conn.execute(
+        "UPDATE meta SET value = ?1 WHERE key = 'field_names'",
+        params![names.to_string()],
+    )?;
+
+    // Обновляем field_types в meta
+    let types_json: String =
+        conn.query_row("SELECT value FROM meta WHERE key = 'field_types'", [], |row| row.get(0))?;
+
+    let mut types: serde_json::Value = serde_json::from_str(&types_json).unwrap_or(json!({}));
+    if let Some(obj) = types.as_object_mut() {
+        obj.insert(field_name.clone(), json!(field_type));
+    }
+
+    conn.execute(
+        "UPDATE meta SET value = ?1 WHERE key = 'field_types'",
+        params![types.to_string()],
+    )?;
+
+    Ok(field_name)
+}
+
+// Добавление операции
+pub fn add_operation(conn: &Connection, name: &str, expression: &str, description: Option<&str>) -> Result<()> {
+    let ops_json: String = conn.query_row("SELECT value FROM meta WHERE key = 'operations'", [], |row| row.get(0))?;
+
+    let mut ops: serde_json::Value = serde_json::from_str(&ops_json).unwrap_or(json!([]));
+
+    if let Some(arr) = ops.as_array_mut() {
+        arr.push(json!({
+            "name": name,
+            "expression": expression,
+            "description": description.unwrap_or(""),
+            "created_at": chrono::Local::now().to_rfc3339(),
+        }));
+    }
+
+    conn.execute(
+        "UPDATE meta SET value = ?1 WHERE key = 'operations'",
+        params![ops.to_string()],
+    )?;
+
+    Ok(())
+}
+
 // Создание пустой базы
 pub fn create_empty_database(path: &PathBuf) -> Result<(), String> {
     let conn = Connection::open(path).map_err(|e| e.to_string())?;
@@ -299,237 +370,7 @@ pub fn create_empty_database(path: &PathBuf) -> Result<(), String> {
     Ok(())
 }
 
-/*pub fn create_from_sheet(path: &PathBuf, val: &CreateForm) -> Result<(), String> {
-    match val.file_extension.clone().as_str() {
-        "csv" | "tsv" => create_from_csv_file(path, val),
-        "xls" | "xlsx" | "ods" => create_from_sheet_file(path, val),
-        &_ => {
-            Err(RError::SqliteFailure(rusqlite::ffi::Error::new(1), Some("Unknown file ext".to_string())).to_string())
-        }
-    }
-}*/
-
-pub fn create_from_csv_file(val: &CreateForm) -> Result<(), String> {
-    // Создаем пустую базу данных
-    create_empty_database(&val.db_name)?;
-    let mut conn = Connection::open(&val.db_name).map_err(|e| e.to_string())?;
-    
-    // Автоопределение разделителя по расширению и содержимому
-    let delimiter = if val.file_extension.to_lowercase() == "tsv" {
-        b'\t'
-    } else {
-        // Для CSV пробуем определить разделитель по первой строке
-        let content = std::fs::read_to_string(val.file_path.as_ref().unwrap())
-            .map_err(|e| e.to_string())?;
-        let first_line = content.lines().next().unwrap_or("");
-        
-        // Подсчитываем частоту возможных разделителей
-        let comma_count = first_line.matches(',').count();
-        let semicolon_count = first_line.matches(';').count();
-        let pipe_count = first_line.matches('|').count();
-        let tab_count = first_line.matches('\t').count();
-        
-        // Выбираем самый частый разделитель
-        let max_count = *[comma_count, semicolon_count, pipe_count, tab_count].iter().max().unwrap_or(&0);
-        
-        if max_count == 0 {
-            b',' // если нет ни одного разделителя, используем запятую по умолчанию
-        } else if semicolon_count == max_count {
-            b';'
-        } else if pipe_count == max_count {
-            b'|'
-        } else if tab_count == max_count {
-            b'\t'
-        } else {
-            b',' // по умолчанию запятая
-        }
-    };
-    
-    // Открываем CSV файл с определенным разделителем
-    let mut rdr = csv::ReaderBuilder::new()
-        .has_headers(false)
-        .delimiter(delimiter)
-        .flexible(true)
-        .from_path(val.file_path.as_ref().unwrap())
-        .map_err(|e| e.to_string())?;
-    
-    // Читаем все строки из CSV
-    let mut all_rows: Vec<csv::StringRecord> = Vec::new();
-    for result in rdr.records() {
-        all_rows.push(result.map_err(|e| e.to_string())?);
-    }
-    
-    if all_rows.is_empty() {
-        return Ok(());
-    }
-    
-    // Разделяем заголовки и данные
-    let (headers, data_rows) = if val.has_header {
-        let headers = all_rows[0].iter().map(|s| s.to_string()).collect();
-        let data_rows = &all_rows[1..];
-        (headers, data_rows)
-    } else {
-        (Vec::new(), &all_rows[..])
-    };
-    
-    if data_rows.is_empty() {
-        return Ok(());
-    }
-    
-    // Определяем количество колонок
-    let col_count = data_rows[0].len();
-    
-    // Подготавливаем информацию о полях
-    let mut field_names_map = HashMap::new();
-    let mut field_types_map = HashMap::new();
-    
-    for i in 0..col_count {
-        let first_value = data_rows[0].get(i).unwrap_or("");
-        let field_type = if first_value.parse::<f64>().is_ok() { 
-            FieldType::Number 
-        } else { 
-            FieldType::Text 
-        };
-        
-        let display_name = if val.has_header && i < headers.len() {
-            headers[i].clone()
-        } else {
-            format!("Field {}", i + 1)
-        };
-        
-        let field_name = format!("f_{}", i);
-        field_names_map.insert(field_name.clone(), display_name);
-        field_types_map.insert(field_name, field_type);
-    }
-    
-    // Добавляем колонки в таблицу data
-    for i in 0..col_count {
-        let field_name = format!("f_{}", i);
-        let sql = format!("ALTER TABLE data ADD COLUMN {} TEXT", field_name);
-        conn.execute(&sql, []).map_err(|e| e.to_string())?;
-    }
-    
-    // Импортируем данные в отдельном блоке
-    {
-        let tx = conn.transaction().map_err(|e| e.to_string())?;
-        
-        // Подготавливаем запросы
-        let mut insert_stmt = tx.prepare("INSERT INTO data DEFAULT VALUES").map_err(|e| e.to_string())?;
-        
-        let mut update_stmts = Vec::with_capacity(col_count);
-        for i in 0..col_count {
-            let field_name = format!("f_{}", i);
-            let sql = format!("UPDATE data SET {} = ?1 WHERE id = ?2", field_name);
-            let mut stmt = tx.prepare(&sql).map_err(|e| e.to_string())?;
-            update_stmts.push(stmt);
-        }
-        
-        // Импортируем данные
-        for row in data_rows {
-            insert_stmt.execute([]).map_err(|e| e.to_string())?;
-            let record_id = tx.last_insert_rowid();
-            
-            for (i, value) in row.iter().enumerate() {
-                if let Some(stmt) = update_stmts.get_mut(i) {
-                    stmt.execute(params![value, record_id]).map_err(|e| e.to_string())?;
-                }
-            }
-        }
-        
-        // Явно уничтожаем Statement перед коммитом
-        drop(insert_stmt);
-        drop(update_stmts);
-        
-        tx.commit().map_err(|e| e.to_string())?;
-    }
-    
-    // Обновляем meta таблицу
-    let fields_display_json = serde_json::to_string(&field_names_map).map_err(|e| e.to_string())?;
-    let fields_types_json = serde_json::to_string(&field_types_map).map_err(|e| e.to_string())?;
-    let search_config_json = serde_json::to_string(&vec!["f_0"]).map_err(|e| e.to_string())?;
-    
-    conn.execute(
-        "UPDATE meta SET value = ?1 WHERE key = 'field_names'",
-        params![fields_display_json],
-    ).map_err(|e| e.to_string())?;
-    
-    conn.execute(
-        "UPDATE meta SET value = ?1 WHERE key = 'field_types'",
-        params![fields_types_json],
-    ).map_err(|e| e.to_string())?;
-    
-    conn.execute(
-        "UPDATE meta SET value = ?1 WHERE key = 'search_config'",
-        params![search_config_json],
-    ).map_err(|e| e.to_string())?;
-    
-    conn.execute(
-        "UPDATE meta SET value = ?1 WHERE key = 'count_data'",
-        params![data_rows.len().to_string()],
-    ).map_err(|e| e.to_string())?;
-    
-    Ok(())
-}
-
-pub fn create_from_sheet_file(path: &PathBuf, val: &CreateForm) -> Result<(), String> {
-    // TODO: реализовать
-    Ok(())
-}
-
-pub fn create_from_sqlite(path: &PathBuf, val: &CreateForm) -> Result<()> {
-    // TODO: реализовать
-    Ok(())
-}
-
-// Добавление поля в существующую базу
-pub fn add_field(
-    conn: &Connection, field_index: usize, display_name: Option<&str>, field_type: &str,
-) -> Result<String> {
-    let field_name = format!("f_{}", field_index);
-
-    // Добавляем колонку в data
-    let sql = format!(
-        "ALTER TABLE data ADD COLUMN {} {}",
-        field_name,
-        match field_type {
-            "number" | "real" => "REAL",
-            "integer" => "INTEGER",
-            _ => "TEXT",
-        }
-    );
-    conn.execute(&sql, [])?;
-
-    // Обновляем field_names в meta
-    let names_json: String =
-        conn.query_row("SELECT value FROM meta WHERE key = 'field_names'", [], |row| row.get(0))?;
-
-    let mut names: serde_json::Value = serde_json::from_str(&names_json).unwrap_or(json!({}));
-    if let Some(obj) = names.as_object_mut() {
-        let name = display_name.unwrap_or(&format!("#{}", field_index)).to_string();
-        obj.insert(field_name.clone(), json!(name));
-    }
-
-    conn.execute(
-        "UPDATE meta SET value = ?1 WHERE key = 'field_names'",
-        params![names.to_string()],
-    )?;
-
-    // Обновляем field_types в meta
-    let types_json: String =
-        conn.query_row("SELECT value FROM meta WHERE key = 'field_types'", [], |row| row.get(0))?;
-
-    let mut types: serde_json::Value = serde_json::from_str(&types_json).unwrap_or(json!({}));
-    if let Some(obj) = types.as_object_mut() {
-        obj.insert(field_name.clone(), json!(field_type));
-    }
-
-    conn.execute(
-        "UPDATE meta SET value = ?1 WHERE key = 'field_types'",
-        params![types.to_string()],
-    )?;
-
-    Ok(field_name)
-}
+// ==================== Create demo ====================
 
 // Импорт CSV данных (общая функция)
 pub fn import_csv(conn: &Connection, csv_data: &str, has_header: bool) -> Result<Vec<String>> {
@@ -584,45 +425,6 @@ pub fn import_csv(conn: &Connection, csv_data: &str, has_header: bool) -> Result
 
     Ok(field_names)
 }
-
-
-// Сохраняем старую функцию для обратной совместимости со строковыми данными
-/*pub fn import_csv(conn: &Connection, csv_data: &str, has_header: bool) -> Result<Vec<String>, String> {
-    let rdr = match csv::ReaderBuilder::new()
-        .has_headers(has_header)
-        .flexible(true)
-        .from_reader(csv_data.as_bytes()) {
-            Ok(rdr) => rdr,
-            Err(e) => return Err(format!("{}", e)),
-        };
-
-    import_csv_from_reader(conn, rdr, has_header)
-}*/
-
-// Добавление операции
-pub fn add_operation(conn: &Connection, name: &str, expression: &str, description: Option<&str>) -> Result<()> {
-    let ops_json: String = conn.query_row("SELECT value FROM meta WHERE key = 'operations'", [], |row| row.get(0))?;
-
-    let mut ops: serde_json::Value = serde_json::from_str(&ops_json).unwrap_or(json!([]));
-
-    if let Some(arr) = ops.as_array_mut() {
-        arr.push(json!({
-            "name": name,
-            "expression": expression,
-            "description": description.unwrap_or(""),
-            "created_at": chrono::Local::now().to_rfc3339(),
-        }));
-    }
-
-    conn.execute(
-        "UPDATE meta SET value = ?1 WHERE key = 'operations'",
-        params![ops.to_string()],
-    )?;
-
-    Ok(())
-}
-
-// ==================== Create demo ====================
 
 pub fn create_ballistics_database(path: &PathBuf) -> Result<(), String> {
     // Создаем пустую базу
@@ -726,14 +528,3 @@ const BALLISTICS_CSV: &str = "caliber,bullet_mass_g,muzzle_velocity,bc_g1,cross_
 .45 ACP,15.0,260,0.180,0.16
 12 gauge slug,28.0,480,0.210,2.15";
 
-// Данные для баллистики
-const BALLISTICS_CSV2: &str = ".308 Winchester,11.3,800,0.475,0.48
-.338 Lapua Mag,16.2,900,0.648,0.57
-7.62x54R LPS,9.6,830,0.420,0.48
-5.45x39 7N6,3.4,900,0.347,0.23
-.223 Remington,4.0,930,0.304,0.25
-6.5 Creedmoor,8.9,860,0.520,0.34
-.300 Win Mag,11.7,880,0.590,0.42
-9x19 Parabellum,8.0,360,0.150,0.12
-.45 ACP,15.0,260,0.180,0.16
-12 gauge slug,28.0,480,0.210,2.15";

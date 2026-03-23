@@ -10,7 +10,7 @@ pub mod import;
 pub mod sql;
 use crate::commands::*;
 use crate::sql::DbState;
-use tracing::{debug, error, info, warn};
+use tracing::{error, info, warn};
 use tracing_appender::non_blocking::WorkerGuard;
 use tracing_subscriber::{fmt, prelude::*, EnvFilter, Layer};
 

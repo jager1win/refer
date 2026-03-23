@@ -38,7 +38,7 @@
     "ttp_path": "You can use subfolders (e.g. tmp/my_refer)",
     "ttp_header": "Use first row as column names",
     "fsqlite": "SQLite: sqlite, sqlite3, db",
-    "ftable": "Tables: csv, tsv, xls, xlsx, ods",
+    "ftable": "Tables: csv(delimiters: , ; | tab), tsv, xls, xlsx, ods",
     "ttp_table": "One or multiple sheets of the same type. No formulas.",
     "ttp_sqlite": "One or multiple tables of the same type",
     "ttp_empty": "Create a reference from scratch"
