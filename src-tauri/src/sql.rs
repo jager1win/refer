@@ -314,9 +314,41 @@ pub fn create_from_csv_file(val: &CreateForm) -> Result<(), String> {
     create_empty_database(&val.db_name)?;
     let mut conn = Connection::open(&val.db_name).map_err(|e| e.to_string())?;
     
-    // Открываем CSV файл - читаем все строки как есть
+    // Автоопределение разделителя по расширению и содержимому
+    let delimiter = if val.file_extension.to_lowercase() == "tsv" {
+        b'\t'
+    } else {
+        // Для CSV пробуем определить разделитель по первой строке
+        let content = std::fs::read_to_string(val.file_path.as_ref().unwrap())
+            .map_err(|e| e.to_string())?;
+        let first_line = content.lines().next().unwrap_or("");
+        
+        // Подсчитываем частоту возможных разделителей
+        let comma_count = first_line.matches(',').count();
+        let semicolon_count = first_line.matches(';').count();
+        let pipe_count = first_line.matches('|').count();
+        let tab_count = first_line.matches('\t').count();
+        
+        // Выбираем самый частый разделитель
+        let max_count = *[comma_count, semicolon_count, pipe_count, tab_count].iter().max().unwrap_or(&0);
+        
+        if max_count == 0 {
+            b',' // если нет ни одного разделителя, используем запятую по умолчанию
+        } else if semicolon_count == max_count {
+            b';'
+        } else if pipe_count == max_count {
+            b'|'
+        } else if tab_count == max_count {
+            b'\t'
+        } else {
+            b',' // по умолчанию запятая
+        }
+    };
+    
+    // Открываем CSV файл с определенным разделителем
     let mut rdr = csv::ReaderBuilder::new()
         .has_headers(false)
+        .delimiter(delimiter)
         .flexible(true)
         .from_path(val.file_path.as_ref().unwrap())
         .map_err(|e| e.to_string())?;
