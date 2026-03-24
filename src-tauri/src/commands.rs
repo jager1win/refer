@@ -238,17 +238,7 @@ pub async fn create_from_file(
         "val.mode: {:?}, val.db_name: {:?}, header:{:?}, val.file_extension: {:?}, path: {:?}",
         &val.mode, &val.db_name, &val.has_header, &val.file_extension, &path
     );
-    /*match create_from_csv_file(&val){
-        Ok(()) => {
-            info!("Database '{:?}' from file created", &val.db_name);
-            Ok(())
-        }
-        Err(e) => {
-            let _ = fs::remove_file(&val.db_name);
-            error!("Failed to create db from file: {}", e);
-            Err(format!("Failed to create db from file: {:?}", e))
-        }
-    }*/
+
     match val.file_extension.as_ref() {
         "csv" | "tsv" => match create_from_csv_file(&val) {
             Ok(()) => {
@@ -436,9 +426,10 @@ pub async fn add_field(
         meta.field_names.insert(field_name.clone(), display_name);
         meta.field_types.insert(
             field_name.clone(),
-            match field_type.as_str() {
-                "number" => FieldType::Number,
-                _ => FieldType::Text,
+            if field_type == "number" { 
+                "number".to_string() 
+            } else { 
+                "text".to_string() 
             },
         );
     }

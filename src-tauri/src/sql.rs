@@ -1,4 +1,4 @@
-use rusqlite::{Connection, Error as RError, Result, Row, params, types::ValueRef};
+use rusqlite::{Connection, Error as RError, Result, Row, params, functions::FunctionFlags};
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 use std::collections::HashMap;
@@ -8,34 +8,25 @@ use std::path::PathBuf;
 #[derive(Debug, Serialize, Deserialize)]
 pub struct DataRecord {
     pub id: u32,
-    pub fields: HashMap<String, FieldValue>, // f_0, f_1 и т.д.
+    pub fields: HashMap<String, String>, // f_0, f_1 и т.д.
 }
-
+/*
 #[derive(Debug, Clone, Deserialize, Serialize)]
 #[serde(rename_all = "lowercase")]
 pub enum FieldType {
     Text,
     Number,
-}
-
-// Разные типы полей для гибкой обработки
-#[derive(Debug, Serialize, Deserialize)]
-#[serde(untagged)]
-pub enum FieldValue {
-    Text(String),
-    Number(f64),
-    Null,
-}
+}*/
 
 // Метаданные таблицы из таблицы meta
 #[derive(Default, Clone, Debug, Deserialize, Serialize)]
 pub struct TableMeta {
     pub name: String,
     pub desc: String,
-    pub field_names: HashMap<String, String>,    // f_0 -> "Name", f_1 -> "Age"
-    pub field_types: HashMap<String, FieldType>, // f_0 -> Text, f_1 -> Number
-    pub operations: Vec<Operation>,              // вычисляемые поля
-    pub search_config: Vec<String>,              // настройки поиска
+    pub field_names: HashMap<String, String>, // f_0 -> "Name", f_1 -> "Age"
+    pub field_types: HashMap<String, String>, // f_0 -> Text, f_1 -> Number
+    pub operations: Vec<Operation>,           // вычисляемые поля
+    pub search_config: Vec<String>,           // настройки поиска
     pub count_data: u32,
 }
 
@@ -57,15 +48,34 @@ pub struct DbState {
 impl DbState {
     pub fn get_conn(&mut self, path: PathBuf) -> Result<&Connection, String> {
         if self.current_path.as_ref() != Some(&path) {
-            // Присваивание Some автоматически дропает предыдущий Connection (закрывает файл)
-            self.conn = Some(Connection::open(&path).map_err(|e| e.to_string())?);
+            // 1. Открываем новое соединение
+            let mut conn = Connection::open(&path).map_err(|e| e.to_string())?;
+
+            // 2. Регистрируем функцию в локальной переменной conn (пока она мутабельна)
+            conn.create_scalar_function(
+                "rust_lower",
+                1,
+                rusqlite::functions::FunctionFlags::SQLITE_DETERMINISTIC | rusqlite::functions::FunctionFlags::SQLITE_UTF8,
+
+                |ctx| {
+                    let text = ctx.get::<String>(0)?;
+                    Ok(text.to_lowercase())
+                },
+            )
+            .map_err(|e| format!("Failed to register function: {}", e))?;
+
+            // 3. Сохраняем подготовленное соединение в state
+            self.conn = Some(conn);
             self.current_path = Some(path);
-            // Пытаемся загрузить meta. Если ошибка - оставляем None.
+
+            // 4. Загружаем метаданные
             if let Some(conn_ref) = self.conn.as_ref() {
                 self.meta = self.load_meta(conn_ref).ok();
             }
         }
-        Ok(self.conn.as_mut().unwrap())
+        
+        // Возвращаем иммутабельную ссылку (как и было в заголовке метода)
+        Ok(self.conn.as_ref().expect("Connection must exist here"))
     }
 
     // теперь замыкание получает и соединение, и ссылку на meta
@@ -100,7 +110,7 @@ impl DbState {
             None => HashMap::new(),
         };
 
-        let field_types: HashMap<String, FieldType> = match meta_data.get("field_types") {
+        let field_types: HashMap<String, String> = match meta_data.get("field_types") {
             Some(s) => serde_json::from_str(s).unwrap_or_default(),
             None => HashMap::new(),
         };
@@ -147,7 +157,7 @@ impl DbState {
     }
 }
 
-pub fn search_items(conn: &Connection, meta: &TableMeta, query: &str) -> Result<Vec<DataRecord>, String> {
+/*pub fn search_items(conn: &Connection, meta: &TableMeta, query: &str) -> Result<Vec<DataRecord>, String> {
     // 1. Формируем список полей для поиска
     let search_fields = if meta.search_config.is_empty() {
         meta.field_types
@@ -165,7 +175,7 @@ pub fn search_items(conn: &Connection, meta: &TableMeta, query: &str) -> Result<
     }
 
     // 2. Строим SQL
-    let conditions: Vec<String> = search_fields.iter().map(|f| format!("{} LIKE ?1", f)).collect();
+    let conditions: Vec<String> = search_fields.iter().map(|f| format!("LOWER({}) LIKE ?1", f)).collect();
 
     let where_clause = if conditions.is_empty() {
         String::from("")
@@ -175,7 +185,8 @@ pub fn search_items(conn: &Connection, meta: &TableMeta, query: &str) -> Result<
 
     let sql = format!("SELECT * FROM data {} ORDER BY id ASC LIMIT 10", where_clause);
 
-    let query_pattern = format!("%{}%", query);
+    let query_lower = query.to_lowercase();
+    let query_pattern = format!("%{}%", query_lower);
 
     // 3. Выполняем запрос
     let mut stmt = conn.prepare(&sql).map_err(|e| e.to_string())?;
@@ -189,7 +200,48 @@ pub fn search_items(conn: &Connection, meta: &TableMeta, query: &str) -> Result<
         .map_err(|e| e.to_string())?;
 
     Ok(records)
+}*/
+
+pub fn search_items(conn: &Connection, meta: &TableMeta, query: &str) -> Result<Vec<DataRecord>, String> {
+    // 1. Собираем поля для поиска
+    let search_fields = if meta.search_config.is_empty() {
+        meta.field_types.keys().cloned().collect::<Vec<String>>()
+    } else {
+        meta.search_config.clone()
+    };
+
+    if search_fields.is_empty() {
+        return Err("No search fields defined.".to_string());
+    }
+
+    // 2. Строим SQL. Используем нашу Rust-функцию для регистронезависимости Unicode.
+    // Применяем rust_lower и к колонке, и к искомой строке.
+    let conditions: Vec<String> = search_fields
+        .iter()
+        .map(|f| format!("rust_lower({}) LIKE rust_lower(?1)", f))
+        .collect();
+    
+    let where_clause = format!("WHERE {}", conditions.join(" OR "));
+    // Сразу берем 10 штук из базы — это надежно и быстро
+    let sql = format!("SELECT * FROM data {} ORDER BY id ASC LIMIT 10", where_clause);
+
+    // Экранируем спецсимволы SQLite, чтобы поиск по "_" не выдавал всё подряд
+    let safe_query = query.replace('%', "\\%").replace('_', "\\_");
+    let sql_pattern = format!("%{}%", safe_query);
+
+    let mut stmt = conn.prepare(&sql).map_err(|e| e.to_string())?;
+
+    // 3. Выполняем и сразу возвращаем результат
+    let result = stmt
+        .query_map([sql_pattern], row_to_record)
+        .map_err(|e| e.to_string())?
+        .collect::<Result<Vec<DataRecord>, _>>()
+        .map_err(|e| e.to_string())?;
+
+    Ok(result)
 }
+
+
 
 pub fn save_search_config(conn: &Connection, vec: &Vec<String>) -> Result<()> {
     let config_json = serde_json::to_string(vec).map_err(|e| rusqlite::Error::ToSqlConversionFailure(Box::new(e)))?;
@@ -211,11 +263,11 @@ pub fn get_el(conn: &Connection, id: u32) -> Result<DataRecord, String> {
 
     match stmt.query_row([id], row_to_record) {
         Ok(record) => Ok(record),
-        Err(e) => Err(e.to_string())
+        Err(e) => Err(e.to_string()),
     }
 }
 
-fn row_to_record(row: &Row) -> Result<DataRecord> {
+/*fn row_to_record(row: &Row) -> Result<DataRecord> {
     let id: u32 = row.get(0)?;
     let mut fields = HashMap::new();
 
@@ -224,7 +276,7 @@ fn row_to_record(row: &Row) -> Result<DataRecord> {
         let name = row.as_ref().column_name(i)?.to_string();
         match row.get_ref_unwrap(i) {
             ValueRef::Null => {
-                fields.insert(name, FieldValue::Null);
+                fields.insert(name, "FieldValue::Null");
             }
             ValueRef::Integer(n) => {
                 fields.insert(name, FieldValue::Number(n as f64));
@@ -242,6 +294,36 @@ fn row_to_record(row: &Row) -> Result<DataRecord> {
         }
     }
     Ok(DataRecord { id, fields })
+}*/
+
+use rusqlite::types::Value; // Добавьте этот импорт в начало файла
+
+fn row_to_record(row: &Row) -> rusqlite::Result<DataRecord> {
+    let mut fields = HashMap::new();
+    let col_count = row.as_ref().column_count();
+
+    for i in 1..col_count {
+        let col_name = row.as_ref().column_name(i)?;
+
+        // 1. Получаем сырое значение (оно может быть Text, Integer, Real, Null)
+        let val_raw: Value = row.get(i)?;
+
+        // 2. Конвертируем в строку вручную
+        let val_str = match val_raw {
+            Value::Text(s) => s,
+            Value::Integer(n) => n.to_string(),
+            Value::Real(n) => n.to_string(), // Вот это исправит вашу ошибку!
+            Value::Blob(b) => String::from_utf8_lossy(&b).to_string(), // На случай бинарных данных
+            Value::Null => String::new(),    // Пустая строка для NULL
+        };
+
+        fields.insert(col_name.to_string(), val_str);
+    }
+
+    Ok(DataRecord {
+        id: row.get(0)?,
+        fields,
+    })
 }
 
 // Добавление поля в существующую базу
@@ -449,26 +531,6 @@ pub fn create_ballistics_database(path: &PathBuf) -> Result<(), String> {
     )
     .map_err(|e| e.to_string())?;
 
-    /*let rdr = csv::ReaderBuilder::new()
-        .has_headers(true)
-        .flexible(true)
-        .from_path(path)
-        .map_err(|e| e.to_string())?;
-    create_from_csv_file(&conn, rdr, true)?;*/
-    // Импортируем CSV с заголовком
-    //let rdr = csv::ReaderBuilder::new().has_headers(false).flexible(true).from_reader(BALLISTICS_CSV2.as_bytes());
-    //import_csv_from_reader(&conn, rdr, true)?;
-    //let rdr = csv::ReaderBuilder::new().has_headers(true).flexible(true).from_reader(BALLISTICS_CSV2.as_bytes());
-    
-    /*
-        let rdr = csv::ReaderBuilder::new().has_headers(has_header).flexible(true).from_reader(csv_data.as_bytes());
-    import_csv_from_reader(&conn, rdr, has_header)?;
-
-    Вызов для файла:
-    let rdr = csv::ReaderBuilder::new().has_headers(has_header).flexible(true).from_path(path)?;
-    import_csv_from_reader(&conn, rdr, has_header)?;
-         */
-
     import_csv(&conn, BALLISTICS_CSV, true).map_err(|e| e.to_string())?;
 
     // Добавляем операции
@@ -524,4 +586,3 @@ const BALLISTICS_CSV: &str = "caliber,bullet_mass_g,muzzle_velocity,bc_g1,cross_
 9x19 Parabellum,8.0,360,0.150,0.12
 .45 ACP,15.0,260,0.180,0.16
 12 gauge slug,28.0,480,0.210,2.15";
-

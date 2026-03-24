@@ -1,7 +1,6 @@
 use crate::{commands::CreateForm, sql};
 use calamine::{Reader, open_workbook_auto};
 use rusqlite::{Connection, params};
-use sql::FieldType;
 use std::collections::HashMap;
 
 pub fn create_from_csv_file(val: &CreateForm) -> Result<(), String> {
@@ -83,9 +82,9 @@ pub fn create_from_csv_file(val: &CreateForm) -> Result<(), String> {
     for i in 0..col_count {
         let first_value = data_rows[0].get(i).unwrap_or("");
         let field_type = if first_value.parse::<f64>().is_ok() {
-            FieldType::Number
+            "number"
         } else {
-            FieldType::Text
+            "text"
         };
 
         let display_name = if val.has_header && i < headers.len() {
@@ -537,7 +536,7 @@ pub fn create_from_sheet_file(val: &CreateForm) -> Result<(), String> {
         };
 
         field_names_map.insert(field_name.clone(), display_name);
-        field_types_map.insert(field_name.clone(), FieldType::Text); // Упрощаем до Text для скорости
+        field_types_map.insert(field_name.clone(), "text"); 
         conn.execute(&format!("ALTER TABLE data ADD COLUMN {} TEXT", field_name), [])
             .map_err(|e| e.to_string())?;
     }
@@ -675,9 +674,9 @@ pub fn create_from_sqlite(val: &CreateForm) -> Result<(), String> {
             || col_type.to_lowercase().contains("double")
             || col_type.to_lowercase().contains("numeric")
         {
-            FieldType::Number
+            "number"
         } else {
-            FieldType::Text
+            "text"
         };
 
         field_names_map.insert(field_name.clone(), col_name.clone());

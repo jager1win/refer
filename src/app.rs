@@ -49,23 +49,7 @@ struct CreateForm {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct DataRecord {
     pub id: u32,
-    pub fields: HashMap<String, FieldValue>, // f_0, f_1 и т.д.
-}
-
-// Разные типы полей для гибкой обработки
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(untagged)]
-pub enum FieldValue {
-    Text(String),
-    Number(f64),
-    Null,
-}
-
-#[derive(Debug, Clone, Deserialize, Serialize)]
-#[serde(rename_all = "lowercase")]
-pub enum FieldType {
-    Text,
-    Number,
+    pub fields: HashMap<String, String>, // f_0, f_1 и т.д.
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
@@ -73,7 +57,7 @@ pub struct TableMeta {
     pub name: String,
     pub desc: String,
     pub field_names: HashMap<String, String>,
-    pub field_types: HashMap<String, FieldType>,
+    pub field_types: HashMap<String, String>,
     pub operations: Vec<Operation>,
     pub search_config: Vec<String>,
     pub count_data: u32,

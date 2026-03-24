@@ -103,7 +103,7 @@ pub fn Ref_main() -> impl IntoView {
         log::info!("meta: {:#?}", meta.get());
         log::info!("selected_ref: {:#?}", selected_ref.get());
         //log::info!("stat: {:#?}", stat.get());
-        //log::info!("data: {:#?}", data.get());
+        log::info!("data: {:#?}", data.get());
     });
 
     // debounce for search. run if upd query_string || meta
@@ -175,6 +175,7 @@ pub fn Ref_main() -> impl IntoView {
                                             } else {
                                                 let has_data = data.get().is_some_and(|d| !d.is_empty());
                                                 let query_len = query_string.get().len();
+                                                log::info!("1:{},2{}",query_len, has_data);
                                                 let text = match (query_len, has_data) {
                                                     (0, true) => tu_string!(i18n, ref_main.first_records),
                                                     (0, false) => tu_string!(i18n, ref_main.ref_empty),
@@ -225,12 +226,12 @@ pub fn Ref_main() -> impl IntoView {
                                                                         .into_iter()
                                                                         .filter_map(|k| { rec.fields.get(&k).map(|v| (k, v.clone())) })
                                                                         .map(|(_k, v)| {
-                                                                            let val_str = match v {
+                                                                            /*let val_str = match v {
                                                                                 FieldValue::Text(s) => s,
                                                                                 FieldValue::Number(n) => n.to_string(),
                                                                                 FieldValue::Null => String::new(),
-                                                                            };
-                                                                            view! { <div>{val_str}</div> }
+                                                                            };*/
+                                                                            view! { <div>{v}</div> }
                                                                         })
                                                                         .collect_view()}
                                                                 </button>
@@ -281,7 +282,7 @@ pub fn Ref_main() -> impl IntoView {
                                                                 view! {
                                                                     <li>
                                                                         <span>{name}</span>
-                                                                        <span>{format!("{:?}", ft)}</span>
+                                                                        <span>{ft}</span>
                                                                         <label>
                                                                             <input
                                                                                 type="checkbox"
@@ -354,12 +355,6 @@ pub fn Ref_el() -> impl IntoView {
     let edit_el = RwSignal::new(false);
     let data = RwSignal::new(None::<DataRecord>);
 
-    let show_value = move |v: &FieldValue| match v {
-        FieldValue::Text(s) => s.clone(),
-        FieldValue::Number(n) => n.to_string(),
-        FieldValue::Null => "null".to_string(),
-    };
-
     // get el
     spawn_local(async move {
         let pb = full_pb(stat.get_untracked().db_path, selected_ref.get_untracked().unwrap());
@@ -414,12 +409,11 @@ pub fn Ref_el() -> impl IntoView {
                                 {items
                                     .into_iter()
                                     .map(|(k, v)| {
-                                        let text = show_value(&v);
                                         view! {
                                             <li>
                                                 <strong>{k}</strong>
                                                 {": "}
-                                                {text}
+                                                {v}
                                             </li>
                                         }
                                     })
