@@ -372,6 +372,18 @@ pub async fn search_items(
 }
 
 #[tauri::command]
+pub async fn get_el(pb: PathBuf, id: u32, state: State<'_, Mutex<DbState>>) -> Result<DataRecord, String> {
+    let mut db = state.lock().map_err(|e| e.to_string())?;
+    db.with_conn(pb, |conn, _meta| match sql::get_el(conn, id) {
+        Ok(el) => Ok(el),
+        Err(e) => {
+            error!("Failed to get element: {}", e);
+            Err(e.to_string())
+        }
+    })
+}
+
+#[tauri::command]
 pub async fn save_search_config(pb: PathBuf, vec: Vec<String>, state: State<'_, Mutex<DbState>>) -> Result<(), String> {
     let mut db = state.lock().map_err(|e| e.to_string())?;
 

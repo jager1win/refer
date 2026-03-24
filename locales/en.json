@@ -39,8 +39,8 @@
     "ttp_header": "Use first row as column names",
     "fsqlite": "SQLite: sqlite, sqlite3, db",
     "ftable": "Tables: csv(delimiters: , ; | tab), tsv, xls, xlsx, ods",
-    "ttp_table": "One or multiple sheets of the same type. No formulas.",
-    "ttp_sqlite": "One or multiple tables of the same type",
+    "ttp_table": "The first sheet will be imported",
+    "ttp_sqlite": "The first table will be imported",
     "ttp_empty": "Create a reference from scratch"
   },
   "refs": {

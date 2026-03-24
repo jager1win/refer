@@ -182,8 +182,6 @@ pub fn search_items(conn: &Connection, meta: &TableMeta, query: &str) -> Result<
 
     let records = stmt
         .query_map([query_pattern], |row| {
-            // row_to_record теперь должна быть либо статической функцией,
-            // либо методом DataRecord, принимающим &Row и &TableMeta
             row_to_record(row)
         })
         .map_err(|e| e.to_string())?
@@ -206,15 +204,14 @@ pub fn save_search_config(conn: &Connection, vec: &Vec<String>) -> Result<()> {
 }
 
 // Получить один элемент по ID
-pub fn get_el(conn: &Connection, id: u32) -> Result<Option<DataRecord>, String> {
+pub fn get_el(conn: &Connection, id: u32) -> Result<DataRecord, String> {
     let mut stmt = conn
         .prepare("SELECT * FROM data WHERE id = ?1")
         .map_err(|e| e.to_string())?;
 
     match stmt.query_row([id], row_to_record) {
-        Ok(record) => Ok(Some(record)),
-        Err(RError::QueryReturnedNoRows) => Ok(None),
-        Err(e) => Err(e.to_string()),
+        Ok(record) => Ok(record),
+        Err(e) => Err(e.to_string())
     }
 }
 

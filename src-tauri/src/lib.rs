@@ -72,7 +72,8 @@ pub fn run() {
             create_example,
             get_meta,
             search_items,
-            save_search_config
+            save_search_config,
+            get_el
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

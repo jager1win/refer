@@ -126,6 +126,7 @@ pub fn Ref_main() -> impl IntoView {
         );
     });
     provide_context(selected_el);
+    provide_context(meta);
     view! {
         <Show when=move || { selected_el.get().is_none() } fallback=|| view! { <Ref_el /> }>
             <div class="ref">
@@ -346,7 +347,44 @@ pub fn Ref_main() -> impl IntoView {
 #[component]
 pub fn Ref_el() -> impl IntoView {
     let selected_el = use_context::<RwSignal<Option<u32>>>().expect("element not found");
+    let selected_ref = use_context::<RwSignal<Option<PathBuf>>>().expect("selected not found");
+    let stat = use_context::<RwSignal<StatisticsState>>().expect("stat not found");
+    let meta = use_context::<RwSignal<MetaState>>().expect("meta not found");
+    let now = use_context::<RwSignal<String>>().expect("now not found");
     let edit_el = RwSignal::new(false);
+    let data = RwSignal::new(None::<DataRecord>);
+
+    let show_value = move |v: &FieldValue| match v {
+        FieldValue::Text(s) => s.clone(),
+        FieldValue::Number(n) => n.to_string(),
+        FieldValue::Null => "null".to_string(),
+    };
+
+    // get el
+    spawn_local(async move {
+        let pb = full_pb(stat.get_untracked().db_path, selected_ref.get_untracked().unwrap());
+        match invoke(
+            "get_el",
+            &tauri_args!("pb": pb, "id": Some(selected_el.get_untracked())),
+        )
+        .await
+        {
+            Ok(js) => {
+                let s = from_value::<DataRecord>(js).unwrap();
+                data.set(Some(s))
+            }
+            Err(js) => {
+                let error_msg = from_value::<String>(js).unwrap_or_else(|_| "Unknown error".into());
+                now.set(format!("{} {}", "", &error_msg));
+                meta.set(MetaState::Invalid(error_msg));
+            }
+        };
+    });
+    Effect::new(move |_| {
+        log::info!("meta: {:#?}", meta.get());
+        log::info!("selected_ref: {:#?}", selected_ref.get());
+        //log::info!("data: {:#?}", data.get());
+    });
     view! {
         <div class="ref_el">
             <div class="gr">
@@ -357,6 +395,42 @@ pub fn Ref_el() -> impl IntoView {
                     <button on:click=move |_| edit_el.set(true)>"✎"</button>
                 </h3>
             </div>
+
+            <div class="rg">
+                <Show when=move || data.get().is_some() fallback=|| view! { <div>"No data"</div> }>
+                    {
+                        let items = data
+                            .with(|opt| {
+                                opt.as_ref()
+                                    .map(|rec| {
+                                        let mut v: Vec<_> = rec.fields.iter().map(|(k, v)| (k.clone(), v.clone())).collect();
+                                        v.sort_by_key(|(k, _)| k.clone());
+                                        v
+                                    })
+                                    .unwrap_or_default()
+                            });
+                        view! {
+                            <ul>
+                                {items
+                                    .into_iter()
+                                    .map(|(k, v)| {
+                                        let text = show_value(&v);
+                                        view! {
+                                            <li>
+                                                <strong>{k}</strong>
+                                                {": "}
+                                                {text}
+                                            </li>
+                                        }
+                                    })
+                                    .collect::<Vec<_>>()}
+                            </ul>
+                        }
+                    }
+                </Show>
+            </div>
+
+            <div class="rg">for oper</div>
         </div>
     }
 }
