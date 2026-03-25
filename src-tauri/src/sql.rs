@@ -1,4 +1,4 @@
-use rusqlite::{Connection, Error as RError, Result, Row, params, functions::FunctionFlags};
+use rusqlite::{Connection, Error as RError, Result, Row, functions::FunctionFlags, params};
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 use std::collections::HashMap;
@@ -55,14 +55,20 @@ impl DbState {
             conn.create_scalar_function(
                 "rust_lower",
                 1,
-                rusqlite::functions::FunctionFlags::SQLITE_DETERMINISTIC | rusqlite::functions::FunctionFlags::SQLITE_UTF8,
-
+                rusqlite::functions::FunctionFlags::SQLITE_DETERMINISTIC
+                    | rusqlite::functions::FunctionFlags::SQLITE_UTF8,
                 |ctx| {
-                    let text = ctx.get::<String>(0)?;
+                    let value = ctx.get_raw(0);
+                    let text = match value {
+                        rusqlite::types::ValueRef::Text(t) => String::from_utf8_lossy(t).to_string(),
+                        rusqlite::types::ValueRef::Integer(i) => i.to_string(),
+                        rusqlite::types::ValueRef::Real(r) => r.to_string(),
+                        _ => String::new(), // Для Null или Blob возвращаем пустую строку
+                    };
                     Ok(text.to_lowercase())
                 },
             )
-            .map_err(|e| format!("Failed to register function: {}", e))?;
+            .map_err(|e| format!("UDF Error: {}", e))?;
 
             // 3. Сохраняем подготовленное соединение в state
             self.conn = Some(conn);
@@ -73,7 +79,7 @@ impl DbState {
                 self.meta = self.load_meta(conn_ref).ok();
             }
         }
-        
+
         // Возвращаем иммутабельную ссылку (как и было в заголовке метода)
         Ok(self.conn.as_ref().expect("Connection must exist here"))
     }
@@ -220,7 +226,7 @@ pub fn search_items(conn: &Connection, meta: &TableMeta, query: &str) -> Result<
         .iter()
         .map(|f| format!("rust_lower({}) LIKE rust_lower(?1)", f))
         .collect();
-    
+
     let where_clause = format!("WHERE {}", conditions.join(" OR "));
     // Сразу берем 10 штук из базы — это надежно и быстро
     let sql = format!("SELECT * FROM data {} ORDER BY id ASC LIMIT 10", where_clause);
@@ -240,8 +246,6 @@ pub fn search_items(conn: &Connection, meta: &TableMeta, query: &str) -> Result<
 
     Ok(result)
 }
-
-
 
 pub fn save_search_config(conn: &Connection, vec: &Vec<String>) -> Result<()> {
     let config_json = serde_json::to_string(vec).map_err(|e| rusqlite::Error::ToSqlConversionFailure(Box::new(e)))?;
@@ -334,13 +338,8 @@ pub fn add_field(
 
     // Добавляем колонку в data
     let sql = format!(
-        "ALTER TABLE data ADD COLUMN {} {}",
-        field_name,
-        match field_type {
-            "number" | "real" => "REAL",
-            "integer" => "INTEGER",
-            _ => "TEXT",
-        }
+        "ALTER TABLE data ADD COLUMN {} TEXT",
+        field_name
     );
     conn.execute(&sql, [])?;
 

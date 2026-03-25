@@ -9,6 +9,8 @@ debug версия:
 adb install -r /home/jager/Development/rust/refer/src-tauri/gen/android/app/build/outputs/apk/arm64/debug/app-arm64-debug.apk
 
 =========================================================================
+csv, tsv, xls, xlsx, ods, sqlite, sqlite3, db
+============================================
 /* universal color scheme
 [data-color="ccc"][data-theme=light]{
   color-scheme: light;
