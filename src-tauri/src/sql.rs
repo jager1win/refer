@@ -1,4 +1,4 @@
-use rusqlite::{Connection, Error as RError, Result, Row, functions::FunctionFlags, params};
+use rusqlite::{Connection, Error as RError, Result, Row, functions::FunctionFlags, types::ValueRef, params};
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 use std::collections::HashMap;
@@ -10,13 +10,6 @@ pub struct DataRecord {
     pub id: u32,
     pub fields: HashMap<String, String>, // f_0, f_1 и т.д.
 }
-/*
-#[derive(Debug, Clone, Deserialize, Serialize)]
-#[serde(rename_all = "lowercase")]
-pub enum FieldType {
-    Text,
-    Number,
-}*/
 
 // Метаданные таблицы из таблицы meta
 #[derive(Default, Clone, Debug, Deserialize, Serialize)]
@@ -49,20 +42,20 @@ impl DbState {
     pub fn get_conn(&mut self, path: PathBuf) -> Result<&Connection, String> {
         if self.current_path.as_ref() != Some(&path) {
             // 1. Открываем новое соединение
-            let mut conn = Connection::open(&path).map_err(|e| e.to_string())?;
+            let conn = Connection::open(&path).map_err(|e| e.to_string())?;
 
             // 2. Регистрируем функцию в локальной переменной conn (пока она мутабельна)
             conn.create_scalar_function(
                 "rust_lower",
                 1,
-                rusqlite::functions::FunctionFlags::SQLITE_DETERMINISTIC
-                    | rusqlite::functions::FunctionFlags::SQLITE_UTF8,
+                FunctionFlags::SQLITE_DETERMINISTIC
+                    | FunctionFlags::SQLITE_UTF8,
                 |ctx| {
                     let value = ctx.get_raw(0);
                     let text = match value {
-                        rusqlite::types::ValueRef::Text(t) => String::from_utf8_lossy(t).to_string(),
-                        rusqlite::types::ValueRef::Integer(i) => i.to_string(),
-                        rusqlite::types::ValueRef::Real(r) => r.to_string(),
+                        ValueRef::Text(t) => String::from_utf8_lossy(t).to_string(),
+                        ValueRef::Integer(i) => i.to_string(),
+                        ValueRef::Real(r) => r.to_string(),
                         _ => String::new(), // Для Null или Blob возвращаем пустую строку
                     };
                     Ok(text.to_lowercase())
@@ -532,11 +525,10 @@ pub fn create_ballistics_database(path: &PathBuf) -> Result<(), String> {
 
     import_csv(&conn, BALLISTICS_CSV, true).map_err(|e| e.to_string())?;
 
-    // Добавляем операции
     add_operation(
         &conn,
         "Energy (J)",
-        "f_1 * f_2 * f_2 / 2000", // bullet_mass_g * velocity^2 / 2000
+        "f_1 * f_2 * f_2 / 2000",
         Some("Kinetic energy in Joules"),
     )
     .map_err(|e| e.to_string())?;
@@ -544,8 +536,24 @@ pub fn create_ballistics_database(path: &PathBuf) -> Result<(), String> {
     add_operation(
         &conn,
         "Sectional Density",
-        "f_1 / (f_4 * 1000)", // mass / cross_section_cm2 * 1000
+        "f_1 / (f_4 * 1000)",
         Some("Bullet mass / cross-sectional area"),
+    )
+    .map_err(|e| e.to_string())?;
+
+    add_operation(
+        &conn,
+        "Vertical Drop (cm)",
+        "((9.81 * (distance / f_2) * (distance / f_2)) / 2) * 100",
+        Some("Bullet drop in centimeters due to gravity"),
+    )
+    .map_err(|e| e.to_string())?;
+
+    add_operation(
+        &conn,
+        "Wind Drift (cm)",
+        "wind_speed * (distance / f_2) * (1 / f_3) * 100",
+        Some("Wind drift in centimeters (simplified with BC factor)"),
     )
     .map_err(|e| e.to_string())?;
 
@@ -574,14 +582,14 @@ pub fn create_example_database(name: &str, path: &PathBuf) -> Result<(), String>
 }
 
 // Данные для баллистики
-const BALLISTICS_CSV: &str = "caliber,bullet_mass_g,muzzle_velocity,bc_g1,cross_section_cm2
+const BALLISTICS_CSV: &str = "Caliber, Weight (g), Velocity (m/s), BC (G1), Area (cm²)
+7.62x39,7.9,720,0.280,0.48
+5.45x39,3.4,880,0.347,0.23
 .308 Winchester,11.3,800,0.475,0.48
-.338 Lapua Mag,16.2,900,0.648,0.57
-7.62x54R LPS,9.6,830,0.420,0.48
-5.45x39 7N6,3.4,900,0.347,0.23
 .223 Remington,4.0,930,0.304,0.25
-6.5 Creedmoor,8.9,860,0.520,0.34
-.300 Win Mag,11.7,880,0.590,0.42
 9x19 Parabellum,8.0,360,0.150,0.12
-.45 ACP,15.0,260,0.180,0.16
-12 gauge slug,28.0,480,0.210,2.15";
+12x70 Slug,28.0,480,0.210,2.15
+.338 Lapua Magnum,16.2,900,0.648,0.57
+6.5 Creedmoor,8.9,860,0.520,0.34
+.300 Winchester Magnum,11.7,880,0.590,0.42
+7.62x54R,9.6,830,0.420,0.48";

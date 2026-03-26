@@ -70,13 +70,6 @@ pub struct Operation {
     pub expression: String, // "f_6 * 17 / f_20"
 }
 
-#[derive(Clone, Debug)]
-pub enum MetaState {
-    Pending,
-    Loaded(TableMeta),
-    Invalid(String), // причина невалидности
-}
-
 #[component]
 pub fn App() -> impl IntoView {
     let settings: RwSignal<AppSettings> = RwSignal::new(AppSettings {

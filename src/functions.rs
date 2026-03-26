@@ -82,7 +82,7 @@ pub fn full_pb(main: PathBuf, rel: PathBuf) -> PathBuf {
     p.to_path_buf()
 }
 
-pub fn sort_f_keys_h<T>(map: &HashMap<String, T>) -> Vec<&String> {
+pub fn sort_f_keys_h(map: &HashMap<String, String>) -> Vec<&String> {
     let mut keys: Vec<&String> = map.keys().collect();
     keys.sort_by(|a, b| {
         let num_a = a[2..].parse::<i32>().unwrap_or(0);

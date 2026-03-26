@@ -4,6 +4,24 @@ use leptos::task::spawn_local;
 use serde_wasm_bindgen::from_value;
 use std::path::PathBuf;
 
+#[derive(Debug, Clone)]
+struct RefState {
+    // -1,0,1
+    meta: i8,
+    data: i8,
+}
+impl RefState {
+    fn new() -> Self {
+        Self { meta: 0, data: 0 }
+    }
+    fn is_ready(&self) -> bool {
+        self.meta == 1 && self.data == 1
+    }
+    fn can_show(&self) -> bool {
+        (self.meta >= 0) && (self.data >= 0)
+    }
+}
+
 #[component]
 pub fn Ref_main() -> impl IntoView {
     let i18n = use_i18n();
@@ -13,9 +31,10 @@ pub fn Ref_main() -> impl IntoView {
     let now = use_context::<RwSignal<String>>().expect("now not found");
     let pb = full_pb(stat.get_untracked().db_path, selected_ref.get_untracked().unwrap());
     let query_string = RwSignal::new("".to_string());
-    let meta = RwSignal::new(MetaState::Pending);
+    let meta = RwSignal::new(None::<TableMeta>);
     let data = RwSignal::new(None::<Vec<DataRecord>>);
     let selected_el = RwSignal::new(None::<u32>);
+    let ref_state = RwSignal::new(RefState::new());
 
     // get meta
     spawn_local(async move {
@@ -23,57 +42,64 @@ pub fn Ref_main() -> impl IntoView {
         match invoke("get_meta", &tauri_args!("pb": pb)).await {
             Ok(js) => {
                 let s = from_value::<TableMeta>(js).unwrap();
-                meta.set(MetaState::Loaded(s))
+                ref_state.update(|st| {
+                    st.meta = 1;
+                });
+                meta.set(Some(s))
             }
             Err(js) => {
                 let error_msg = from_value::<String>(js).unwrap_or_else(|_| "Unknown error".into());
+                ref_state.update(|st| {
+                    st.meta = -1;
+                });
                 now.set(format!("{} {}", "", &error_msg));
-                meta.set(MetaState::Invalid(error_msg));
             }
         };
     });
 
-    // get data. init - first 10 el. then - by search
+    // get data. init - first 10 el. then - by input
     let search_items = move |pb: PathBuf, query: String| {
         spawn_local(async move {
             match invoke("search_items", &tauri_args!("pb": pb, "query": query)).await {
                 Ok(js) => {
                     let s = from_value::<Vec<DataRecord>>(js).unwrap();
                     data.set(Some(s));
+                    ref_state.update(|st| {
+                        st.data = 1;
+                    });
                 }
                 Err(js) => {
                     let error_msg = from_value::<String>(js).unwrap_or_else(|_| "Unknown error".into());
                     now.set(format!("{} {}", "", error_msg));
+                    ref_state.update(|st| {
+                        st.data = -1;
+                    });
                 }
             };
         });
     };
 
     let save_search_config = move |field: String| {
+        let Some(mut meta_data) = meta.get_untracked() else {
+            return;
+        };
         let pb = full_pb(stat.get_untracked().db_path, selected_ref.get_untracked().unwrap());
-        meta.update(|state| {
-            if let MetaState::Loaded(meta) = state {
-                if let Some(pos) = meta.search_config.iter().position(|f| f == &field) {
-                    meta.search_config.remove(pos);
-                } else {
-                    meta.search_config.push(field);
-                }
-            }
-        });
+        if let Some(pos) = meta_data.search_config.iter().position(|f| f == &field) {
+            meta_data.search_config.remove(pos);
+        } else {
+            meta_data.search_config.push(field);
+        }
+        meta.set(Some(meta_data.clone()));
 
-        spawn_local({
-            let meta = meta.get_untracked();
-            let MetaState::Loaded(meta) = meta else { return };
-            async move {
-                let _ = invoke(
-                    "save_search_config",
-                    &tauri_args! {
-                        "pb": pb,
-                        "vec": meta.search_config
-                    },
-                )
-                .await;
-            }
+        spawn_local(async move {
+            let _ = invoke(
+                "save_search_config",
+                &tauri_args! {
+                    "pb": pb,
+                    "vec": meta_data.search_config
+                },
+            )
+            .await;
         });
     };
 
@@ -100,6 +126,7 @@ pub fn Ref_main() -> impl IntoView {
     };
 
     Effect::new(move |_| {
+        log::info!("ref: {:?}", ref_state.get());
         log::info!("meta: {:#?}", meta.get());
         log::info!("selected_ref: {:#?}", selected_ref.get());
         //log::info!("stat: {:#?}", stat.get());
@@ -109,7 +136,7 @@ pub fn Ref_main() -> impl IntoView {
     // debounce for search. run if upd query_string || meta
     Effect::new(move |_| {
         let _ = query_string.get();
-        let MetaState::Loaded(_) = meta.get() else {
+        let Some(_) = meta.get() else {
             return;
         };
 
@@ -127,15 +154,16 @@ pub fn Ref_main() -> impl IntoView {
     });
     provide_context(selected_el);
     provide_context(meta);
+    provide_context(ref_state);
     view! {
         <Show when=move || { selected_el.get().is_none() } fallback=|| view! { <Ref_el /> }>
             <div class="ref">
                 {move || {
-                    match meta.get() {
-                        MetaState::Invalid(msg) => {
+                    match ref_state.get().meta {
+                        -1 => {
                             view! {
                                 <div class="gr">
-                                    <h5 class="error">"🚫 "{msg}</h5>
+                                    <h5 class="error">"🚫"</h5>
                                     <p class="err_send">
                                         <button on:click=move |_| del_ref(selected_ref.get().unwrap())>{t!(i18n, all.del)}</button>
                                     </p>
@@ -143,9 +171,10 @@ pub fn Ref_main() -> impl IntoView {
                             }
                                 .into_any()
                         }
-                        MetaState::Pending => view! { <span class="gr" aria-busy="true"></span> }.into_any(),
-                        MetaState::Loaded(table_meta) => {
-                            let meta_for = sort_f_keys_v(table_meta.clone().search_config);
+                        0 => view! { <span class="gr" aria-busy="true"></span> }.into_any(),
+                        1 => {
+                            let table_meta = meta.get().unwrap();
+                            let sorted_search = sort_f_keys_v(table_meta.clone().search_config);
                             view! {
                                 <div class="gr">
                                     <div class="header-row">
@@ -164,7 +193,7 @@ pub fn Ref_main() -> impl IntoView {
 
                                     // input. remove if empty search_config or count = 0
                                     {
-                                        let metaclon = meta_for.clone();
+                                        let metaclon = sorted_search.clone();
                                         move || {
                                             if metaclon.is_empty() {
                                                 view! {
@@ -175,7 +204,7 @@ pub fn Ref_main() -> impl IntoView {
                                             } else {
                                                 let has_data = data.get().is_some_and(|d| !d.is_empty());
                                                 let query_len = query_string.get().len();
-                                                log::info!("1:{},2{}",query_len, has_data);
+                                                log::info!("query_len:{},has_data:{}",query_len, has_data);
                                                 let text = match (query_len, has_data) {
                                                     (0, true) => tu_string!(i18n, ref_main.first_records),
                                                     (0, false) => tu_string!(i18n, ref_main.ref_empty),
@@ -199,16 +228,16 @@ pub fn Ref_main() -> impl IntoView {
                                     }
 
                                     // search result
-                                    {match meta_for.clone().is_empty() {
+                                    {match sorted_search.clone().is_empty() {
                                         true => view! { <div class="search_results">""</div> }.into_any(),
                                         false => {
-                                            let col_count = meta_for.clone().len();
+                                            let col_count = sorted_search.clone().len();
                                             let names = table_meta.clone().field_names;
                                             view! {
                                                 <div class="search_results" style=format!("--cols: {}", col_count)>
                                                     <div class="row">
                                                         {{
-                                                            f2name_v(meta_for.clone(), names)
+                                                            f2name_v(sorted_search.clone(), names)
                                                                 .into_iter()
                                                                 .map(|n| view! { <small>{n}</small> })
                                                                 .collect_view()
@@ -218,7 +247,7 @@ pub fn Ref_main() -> impl IntoView {
                                                         each=move || data.get().unwrap_or_default()
                                                         key=|rec: &DataRecord| rec.id
                                                         children=move |rec: DataRecord| {
-                                                            let search_fields = meta_for.clone();
+                                                            let search_fields = sorted_search.clone();
 
                                                             view! {
                                                                 <button class="row" on:click=move |_| selected_el.set(Some(rec.id))>
@@ -226,11 +255,6 @@ pub fn Ref_main() -> impl IntoView {
                                                                         .into_iter()
                                                                         .filter_map(|k| { rec.fields.get(&k).map(|v| (k, v.clone())) })
                                                                         .map(|(_k, v)| {
-                                                                            /*let val_str = match v {
-                                                                                FieldValue::Text(s) => s,
-                                                                                FieldValue::Number(n) => n.to_string(),
-                                                                                FieldValue::Null => String::new(),
-                                                                            };*/
                                                                             view! { <div>{v}</div> }
                                                                         })
                                                                         .collect_view()}
@@ -249,6 +273,7 @@ pub fn Ref_main() -> impl IntoView {
                                     {
                                         let names = table_meta.clone().field_names;
                                         let oper = table_meta.clone().operations;
+                                        let search_vec = table_meta.clone().search_config;
                                         view! {
                                             <b>{t!(i18n, ref_main.columns)}</b>
                                             <div class="ref_fields">
@@ -288,16 +313,7 @@ pub fn Ref_main() -> impl IntoView {
                                                                                 type="checkbox"
                                                                                 prop:checked={
                                                                                     let k = k.clone();
-                                                                                    move || {
-                                                                                        meta.with(|state| {
-                                                                                            match state {
-                                                                                                MetaState::Loaded(inner_meta) => {
-                                                                                                    inner_meta.search_config.contains(&k)
-                                                                                                }
-                                                                                                _ => false,
-                                                                                            }
-                                                                                        })
-                                                                                    }
+                                                                                    search_vec.contains(&k)
                                                                                 }
                                                                                 on:click={
                                                                                     let k = k.clone();
@@ -338,6 +354,7 @@ pub fn Ref_main() -> impl IntoView {
                             }
                                 .into_any()
                         }
+                        _ => view! { <span class="gr">{t!(i18n, all.err_unknown)}</span> }.into_any(),
                     }
                 }}
             </div>
@@ -350,10 +367,11 @@ pub fn Ref_el() -> impl IntoView {
     let selected_el = use_context::<RwSignal<Option<u32>>>().expect("element not found");
     let selected_ref = use_context::<RwSignal<Option<PathBuf>>>().expect("selected not found");
     let stat = use_context::<RwSignal<StatisticsState>>().expect("stat not found");
-    let meta = use_context::<RwSignal<MetaState>>().expect("meta not found");
+    let meta = use_context::<RwSignal<Option<TableMeta>>>().expect("meta not found");
     let now = use_context::<RwSignal<String>>().expect("now not found");
     let edit_el = RwSignal::new(false);
     let data = RwSignal::new(None::<DataRecord>);
+    let ref_state = use_context::<RwSignal<RefState>>().expect("ref_state not found");
 
     // get el
     spawn_local(async move {
@@ -371,60 +389,94 @@ pub fn Ref_el() -> impl IntoView {
             Err(js) => {
                 let error_msg = from_value::<String>(js).unwrap_or_else(|_| "Unknown error".into());
                 now.set(format!("{} {}", "", &error_msg));
-                meta.set(MetaState::Invalid(error_msg));
             }
         };
     });
+
     Effect::new(move |_| {
         log::info!("meta: {:#?}", meta.get());
-        log::info!("selected_ref: {:#?}", selected_ref.get());
-        //log::info!("data: {:#?}", data.get());
+        log::info!("selected_ref: {:?}", selected_ref.get().unwrap());
+        log::info!("data: {:#?}", data.get());
     });
     view! {
-        <div class="ref_el">
-            <div class="gr">
-                <h3 class="ffull ">
-                    <button on:click=move |_| selected_el.set(None)>"←"</button>
-                    Ref element
-                    {move || selected_el.get()}
-                    <button on:click=move |_| edit_el.set(true)>"✎"</button>
-                </h3>
-            </div>
-
-            <div class="rg">
-                <Show when=move || data.get().is_some() fallback=|| view! { <div>"No data"</div> }>
-                    {
-                        let items = data
-                            .with(|opt| {
-                                opt.as_ref()
-                                    .map(|rec| {
-                                        let mut v: Vec<_> = rec.fields.iter().map(|(k, v)| (k.clone(), v.clone())).collect();
-                                        v.sort_by_key(|(k, _)| k.clone());
-                                        v
-                                    })
-                                    .unwrap_or_default()
-                            });
+        <Show when=move || { !edit_el.get() } fallback=|| view! { <Ref_el_edit /> }>
+            {move || {
+                match data.get().is_none() {
+                    true => view! { <span class="gr" aria-busy="true"></span> }.into_any(),
+                    false => {
                         view! {
-                            <ul>
-                                {items
-                                    .into_iter()
-                                    .map(|(k, v)| {
-                                        view! {
-                                            <li>
-                                                <strong>{k}</strong>
-                                                {": "}
-                                                {v}
-                                            </li>
-                                        }
-                                    })
-                                    .collect::<Vec<_>>()}
-                            </ul>
-                        }
-                    }
-                </Show>
-            </div>
+                            <div class="ref_el">
+                                <div class="header-row gr">
+                                    <button on:click=move |_| selected_el.set(None)>"←"</button>
 
-            <div class="rg">for oper</div>
-        </div>
+                                    <div class="title-group">
+                                        <div>{get_item_title(&data.get_untracked().unwrap(), &meta.get_untracked().unwrap())}</div>
+                                        <small>{move || remove_refer_ext(&selected_ref.get().unwrap_or_default())}</small>
+                                    </div>
+
+                                    <button on:click=move |_| edit_el.set(true)>"✎"</button>
+                                </div>
+
+                                <Show when=move || data.get().is_some() fallback=|| view! { <div>"No data"</div> }>
+                                    <div class="grid1a gr">
+                                        {move || {
+                                            let d = data.get().unwrap();
+                                            let m = meta.get().unwrap();
+                                            let mut items: Vec<_> = d.fields.iter().collect();
+                                            items.sort_by_key(|(k, _)| *k);
+                                            items
+                                                .into_iter()
+                                                .map(|(k, v)| {
+                                                    let display_name = m
+                                                        .field_names
+                                                        .get(k)
+                                                        .map(|n| n.to_string())
+                                                        .unwrap_or_else(|| k.to_string());
+                                                    view! {
+                                                        <strong>{display_name}</strong>
+                                                        <div>{v.to_string()}</div>
+                                                    }
+                                                })
+                                                .collect_view()
+                                        }}
+                                    </div>
+                                </Show>
+
+                                <div class="gr">oper</div>
+                            </div>
+                        }
+                            .into_any()
+                    }
+                }
+            }}
+        </Show>
     }
 }
+
+#[component]
+fn Ref_el_edit() -> impl IntoView {
+    view! { "Ref_el_edit" }
+}
+
+// Получить отображаемое имя поля
+fn get_display_name(field: &str, meta: &TableMeta) -> String {
+    meta.field_names
+        .get(field)
+        .cloned()
+        .unwrap_or_else(|| field.to_string())
+}
+
+// Получить заголовок элемента для списка/заголовка
+fn get_item_title(record: &DataRecord, meta: &TableMeta) -> String {
+    if !meta.search_config.is_empty() {
+        meta.search_config
+            .iter()
+            .filter_map(|field| record.fields.get(field))
+            .cloned()
+            .collect::<Vec<_>>()
+            .join(" | ")
+    } else {
+        format!("ref: {}", record.id)
+    }
+}
+
