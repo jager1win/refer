@@ -72,7 +72,7 @@ small{color:var(--pico-muted-color)}
 }
 .search_results .row:first-child {text-align: center;padding: 0;margin:0;}
 .search_results .row > div {white-space: nowrap;}
-.header-row {display: flex;align-items: center;justify-content: space-between;width: 100%;padding-bottom: 0.2rem;}
+.header-row {display: flex;align-items: center;justify-content: space-between;padding-bottom: 0.2rem;}
 .title-group {flex: 1;text-align: center;min-width: 0;}
 .meta {display:flex; white-space: nowrap;overflow: hidden;text-overflow: ellipsis;gap: 2ch;justify-content: center;}
 .meta span {display: inline;flex-shrink: 1; overflow: hidden;text-overflow: ellipsis;}

@@ -102,120 +102,34 @@ pub fn sort_f_keys_v(keys: Vec<String>) -> Vec<String> {
     sorted
 }
 
-pub fn f2name_v(v: Vec<String>, names: HashMap<String, String>) -> Vec<String> {
+pub fn f2name_v(v: &Vec<String>, names: &HashMap<String, String>) -> Vec<String> {
     let mut res: Vec<String> = Vec::new();
     for f in v {
-        if names.contains_key(&f) {
-            res.push(names[&f].clone());
+        if names.contains_key(f) {
+            res.push(names[f].clone());
         }
     }
     res
 }
-/*
 
-pub fn get_file_extension(filename: &str) -> String {
-    filename.rsplit('.').next().unwrap_or("").to_string()
+// Получить отображаемое имя поля
+pub fn get_display_name(field: &str, meta: &TableMeta) -> String {
+    meta.field_names
+        .get(field)
+        .cloned()
+        .unwrap_or_else(|| field.to_string())
 }
 
-pub async fn read_file_as_bytes(file: &web_sys::File) -> Result<Vec<u8>, String> {
-    let array_buffer_promise = file.array_buffer();
-    let array_buffer = wasm_bindgen_futures::JsFuture::from(array_buffer_promise)
-        .await
-        .map_err(|e| format!("Ошибка чтения файла: {:?}", e))?;
-
-    let uint8_array = js_sys::Uint8Array::new(&array_buffer);
-    Ok(uint8_array.to_vec())
-}
-*/
-// let p = dbp(stat.get_untracked().db_path, selected_ref.get_untracked().unwrap());
-/*fn ensure_utf8_path(p: &std::path::Path) -> Result<&str, &'static str> {
-    p.to_str().ok_or("Имя файла содержит недопустимые (не UTF-8) символы.")
-}*/
-//let result: Result<(), String> = from_value(js).map_err(|e| format!("deserialize failed: {e}"));
-// app.rs или отдельный модуль helpers.rs
-/*
-    /*Effect::new(move |_| {
-        log::info!("stat00: {:?}", stat.get());
-        log::info!("set00: {:?}", settings.get());
-        log::info!("now00: {:?}", now.get());
-    });*/
-
-fn show_success(now: RwSignal<String>, i18n: &I18nContext<Locale, I18nKeys>, key: impl Into<String>) {
-    now.set(t_string!(i18n, key).to_string());
-    clear_after_delay(now.clone(), 3000);
-}
-
-fn show_error(now: RwSignal<String>, i18n: &I18nContext<Locale, I18nKeys>, key: &str, details: &str) {
-    now.set(format!("{}: {}", t_string!(i18n, key), details));
-    clear_after_delay(now.clone(), 5000);
-}
-
-fn clear_after_delay(now: RwSignal<String>, ms: u32) {
-    set_timeout(
-        move || now.set("".to_string()),
-        std::time::Duration::from_millis(ms as u64)
-    );
-}*/
-
-// convert code 2 lang
-/*
-fn key_convert(r: &str) -> String {
-    let i18n = use_i18n();
-    match r {
-        "err_test" => t_string!(i18n, err.err_test).to_string(),
-        _ => t_string!(i18n, err.err_unknown).to_string(),
+// Получить заголовок элемента для списка/заголовка
+pub fn get_item_title(record: &DataRecord, meta: &TableMeta) -> String {
+    if !meta.search_config.is_empty() {
+        meta.search_config
+            .iter()
+            .filter_map(|field| record.fields.get(field))
+            .cloned()
+            .collect::<Vec<_>>()
+            .join(" | ")
+    } else {
+        format!("ref: {}", record.id)
     }
 }
-
-                            <span
-                                data-placement="right"
-                                data-tooltip=t_string!(i18n, create.ttp_path)
-                            >
-                                "?"
-                            </span>
-
-
-    "crate_title": "Create",
-    "edit_title": "Edit"
-    let stat: RwSignal<StatisticsState> = use_context::<RwSignal<StatisticsState>>().expect("stat not found");
-    let selected_ref: RwSignal<String> = use_context::<RwSignal<String>>().expect("selected not found");
-
-        spawn_local(async move {
-            let commands = commands.get_untracked();
-            let args = to_value(&SaveBackArgs { commands }).unwrap();
-            let js = invoke("set_commands", args).await;
-            let result: Result<String, String> = from_value(js).map_err(|e| format!("deserialize failed: {e}"));
-            match result {
-                Ok(_) => { set_status.set("Ok( Commands saved )".to_string());}
-                Err(e) => set_status.set(format!("Err( Save failed: {e} )")),
-            }
-            let _ = invoke("request_restart", JsValue::NULL).await;
-        });
-
-
-*/
-// remove_refer_ext(item.clone().display().to_string())
-/*spawn_local(async move {
-    let args = to_value(&CreateFormBack { val: form_data }).unwrap();
-    let js = invoke("create", args).await;
-    let result: Result<String, String> = from_value(js).map_err(|e| format!("deserialize failed: {e}"));
-    log::debug!("{:?}", &result);
-    match result {
-        Ok(_) => {
-            log::info!("create_ex: {}", &name);
-            set_now(now,format!("{}: {}", tu_string!(i18n, create.ok_create), &name));
-            //selected_ref.set(Some("abook.refer".to_string()));
-            //active_tab.set(1);
-        }
-        Err(e) => set_now(now,format!("{}: {} - {}", tu_string!(i18n, create.er_create), &name,e))
-    }
-
-// Использование
-async fn delete_reference(name: String) {
-    match invoke("del_ref", &tauri_args!("val" => name.clone())).await {
-        Ok(_) => log!("Deleted"),
-        Err(e) => log!("Error: {:?}", e),
-    }
-}
-
-});*/

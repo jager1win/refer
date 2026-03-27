@@ -1,7 +1,10 @@
 use crate::{app::*, functions::*, i18n::*, tauri_args};
+use core::f64;
+use exmex::{parse, prelude::*};
 use leptos::prelude::*;
 use leptos::task::spawn_local;
 use serde_wasm_bindgen::from_value;
+use std::collections::HashMap;
 use std::path::PathBuf;
 
 #[derive(Debug, Clone)]
@@ -13,12 +16,6 @@ struct RefState {
 impl RefState {
     fn new() -> Self {
         Self { meta: 0, data: 0 }
-    }
-    fn is_ready(&self) -> bool {
-        self.meta == 1 && self.data == 1
-    }
-    fn can_show(&self) -> bool {
-        (self.meta >= 0) && (self.data >= 0)
     }
 }
 
@@ -154,7 +151,6 @@ pub fn Ref_main() -> impl IntoView {
     });
     provide_context(selected_el);
     provide_context(meta);
-    provide_context(ref_state);
     view! {
         <Show when=move || { selected_el.get().is_none() } fallback=|| view! { <Ref_el /> }>
             <div class="ref">
@@ -237,7 +233,7 @@ pub fn Ref_main() -> impl IntoView {
                                                 <div class="search_results" style=format!("--cols: {}", col_count)>
                                                     <div class="row">
                                                         {{
-                                                            f2name_v(sorted_search.clone(), names)
+                                                            f2name_v(&sorted_search, &names)
                                                                 .into_iter()
                                                                 .map(|n| view! { <small>{n}</small> })
                                                                 .collect_view()
@@ -337,9 +333,16 @@ pub fn Ref_main() -> impl IntoView {
                                                 {if oper.is_empty() {
                                                     view! { <span>"-"</span> }.into_any()
                                                 } else {
+                                                    let field_names = &table_meta.field_names;
                                                     oper.into_iter()
                                                         .map(|k| {
-                                                            view! { <div>{k.name}" : "{k.expression}</div> }
+                                                            view! {
+                                                                <div>
+                                                                    <b>{k.name}</b>
+                                                                    " : "
+                                                                    {prettify_operation(&k.expression, field_names)}
+                                                                </div>
+                                                            }
                                                         })
                                                         .collect_view()
                                                         .into_any()
@@ -371,7 +374,6 @@ pub fn Ref_el() -> impl IntoView {
     let now = use_context::<RwSignal<String>>().expect("now not found");
     let edit_el = RwSignal::new(false);
     let data = RwSignal::new(None::<DataRecord>);
-    let ref_state = use_context::<RwSignal<RefState>>().expect("ref_state not found");
 
     // get el
     spawn_local(async move {
@@ -405,7 +407,7 @@ pub fn Ref_el() -> impl IntoView {
                     true => view! { <span class="gr" aria-busy="true"></span> }.into_any(),
                     false => {
                         view! {
-                            <div class="ref_el">
+                            <div class="ref">
                                 <div class="header-row gr">
                                     <button on:click=move |_| selected_el.set(None)>"←"</button>
 
@@ -414,7 +416,7 @@ pub fn Ref_el() -> impl IntoView {
                                         <small>{move || remove_refer_ext(&selected_ref.get().unwrap_or_default())}</small>
                                     </div>
 
-                                    <button on:click=move |_| edit_el.set(true)>"✎"</button>
+                                    <button on:click=move |_| edit_el.set(true)>"🔧"</button>
                                 </div>
 
                                 <Show when=move || data.get().is_some() fallback=|| view! { <div>"No data"</div> }>
@@ -442,7 +444,74 @@ pub fn Ref_el() -> impl IntoView {
                                     </div>
                                 </Show>
 
-                                <div class="gr">oper</div>
+                                <Show
+                                    when=move || !meta.get().unwrap().operations.is_empty()
+                                    fallback=|| {
+                                        view! {
+                                            <div class="gr">
+                                                <h5>"No saved operations"</h5>
+                                            </div>
+                                        }
+                                    }
+                                >
+                                    {
+                                        let metaclon = meta.get().unwrap();
+                                        let dataclon = data.get().unwrap().fields;
+                                        let (inputs, calcs): (Vec<_>, Vec<_>) = meta
+                                            .get()
+                                            .unwrap()
+                                            .operations
+                                            .into_iter()
+                                            .partition(|op| op.expression.contains("input_"));
+                                        let calcs_view = calcs
+                                            .into_iter()
+                                            .map(|op| {
+                                                let oper = op.expression.clone();
+                                                let res = run_oper(&oper, &metaclon, &dataclon);
+                                                log::debug!("Результат: {:?}", res);
+
+                                                view! {
+                                                    <div class="oper gr grid">
+                                                        <div class="gridl">
+                                                            <strong>{op.name}</strong>
+                                                            <span>
+                                                                {match res {
+                                                                    Ok(val) => view! { <span class="success">{val}</span> }.into_view(),
+                                                                    Err(e) => view! { <span class="error">{e}</span> }.into_view(),
+                                                                }}
+                                                            </span>
+                                                        </div>
+                                                        <span>{op.description}</span>
+                                                        <span>{prettify_operation(&oper, &metaclon.field_names)}</span>
+                                                    </div>
+                                                }
+                                            })
+                                            .collect_view();
+                                        let inputs_view = inputs
+                                            .into_iter()
+                                            .map(|op| {
+                                                let oper = op.expression.clone();
+
+                                                // let res = run_oper(&oper, &metaclon, &dataclon);
+
+                                                view! {
+                                                    <div class="oper gr">
+                                                        <div class="gridl">
+                                                            <strong>{op.name}</strong>
+                                                            <span></span>
+                                                        </div>
+                                                        <span>{op.description}</span>
+                                                        <span>{prettify_operation(&oper, &metaclon.field_names)}</span>
+                                                    </div>
+                                                }
+                                            })
+                                            .collect_view();
+                                        view! {
+                                            {calcs_view}
+                                            {inputs_view}
+                                        }
+                                    }
+                                </Show>
                             </div>
                         }
                             .into_any()
@@ -458,25 +527,70 @@ fn Ref_el_edit() -> impl IntoView {
     view! { "Ref_el_edit" }
 }
 
-// Получить отображаемое имя поля
-fn get_display_name(field: &str, meta: &TableMeta) -> String {
-    meta.field_names
-        .get(field)
-        .cloned()
-        .unwrap_or_else(|| field.to_string())
+fn check_oper(oper: &String) {
+    //let result = Vec::new();
+    //let mut ff = [];
+    //let mut inputs = [];
+    //let tokens: Vec<&str> = oper.split_whitespace().collect();
 }
 
-// Получить заголовок элемента для списка/заголовка
-fn get_item_title(record: &DataRecord, meta: &TableMeta) -> String {
-    if !meta.search_config.is_empty() {
-        meta.search_config
-            .iter()
-            .filter_map(|field| record.fields.get(field))
-            .cloned()
-            .collect::<Vec<_>>()
-            .join(" | ")
-    } else {
-        format!("ref: {}", record.id)
+fn run_oper(operation: &str, meta: &TableMeta, data: &HashMap<String, String>) -> Result<String, String> {
+    let expr = exmex::parse::<f64>(operation).map_err(|e| e.to_string()).unwrap();
+
+    let mut var_values = Vec::new();
+    for var_name in expr.var_names() {
+        let val_str = data.get(var_name).ok_or("Variable missing")?;
+        let val_num: f64 = val_str.parse().map_err(|_| "Parse error")?;
+        var_values.push(val_num);
+    }
+    let result = expr.eval(&var_values).map_err(|e| e.to_string());
+
+    match result {
+        Ok(result) => Ok(result.to_string()),
+        Err(e) => Err(e.to_string()),
     }
 }
 
+pub fn prettify_operation(
+    expression: &str,
+    field_map: &HashMap<String, String>, // {"f_2": "Velocity (m/s)"}
+) -> String {
+    let expr = match parse::<f64>(expression) {
+        Ok(e) => e,
+        Err(_) => return expression.to_string(), // Если не парсится — возвращаем как есть
+    };
+
+    let mut result = expression.to_string();
+
+    // exmex сам найдет все переменные в правильном порядке
+    let vars = expr.var_names();
+
+    // Сортируем по длине (убывание) для корректной замены
+    let mut sorted_vars: Vec<&str> = vars.iter().map(|s| s.as_str()).collect();
+    sorted_vars.sort_by_key(|b| std::cmp::Reverse(b.len()));
+
+    for var in sorted_vars {
+        if var.starts_with("f_") {
+            // Полевая переменная → красивое имя
+            if let Some(display) = field_map.get(var) {
+                result = result.replace(var, display);
+            }
+        } else if var.starts_with("input_") {
+            // Инпут → [плейсхолдер]
+            let placeholder = var.strip_prefix("input_").unwrap();
+            result = result.replace(var, placeholder);
+        }
+    }
+
+    result
+}
+
+// let result = expr.eval(&[3.7, 2.5, 1.0]).map_err(|e| e.to_string());
+//expr.eval(&[3.7, 2.5, 1.0])   .map(|v| v.to_string())
+//run_oper("α * ln(z) + 2* (-z^2 + sin(4*y))".to_string(),vec![3.7, 2.5, 1.0]);
+/*
+"f_1 * f_2 * f_2 / 2000",
+"f_1 / (f_4 * 1000)",
+"((9.81 * (distance / f_2) * (distance / f_2)) / 2) * 100",
+"wind_speed * (distance / f_2) * (1 / f_3) * 100"
+*/

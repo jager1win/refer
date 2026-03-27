@@ -1,4 +1,6 @@
-use rusqlite::{Connection, Error as RError, Result, Row, functions::FunctionFlags, types::ValueRef, params};
+use rusqlite::{
+    Connection, Error as RError, Result, Row, functions::FunctionFlags, params, types::Value, types::ValueRef,
+};
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 use std::collections::HashMap;
@@ -48,8 +50,7 @@ impl DbState {
             conn.create_scalar_function(
                 "rust_lower",
                 1,
-                FunctionFlags::SQLITE_DETERMINISTIC
-                    | FunctionFlags::SQLITE_UTF8,
+                FunctionFlags::SQLITE_DETERMINISTIC | FunctionFlags::SQLITE_UTF8,
                 |ctx| {
                     let value = ctx.get_raw(0);
                     let text = match value {
@@ -293,8 +294,6 @@ pub fn get_el(conn: &Connection, id: u32) -> Result<DataRecord, String> {
     Ok(DataRecord { id, fields })
 }*/
 
-use rusqlite::types::Value; // Добавьте этот импорт в начало файла
-
 fn row_to_record(row: &Row) -> rusqlite::Result<DataRecord> {
     let mut fields = HashMap::new();
     let col_count = row.as_ref().column_count();
@@ -330,10 +329,7 @@ pub fn add_field(
     let field_name = format!("f_{}", field_index);
 
     // Добавляем колонку в data
-    let sql = format!(
-        "ALTER TABLE data ADD COLUMN {} TEXT",
-        field_name
-    );
+    let sql = format!("ALTER TABLE data ADD COLUMN {} TEXT", field_name);
     conn.execute(&sql, [])?;
 
     // Обновляем field_names в meta
@@ -528,7 +524,7 @@ pub fn create_ballistics_database(path: &PathBuf) -> Result<(), String> {
     add_operation(
         &conn,
         "Energy (J)",
-        "f_1 * f_2 * f_2 / 2000",
+        "f_2 * f_3 * f_3 / 2000",
         Some("Kinetic energy in Joules"),
     )
     .map_err(|e| e.to_string())?;
@@ -536,27 +532,26 @@ pub fn create_ballistics_database(path: &PathBuf) -> Result<(), String> {
     add_operation(
         &conn,
         "Sectional Density",
-        "f_1 / (f_4 * 1000)",
-        Some("Bullet mass / cross-sectional area"),
+        "(f_2 * 15.4324) / (f_1 * f_1)",
+        Some("Sectional Density in lb/in² (classic)"),
     )
     .map_err(|e| e.to_string())?;
 
     add_operation(
         &conn,
-        "Vertical Drop (cm)",
-        "((9.81 * (distance / f_2) * (distance / f_2)) / 2) * 100",
-        Some("Bullet drop in centimeters due to gravity"),
+        "Vertical Drop (m)",
+        "((9.81 * (input_distance / f_3) * (input_distance / f_3)) / 2)",
+        Some("Bullet drop in meters due to gravity"),
     )
     .map_err(|e| e.to_string())?;
 
     add_operation(
         &conn,
-        "Wind Drift (cm)",
-        "wind_speed * (distance / f_2) * (1 / f_3) * 100",
-        Some("Wind drift in centimeters (simplified with BC factor)"),
+        "Wind Drift (m)",
+        "input_wind_speed * (input_distance / f_3) * (1 / f_4)",
+        Some("Wind drift in meters (simplified with BC factor)"),
     )
     .map_err(|e| e.to_string())?;
-
     Ok(())
 }
 
@@ -582,14 +577,14 @@ pub fn create_example_database(name: &str, path: &PathBuf) -> Result<(), String>
 }
 
 // Данные для баллистики
-const BALLISTICS_CSV: &str = "Caliber, Weight (g), Velocity (m/s), BC (G1), Area (cm²)
-7.62x39,7.9,720,0.280,0.48
-5.45x39,3.4,880,0.347,0.23
-.308 Winchester,11.3,800,0.475,0.48
-.223 Remington,4.0,930,0.304,0.25
-9x19 Parabellum,8.0,360,0.150,0.12
-12x70 Slug,28.0,480,0.210,2.15
-.338 Lapua Magnum,16.2,900,0.648,0.57
-6.5 Creedmoor,8.9,860,0.520,0.34
-.300 Winchester Magnum,11.7,880,0.590,0.42
-7.62x54R,9.6,830,0.420,0.48";
+const BALLISTICS_CSV: &str = "Caliber,Caliber(in),Weight(g),Velocity(m/s),BC(G1),Area(cm²)
+7.62x39,0.312,7.9,720,0.280,0.48
+5.45x39,0.220,3.4,880,0.347,0.23
+.308 Winchester,0.308,11.3,800,0.475,0.48
+.223 Remington,0.224,4.0,930,0.304,0.25
+9x19 Parabellum,0.355,8.0,360,0.150,0.12
+12x70 Slug,0.729,28.0,480,0.210,2.15
+.338 Lapua Magnum,0.338,16.2,900,0.648,0.57
+6.5 Creedmoor,0.264,8.9,860,0.520,0.34
+.300 Winchester Magnum,0.308,11.7,880,0.590,0.42
+7.62x54R,0.312,9.6,830,0.420,0.48";
