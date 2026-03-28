@@ -133,3 +133,4 @@ pub fn get_item_title(record: &DataRecord, meta: &TableMeta) -> String {
         format!("ref: {}", record.id)
     }
 }
+

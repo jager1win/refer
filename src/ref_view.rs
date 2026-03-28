@@ -524,10 +524,11 @@ pub fn Ref_el() -> impl IntoView {
 
 #[component]
 fn Ref_el_edit() -> impl IntoView {
+   
     view! { "Ref_el_edit" }
 }
 
-fn check_oper(oper: &String) {
+fn check_oper(oper: &String) { 
     //let result = Vec::new();
     //let mut ff = [];
     //let mut inputs = [];
