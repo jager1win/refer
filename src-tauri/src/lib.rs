@@ -12,7 +12,7 @@ use crate::commands::*;
 use crate::sql::DbState;
 use tracing::{error, info, warn};
 use tracing_appender::non_blocking::WorkerGuard;
-use tracing_subscriber::{fmt, prelude::*, EnvFilter, Layer};
+use tracing_subscriber::{EnvFilter, Layer, fmt, prelude::*};
 
 pub const APP_EXT: &str = "refer";
 
@@ -72,7 +72,7 @@ pub fn run() {
             create_example,
             get_meta,
             search_items,
-            save_search_config,
+            update_meta_field,
             get_el
         ])
         .run(tauri::generate_context!())
@@ -227,7 +227,9 @@ fn init_tracing(app: &tauri::AppHandle) -> Result<(), Box<dyn std::error::Error>
     let log_file_path = log_dir.join("app.log");
 
     let file = OpenOptions::new()
-        .create(true).write(true).truncate(true)
+        .create(true)
+        .write(true)
+        .truncate(true)
         .open(&log_file_path)?;
 
     let (non_blocking, guard) = tracing_appender::non_blocking(file);

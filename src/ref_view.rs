@@ -1,6 +1,6 @@
 use crate::{app::*, functions::*, i18n::*, tauri_args};
 use core::f64;
-use exmex::{parse, prelude::*};
+use exmex::prelude::*;
 use leptos::prelude::*;
 use leptos::task::spawn_local;
 use serde_wasm_bindgen::from_value;
@@ -90,10 +90,11 @@ pub fn Ref_main() -> impl IntoView {
 
         spawn_local(async move {
             let _ = invoke(
-                "save_search_config",
+                "update_meta_field",
                 &tauri_args! {
                     "pb": pb,
-                    "vec": meta_data.search_config
+                    "key": "search_config",
+                    "value": meta_data.search_config
                 },
             )
             .await;
@@ -123,11 +124,11 @@ pub fn Ref_main() -> impl IntoView {
     };
 
     Effect::new(move |_| {
-        log::info!("ref: {:?}", ref_state.get());
-        log::info!("meta: {:#?}", meta.get());
-        log::info!("selected_ref: {:#?}", selected_ref.get());
+        //log::info!("ref: {:?}", ref_state.get());
+        //log::info!("meta: {:#?}", meta.get());
+        //log::info!("selected_ref: {:#?}", selected_ref.get());
         //log::info!("stat: {:#?}", stat.get());
-        log::info!("data: {:#?}", data.get());
+        //log::info!("data: {:#?}", data.get());
     });
 
     // debounce for search. run if upd query_string || meta
@@ -200,13 +201,13 @@ pub fn Ref_main() -> impl IntoView {
                                             } else {
                                                 let has_data = data.get().is_some_and(|d| !d.is_empty());
                                                 let query_len = query_string.get().len();
-                                                log::info!("query_len:{},has_data:{}",query_len, has_data);
                                                 let text = match (query_len, has_data) {
                                                     (0, true) => tu_string!(i18n, ref_main.first_records),
                                                     (0, false) => tu_string!(i18n, ref_main.ref_empty),
                                                     (_, true) => tu_string!(i18n, ref_main.found),
                                                     (_, false) => tu_string!(i18n, ref_main.nothing_found),
                                                 };
+                                                // log::info!("query_len:{},has_data:{}",query_len, has_data);
 
                                                 view! {
                                                     <input
@@ -329,7 +330,7 @@ pub fn Ref_main() -> impl IntoView {
                                             </div>
 
                                             <b>{t!(i18n, ref_main.operations)}</b>
-                                            <div>
+                                            <div class="grid">
                                                 {if oper.is_empty() {
                                                     view! { <span>"-"</span> }.into_any()
                                                 } else {
@@ -337,10 +338,13 @@ pub fn Ref_main() -> impl IntoView {
                                                     oper.into_iter()
                                                         .map(|k| {
                                                             view! {
-                                                                <div>
-                                                                    <b>{k.name}</b>
-                                                                    " : "
-                                                                    {prettify_operation(&k.expression, field_names)}
+                                                                <div class="grid">
+                                                                    <span class="gridline">
+                                                                        {k.name}" "
+                                                                        {(!k.description.is_empty())
+                                                                            .then(|| format!("({})", k.description))}
+                                                                    </span>
+                                                                    <small>{prettify_operation(&k.expression, field_names)}</small>
                                                                 </div>
                                                             }
                                                         })
@@ -397,8 +401,8 @@ pub fn Ref_el() -> impl IntoView {
 
     Effect::new(move |_| {
         log::info!("meta: {:#?}", meta.get());
-        log::info!("selected_ref: {:?}", selected_ref.get().unwrap());
-        log::info!("data: {:#?}", data.get());
+        //log::info!("selected_ref: {:?}", selected_ref.get().unwrap());
+        //log::info!("data: {:#?}", data.get());
     });
     view! {
         <Show when=move || { !edit_el.get() } fallback=|| view! { <Ref_el_edit /> }>
@@ -420,7 +424,7 @@ pub fn Ref_el() -> impl IntoView {
                                 </div>
 
                                 <Show when=move || data.get().is_some() fallback=|| view! { <div>"No data"</div> }>
-                                    <div class="grid1a gr">
+                                    <div class="grid2 gr">
                                         {move || {
                                             let d = data.get().unwrap();
                                             let m = meta.get().unwrap();
@@ -435,8 +439,8 @@ pub fn Ref_el() -> impl IntoView {
                                                         .map(|n| n.to_string())
                                                         .unwrap_or_else(|| k.to_string());
                                                     view! {
-                                                        <strong>{display_name}</strong>
-                                                        <div>{v.to_string()}</div>
+                                                        <span>{display_name}</span>
+                                                        <span>{v.to_string()}</span>
                                                     }
                                                 })
                                                 .collect_view()
@@ -455,60 +459,55 @@ pub fn Ref_el() -> impl IntoView {
                                     }
                                 >
                                     {
-                                        let metaclon = meta.get().unwrap();
-                                        let dataclon = data.get().unwrap().fields;
                                         let (inputs, calcs): (Vec<_>, Vec<_>) = meta
                                             .get()
                                             .unwrap()
                                             .operations
                                             .into_iter()
                                             .partition(|op| op.expression.contains("input_"));
-                                        let calcs_view = calcs
-                                            .into_iter()
-                                            .map(|op| {
-                                                let oper = op.expression.clone();
-                                                let res = run_oper(&oper, &metaclon, &dataclon);
-                                                log::debug!("Результат: {:?}", res);
+                                        // let metaclon = meta.get().unwrap();
+                                        // let dataclon = data.get().unwrap().fields;
 
-                                                view! {
-                                                    <div class="oper gr grid">
-                                                        <div class="gridl">
-                                                            <strong>{op.name}</strong>
-                                                            <span>
-                                                                {match res {
-                                                                    Ok(val) => view! { <span class="success">{val}</span> }.into_view(),
-                                                                    Err(e) => view! { <span class="error">{e}</span> }.into_view(),
-                                                                }}
-                                                            </span>
-                                                        </div>
-                                                        <span>{op.description}</span>
-                                                        <span>{prettify_operation(&oper, &metaclon.field_names)}</span>
-                                                    </div>
-                                                }
-                                            })
-                                            .collect_view();
-                                        let inputs_view = inputs
-                                            .into_iter()
-                                            .map(|op| {
-                                                let oper = op.expression.clone();
-
-                                                // let res = run_oper(&oper, &metaclon, &dataclon);
-
-                                                view! {
-                                                    <div class="oper gr">
-                                                        <div class="gridl">
-                                                            <strong>{op.name}</strong>
-                                                            <span></span>
-                                                        </div>
-                                                        <span>{op.description}</span>
-                                                        <span>{prettify_operation(&oper, &metaclon.field_names)}</span>
-                                                    </div>
-                                                }
-                                            })
-                                            .collect_view();
                                         view! {
-                                            {calcs_view}
-                                            {inputs_view}
+                                            <For
+                                                each=move || calcs.clone()
+                                                key=|op| op.id
+                                                children=move |op| {
+                                                    let oper = op.expression.clone();
+                                                    let res = run_oper(&oper, &data.get().unwrap().fields);
+                                                    let op_id = op.id;
+                                                    view! {
+                                                        <div class="oper gr grid center">
+                                                            <strong class="center">
+                                                                {op.name}" : "
+                                                                <span>
+                                                                    {match res {
+                                                                        Ok(val) => {
+                                                                            view! {
+                                                                                <span class="success">
+                                                                                    {format!("{:.*}", op.precision as usize, val)}
+                                                                                </span>
+                                                                            }
+                                                                                .into_any()
+                                                                        }
+                                                                        Err(e) => view! { <span class="error">{e}</span> }.into_any(),
+                                                                    }}
+                                                                </span>"  " <Prec op_id=op_id />
+                                                            </strong>
+                                                            <small>{op.description}</small>
+                                                            <small>{prettify_operation(&oper, &meta.get().unwrap().field_names)}</small>
+                                                        </div>
+                                                    }
+                                                }
+                                            />
+
+                                            <For
+                                                each=move || inputs.clone()
+                                                key=|op| op.id
+                                                children=move |op| {
+                                                    view! { <RunOperIn op_id=op.id data=data.get().unwrap().fields /> }
+                                                }
+                                            />
                                         }
                                     }
                                 </Show>
@@ -523,19 +522,213 @@ pub fn Ref_el() -> impl IntoView {
 }
 
 #[component]
-fn Ref_el_edit() -> impl IntoView {
-   
-    view! { "Ref_el_edit" }
+fn RunOperIn(op_id: u32, data: HashMap<String, String>) -> impl IntoView {
+    let meta = use_context::<RwSignal<Option<TableMeta>>>().expect("meta not found");
+    let selected_ref = use_context::<RwSignal<Option<PathBuf>>>().expect("selected not found");
+    let stat = use_context::<RwSignal<StatisticsState>>().expect("stat not found");
+
+    let (initial_prec, op_name, op_expr_str, op_desc, names) = {
+        let m = meta.get_untracked().expect("meta empty");
+        let o = m.operations.iter().find(|o| o.id == op_id).expect("op not found");
+        (
+            o.precision,
+            o.name.clone(),
+            o.expression.clone(),
+            o.description.clone(),
+            m.field_names.clone(),
+        )
+    };
+
+    let (local_precision, set_local_precision) = signal(initial_prec);
+    let (input_values, set_input_values) = signal(HashMap::<String, String>::new());
+    let (result, set_result) = signal(None::<f64>);
+
+    let input_names: Vec<String> = {
+        let expr = exmex::parse::<f64>(&op_expr_str).expect("failed to parse");
+        expr.var_names()
+            .iter()
+            .filter(|n| n.starts_with("input_"))
+            .cloned()
+            .collect()
+    };
+
+    let is_all_filled = Memo::new({
+        let names = input_names.clone();
+        move |_| {
+            input_values
+                .with(|map| !names.is_empty() && names.iter().all(|n| map.get(n).is_some_and(|v| !v.is_empty())))
+        }
+    });
+
+    let calc_expr = op_expr_str.clone();
+    let calc_data = data.clone();
+
+    let on_calc = move |_| {
+        if !is_all_filled.get() {
+            set_result.set(None);
+            return;
+        }
+        let mut all_data = calc_data.clone();
+        input_values.with(|map| {
+            for (k, v) in map {
+                if !v.is_empty() {
+                    all_data.insert(k.clone(), v.clone());
+                }
+            }
+        });
+        if let Ok(val) = run_oper(&calc_expr, &all_data) {
+            set_result.set(Some(val));
+        }
+    };
+
+    let on_clear = move |_| {
+        set_input_values.set(HashMap::new());
+        set_result.set(None);
+    };
+
+    let set_prec = move |ev: web_sys::Event| {
+        let new_val = event_target_value(&ev).parse().unwrap_or(2);
+        set_local_precision.set(new_val);
+
+        let pb = full_pb(stat.get_untracked().db_path, selected_ref.get_untracked().unwrap());
+        let mut old_operations = meta.get_untracked().unwrap().operations;
+        if let Some(op) = old_operations.iter_mut().find(|op| op.id == op_id) {
+            op.precision = new_val;
+        }
+        //let new_operations = old_operations.clone();
+
+        spawn_local(async move {
+            let _ = invoke(
+                "update_meta_field",
+                &tauri_args! {
+                    "pb": pb,
+                    "key": "operations",
+                    "value": old_operations
+                },
+            )
+            .await;
+        });
+    };
+
+    view! {
+        <div class="oper gr grid center">
+            <strong class="center">
+                {op_name} " : "
+                <span class="success">
+                    {move || {
+                        let p = local_precision.get() as usize;
+                        match result.get() {
+                            Some(val) => format!("{:.*}", p, val),
+                            None => "?".to_string(),
+                        }
+                    }}
+                </span>"  " <select class="precision" on:change=set_prec prop:value=move || local_precision.get()>
+                    {(0..18).map(|n| view! { <option value=n>{n}</option> }).collect_view()}
+                </select>
+            </strong>
+
+            <div class="flex_wrap3">
+                {input_names
+                    .into_iter()
+                    .map(|name| {
+                        let n1 = name.clone();
+                        let n2 = name.clone();
+                        let n3 = name.clone();
+                        let display = name.strip_prefix("input_").unwrap_or(&name).to_string();
+                        view! {
+                            <label>
+                                <small>{display}</small>
+                                <input
+                                    type="text"
+                                    inputmode="decimal"
+                                    prop:value=move || input_values.with(|m| m.get(&n1).cloned().unwrap_or_default())
+                                    on:input=move |ev| {
+                                        let node = event_target::<web_sys::HtmlInputElement>(&ev);
+                                        let raw = node.value().replace(',', ".");
+                                        let is_valid = raw
+                                            .chars()
+                                            .enumerate()
+                                            .all(|(i, c)| { c.is_ascii_digit() || c == '.' || (c == '-' && i == 0) })
+                                            && raw.matches('.').count() <= 1 && raw.matches('-').count() <= 1;
+                                        if is_valid || raw.is_empty() {
+                                            let n = n2.clone();
+                                            set_input_values
+                                                .update(|m| {
+                                                    m.insert(n, raw);
+                                                });
+                                        } else {
+                                            node.set_value(&input_values.get_untracked().get(&n3).cloned().unwrap_or_default());
+                                        }
+                                    }
+                                />
+                            </label>
+                        }
+                    })
+                    .collect_view()}
+            </div>
+
+            <div class="flex_wrap3 center">
+                <button on:click=on_clear>"🧹"</button>
+                <button on:click=on_calc prop:disabled=move || !is_all_filled.get()>
+                    "="
+                </button>
+            </div>
+
+            <small>{op_desc}</small>
+            <small>{prettify_operation(&op_expr_str, &names)}</small>
+        </div>
+    }
 }
 
-fn check_oper(oper: &String) { 
-    //let result = Vec::new();
-    //let mut ff = [];
-    //let mut inputs = [];
-    //let tokens: Vec<&str> = oper.split_whitespace().collect();
+#[component]
+fn Prec(op_id: u32) -> impl IntoView {
+    let meta = use_context::<RwSignal<Option<TableMeta>>>().expect("meta not found");
+    let selected_ref = use_context::<RwSignal<Option<PathBuf>>>().expect("selected not found");
+    let stat = use_context::<RwSignal<StatisticsState>>().expect("stat not found");
+
+    let precision = move || {
+        meta.get()
+            .unwrap()
+            .operations
+            .iter()
+            .find(|o| o.id == op_id)
+            .unwrap()
+            .precision
+    };
+
+    let on_input = move |ev: web_sys::Event| {
+        let new_val = event_target_value(&ev).parse().unwrap_or(2);
+        let pb = full_pb(stat.get_untracked().db_path, selected_ref.get_untracked().unwrap());
+
+        meta.update(|meta_opt| {
+            let meta = meta_opt.as_mut().unwrap();
+            let operation = meta.operations.iter_mut().find(|o| o.id == op_id).unwrap();
+            operation.precision = new_val;
+        });
+
+        let for_send = meta.get_untracked().unwrap().operations;
+
+        spawn_local(async move {
+            let _ = invoke(
+                "update_meta_field",
+                &tauri_args! {
+                    "pb": pb,
+                    "key": "operations",
+                    "value": for_send
+                },
+            )
+            .await;
+        });
+    };
+
+    view! {
+        <select class="precision" on:change=on_input prop:value=precision>
+            {(0..18).map(|n| view! { <option value=n>{n}</option> }).collect_view()}
+        </select>
+    }
 }
 
-fn run_oper(operation: &str, meta: &TableMeta, data: &HashMap<String, String>) -> Result<String, String> {
+fn run_oper(operation: &str, data: &HashMap<String, String>) -> Result<f64, String> {
     let expr = exmex::parse::<f64>(operation).map_err(|e| e.to_string()).unwrap();
 
     let mut var_values = Vec::new();
@@ -547,7 +740,7 @@ fn run_oper(operation: &str, meta: &TableMeta, data: &HashMap<String, String>) -
     let result = expr.eval(&var_values).map_err(|e| e.to_string());
 
     match result {
-        Ok(result) => Ok(result.to_string()),
+        Ok(result) => Ok(result),
         Err(e) => Err(e.to_string()),
     }
 }
@@ -556,6 +749,7 @@ pub fn prettify_operation(
     expression: &str,
     field_map: &HashMap<String, String>, // {"f_2": "Velocity (m/s)"}
 ) -> String {
+    use exmex::{parse, prelude::*};
     let expr = match parse::<f64>(expression) {
         Ok(e) => e,
         Err(_) => return expression.to_string(), // Если не парсится — возвращаем как есть
@@ -563,7 +757,6 @@ pub fn prettify_operation(
 
     let mut result = expression.to_string();
 
-    // exmex сам найдет все переменные в правильном порядке
     let vars = expr.var_names();
 
     // Сортируем по длине (убывание) для корректной замены
@@ -572,18 +765,21 @@ pub fn prettify_operation(
 
     for var in sorted_vars {
         if var.starts_with("f_") {
-            // Полевая переменная → красивое имя
             if let Some(display) = field_map.get(var) {
                 result = result.replace(var, display);
             }
         } else if var.starts_with("input_") {
-            // Инпут → [плейсхолдер]
             let placeholder = var.strip_prefix("input_").unwrap();
             result = result.replace(var, placeholder);
         }
     }
 
     result
+}
+
+#[component]
+fn Ref_el_edit() -> impl IntoView {
+    view! { "Ref_el_edit    " }
 }
 
 // let result = expr.eval(&[3.7, 2.5, 1.0]).map_err(|e| e.to_string());

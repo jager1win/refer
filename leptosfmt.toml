@@ -1,5 +1,6 @@
 max_width = 140
 tab_spaces = 4
+attr_newline = "multiline"
 indentation_style = "Auto"
 newline_style = "Auto"
 # дополнительные опции по необходимости:

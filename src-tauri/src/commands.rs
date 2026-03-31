@@ -1,6 +1,6 @@
+use crate::import::*;
 use crate::sql::{self, *};
 use crate::{APP_EXT, DbState, SettingsStore, StatisticsState};
-use crate::import::*;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::collections::HashMap;
@@ -187,7 +187,7 @@ pub async fn create_example(val: CreateForm, stat_state: State<'_, Mutex<Statist
     );
 
     let demo_name = &val.db_name.display().to_string();
-    match create_example_database(demo_name, &root) {
+    match create_example_refers(demo_name, &root) {
         Ok(()) => {
             info!("Demo database '{}' created", demo_name);
             Ok(())
@@ -261,7 +261,7 @@ pub async fn create_from_file(
                 error!("Failed to create db from sheet file: {}", e);
                 Err(format!("Failed to create db from sheet file: {:?}", e))
             }
-        }
+        },
         "sqlite" | "sqlite3" | "db" => match create_from_sqlite(&val) {
             Ok(()) => {
                 info!("Database '{:?}' from sqlite created", &val.db_name);
@@ -374,24 +374,16 @@ pub async fn get_el(pb: PathBuf, id: u32, state: State<'_, Mutex<DbState>>) -> R
 }
 
 #[tauri::command]
-pub async fn save_search_config(pb: PathBuf, vec: Vec<String>, state: State<'_, Mutex<DbState>>) -> Result<(), String> {
+pub async fn update_meta_field(pb: PathBuf, key: &str, value: serde_json::Value, state: State<'_, Mutex<DbState>>) -> Result<(), String> {
     let mut db = state.lock().map_err(|e| e.to_string())?;
 
-    db.update_meta(&pb, |meta| {
-        meta.search_config = vec.clone();
-        Ok(())
-    })?;
-
-    db.with_conn(pb, |conn, meta| match sql::save_search_config(conn, &vec) {
+    db.with_conn(pb, |conn, _meta| match sql::update_meta_field(conn, key, &value) {
         Ok(()) => {
-            info!(
-                "Search config saved: {:?}",
-                f2name(vec, meta.as_ref().unwrap().field_names.clone())
-            );
+            info!("Meta field saved: {}",key);
             Ok(())
         }
         Err(e) => {
-            error!("Failed to save search config: {}", e);
+            error!("Failed to save meta field: {}", e);
             Err(e.to_string())
         }
     })
@@ -426,10 +418,10 @@ pub async fn add_field(
         meta.field_names.insert(field_name.clone(), display_name);
         meta.field_types.insert(
             field_name.clone(),
-            if field_type == "number" { 
-                "number".to_string() 
-            } else { 
-                "text".to_string() 
+            if field_type == "number" {
+                "number".to_string()
+            } else {
+                "text".to_string()
             },
         );
     }

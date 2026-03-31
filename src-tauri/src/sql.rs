@@ -27,9 +27,11 @@ pub struct TableMeta {
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct Operation {
-    pub name: String, // "Total Price"
+    pub id: u32,
+    pub name: String,
     pub description: String,
     pub expression: String, // "f_6 * 17 / f_20"
+    pub precision: u32,
 }
 
 // Основная структура для работы с базой
@@ -47,6 +49,7 @@ impl DbState {
             let conn = Connection::open(&path).map_err(|e| e.to_string())?;
 
             // 2. Регистрируем функцию в локальной переменной conn (пока она мутабельна)
+            // это основная фича для поиска в utf
             conn.create_scalar_function(
                 "rust_lower",
                 1,
@@ -68,10 +71,10 @@ impl DbState {
             self.conn = Some(conn);
             self.current_path = Some(path);
 
-            // 4. Загружаем метаданные
+            /* 4. Загружаем метаданные - moved to with
             if let Some(conn_ref) = self.conn.as_ref() {
                 self.meta = self.load_meta(conn_ref).ok();
-            }
+            }*/
         }
 
         // Возвращаем иммутабельную ссылку (как и было в заголовке метода)
@@ -84,11 +87,12 @@ impl DbState {
         F: FnOnce(&Connection, Option<&TableMeta>) -> Result<T, String>,
     {
         self.get_conn(path)?;
-
         let conn = self.conn.as_ref().unwrap();
-        let meta = self.meta.as_ref(); // Может быть None
 
-        f(conn, meta)
+        let fresh_meta = self.load_meta(conn).map_err(|e| e.to_string())?;
+        self.meta = Some(fresh_meta);
+
+        f(conn, Some(self.meta.as_ref().unwrap()))
     }
 
     fn load_meta(&self, conn: &Connection) -> rusqlite::Result<TableMeta> {
@@ -138,22 +142,33 @@ impl DbState {
         })
     }
 
-    pub fn update_meta<F>(&mut self, path: &PathBuf, f: F) -> Result<(), String>
-    where
-        F: FnOnce(&mut TableMeta) -> Result<(), String>,
-    {
-        // Проверяем, что работаем с той же базой
-        if self.current_path.as_ref() != Some(path) {
-            return Err("Database not opened".to_string());
-        }
+    pub fn update_meta(&mut self, path: PathBuf, new_meta: TableMeta) -> Result<(), String> {
+        // Используем with_conn, чтобы гарантировать наличие соединения
+        // Игнорируем meta в аргументах замыкания, так как мы ее сейчас перезапишем
+        self.with_conn(path, |conn, _| {
+            let tx = conn.unchecked_transaction().map_err(|e| e.to_string())?;
 
-        let meta = self.meta.as_mut().ok_or("No meta loaded")?;
+            let params = [
+                ("name", serde_json::to_value(&new_meta.name)),
+                ("desc", serde_json::to_value(&new_meta.desc)),
+                ("field_names", serde_json::to_value(&new_meta.field_names)),
+                ("field_types", serde_json::to_value(&new_meta.field_types)),
+                ("operations", serde_json::to_value(&new_meta.operations)),
+                ("search_config", serde_json::to_value(&new_meta.search_config)),
+            ];
 
-        // Применяем изменения к meta в памяти
-        f(meta)?;
+            for (key, val) in params {
+                let json_str = val.map_err(|e| e.to_string())?.to_string();
+                tx.execute(
+                    "INSERT OR REPLACE INTO meta (key, value) VALUES (?1, ?2)",
+                    [key, &json_str],
+                )
+                .map_err(|e| e.to_string())?;
+            }
 
-        // Сохраняем изменения в БД (если нужно)
-        Ok(())
+            tx.commit().map_err(|e| e.to_string())?;
+            Ok(())
+        })
     }
 }
 
@@ -241,13 +256,13 @@ pub fn search_items(conn: &Connection, meta: &TableMeta, query: &str) -> Result<
     Ok(result)
 }
 
-pub fn save_search_config(conn: &Connection, vec: &Vec<String>) -> Result<()> {
-    let config_json = serde_json::to_string(vec).map_err(|e| rusqlite::Error::ToSqlConversionFailure(Box::new(e)))?;
+pub fn update_meta_field<T: Serialize>(conn: &Connection, key: &str, value: &T) -> Result<()> {
+    let json_value = serde_json::to_string(value).map_err(|e| rusqlite::Error::ToSqlConversionFailure(Box::new(e)))?;
 
     conn.execute(
-        "INSERT INTO meta (key, value) VALUES ('search_config', ?1)
+        "INSERT INTO meta (key, value) VALUES (?1, ?2)
          ON CONFLICT(key) DO UPDATE SET value = excluded.value",
-        params![config_json],
+        params![key, json_value],
     )?;
 
     Ok(())
@@ -365,7 +380,7 @@ pub fn add_field(
 }
 
 // Добавление операции
-pub fn add_operation(conn: &Connection, name: &str, expression: &str, description: Option<&str>) -> Result<()> {
+/*pub fn add_operation(conn: &Connection, name: &str, expression: &str, description: Option<&str>) -> Result<()> {
     let ops_json: String = conn.query_row("SELECT value FROM meta WHERE key = 'operations'", [], |row| row.get(0))?;
 
     let mut ops: serde_json::Value = serde_json::from_str(&ops_json).unwrap_or(json!([]));
@@ -383,6 +398,42 @@ pub fn add_operation(conn: &Connection, name: &str, expression: &str, descriptio
         "UPDATE meta SET value = ?1 WHERE key = 'operations'",
         params![ops.to_string()],
     )?;
+
+    Ok(())
+}*/
+// Добавление операции
+pub fn add_operation(
+    conn: &Connection, name: &str, expression: &str, description: &str, precision: u32,
+) -> Result<(), String> {
+    let ops_json: String = conn
+        .query_row("SELECT value FROM meta WHERE key = 'operations'", [], |row| row.get(0))
+        .map_err(|e| e.to_string())?;
+
+    let mut ops: serde_json::Value = serde_json::from_str(&ops_json).unwrap_or(json!([]));
+
+    if let Some(arr) = ops.as_array_mut() {
+        // Вычисляем новый id
+        let new_id = arr
+            .iter()
+            .map(|op| op["id"].as_u64().unwrap_or(0) as u32)
+            .max()
+            .unwrap_or(0)
+            + 1;
+
+        arr.push(json!({
+            "id": new_id,
+            "name": name,
+            "expression": expression,
+            "description": description,
+            "precision": precision,
+        }));
+    }
+
+    conn.execute(
+        "UPDATE meta SET value = ?1 WHERE key = 'operations'",
+        params![ops.to_string()],
+    )
+    .map_err(|e| e.to_string())?;
 
     Ok(())
 }
@@ -438,8 +489,7 @@ pub fn create_empty_database(path: &PathBuf) -> Result<(), String> {
 }
 
 // ==================== Create demo ====================
-
-// Импорт CSV данных (общая функция)
+// Импорт CSV данных (общая функция для демо)
 pub fn import_csv(conn: &Connection, csv_data: &str, has_header: bool) -> Result<Vec<String>> {
     let mut lines = csv_data.lines();
     let mut field_names = Vec::new();
@@ -493,7 +543,30 @@ pub fn import_csv(conn: &Connection, csv_data: &str, has_header: bool) -> Result
     Ok(field_names)
 }
 
-pub fn create_ballistics_database(path: &PathBuf) -> Result<(), String> {
+// Основная функция создания демо-базы. Ключи на фронте: Create()-> let create_example
+pub fn create_example_refers(name: &str, path: &PathBuf) -> Result<(), String> {
+    match name {
+        "example/ballistics.refer" => create_ballistics_refer(path),
+        "example/deposit.refer" => create_deposit_refer(path),
+        "example/oscillator.refer" => create_oscillator_refer(path),
+        _ => Err(RError::SqliteFailure(rusqlite::ffi::Error::new(1), Some("Unknown file ext".to_string())).to_string()),
+    }
+}
+
+pub fn create_ballistics_refer(path: &PathBuf) -> Result<(), String> {
+    // Данные для баллистики
+    const BALLISTICS_CSV: &str = "Caliber,Caliber(in),Weight(g),Velocity(m/s),BC(G1),Area(cm²)
+7.62x39,0.312,7.9,720,0.280,0.48
+5.45x39,0.220,3.4,880,0.347,0.23
+.308 Winchester,0.308,11.3,800,0.475,0.48
+.223 Remington,0.224,4.0,930,0.304,0.25
+9x19 Parabellum,0.355,8.0,360,0.150,0.12
+12x70 Slug,0.729,28.0,480,0.210,2.15
+.338 Lapua Magnum,0.338,16.2,900,0.648,0.57
+6.5 Creedmoor,0.264,8.9,860,0.520,0.34
+.300 Winchester Magnum,0.308,11.7,880,0.590,0.42
+7.62x54R,0.312,9.6,830,0.420,0.48";
+
     // Создаем пустую базу
     create_empty_database(path)?;
 
@@ -525,7 +598,8 @@ pub fn create_ballistics_database(path: &PathBuf) -> Result<(), String> {
         &conn,
         "Energy (J)",
         "f_2 * f_3 * f_3 / 2000",
-        2
+        "Kinetic energy in Joules",
+        2,
     )
     .map_err(|e| e.to_string())?;
 
@@ -533,7 +607,8 @@ pub fn create_ballistics_database(path: &PathBuf) -> Result<(), String> {
         &conn,
         "Sectional Density",
         "(f_2 * 15.4324) / (f_1 * f_1)",
-        Some("Sectional Density in lb/in² (classic)"),
+        "Sectional Density in lb/in² (classic)",
+        2,
     )
     .map_err(|e| e.to_string())?;
 
@@ -541,7 +616,8 @@ pub fn create_ballistics_database(path: &PathBuf) -> Result<(), String> {
         &conn,
         "Vertical Drop (m)",
         "((9.81 * (input_distance / f_3) * (input_distance / f_3)) / 2)",
-        Some("Bullet drop in meters due to gravity"),
+        "Bullet drop in meters due to gravity",
+        2,
     )
     .map_err(|e| e.to_string())?;
 
@@ -549,42 +625,83 @@ pub fn create_ballistics_database(path: &PathBuf) -> Result<(), String> {
         &conn,
         "Wind Drift (m)",
         "input_wind_speed * (input_distance / f_3) * (1 / f_4)",
-        Some("Wind drift in meters (simplified with BC factor)"),
+        "Wind drift in meters (simplified with BC factor)",
+        2,
     )
     .map_err(|e| e.to_string())?;
     Ok(())
 }
 
-// Заглушки для будущих демо-баз
-pub fn create_recipes_database(path: &PathBuf) -> Result<(), String> {
-    // TODO: реализовать
+pub fn create_deposit_refer(path: &PathBuf) -> Result<(), String> {
+    // Только f_0 для поиска/названия записи. Все параметры в input_
+    const DEPOSIT_CSV: &str = "Operation
+Deposit";
+
+    create_empty_database(path)?;
+    let conn = Connection::open(path).map_err(|e| e.to_string())?;
+
+    conn.execute("UPDATE meta SET value = ?1 WHERE key = 'name'", params!["Deposit"])
+        .map_err(|e| e.to_string())?;
+    conn.execute(
+        "UPDATE meta SET value = ?1 WHERE key = 'desc'",
+        params!["Calculate compound interest growth"],
+    )
+    .map_err(|e| e.to_string())?;
+    conn.execute(
+        "UPDATE meta SET value = ?1 WHERE key = 'search_config'",
+        params![serde_json::to_string(&vec!["f_0"]).unwrap()],
+    )
+    .map_err(|e| e.to_string())?;
+
+    import_csv(&conn, DEPOSIT_CSV, true).map_err(|e| e.to_string())?;
+
+    add_operation(
+        &conn,
+        "Future Value",
+        "input_sum * (1 + input_rate / 100) ^ input_years",
+        "Projected amount after compound interest",
+        2,
+    )
+    .map_err(|e| e.to_string())?;
+
     Ok(())
 }
 
-pub fn create_inventory_database(path: &PathBuf) -> Result<(), String> {
-    // TODO: реализовать
+pub fn create_oscillator_refer(path: &PathBuf) -> Result<(), String> {
+    // Добавлена колонка Time Hint - подсказка какое время вводить
+    const OSCILLATOR_CSV: &str = "Wave,Frequency Hz,Amplitude,Time Hint (s)
+Audio A4,440,1.0,0.001-0.01
+Radio FM,100000000,0.5,0.00000001
+WiFi 2.4GHz,2400000000,0.3,0.0000000001
+WiFi 5GHz,5000000000,0.3,0.0000000001
+Green Light,545000000000000,1.0,0.000000000000001";
+
+    create_empty_database(path)?;
+    let conn = Connection::open(path).map_err(|e| e.to_string())?;
+
+    conn.execute("UPDATE meta SET value = ?1 WHERE key = 'name'", params!["Oscillator"])
+        .map_err(|e| e.to_string())?;
+    conn.execute(
+        "UPDATE meta SET value = ?1 WHERE key = 'desc'",
+        params!["Wave value at time t - use Time Hint for reference"],
+    )
+    .map_err(|e| e.to_string())?;
+    conn.execute(
+        "UPDATE meta SET value = ?1 WHERE key = 'search_config'",
+        params![serde_json::to_string(&vec!["f_0"]).unwrap()],
+    )
+    .map_err(|e| e.to_string())?;
+
+    import_csv(&conn, OSCILLATOR_CSV, true).map_err(|e| e.to_string())?;
+
+    add_operation(
+        &conn,
+        "Instant Value",
+        "f_2 * sin(2 * PI * f_1 * input_time)",
+        "Wave displacement at time t (seconds)",
+        16,
+    )
+    .map_err(|e| e.to_string())?;
+
     Ok(())
 }
-
-// Основная функция создания демо-базы по имени
-pub fn create_example_database(name: &str, path: &PathBuf) -> Result<(), String> {
-    match name {
-        "example/ballistics.refer" => create_ballistics_database(path),
-        "recipes" => create_recipes_database(path),
-        "inventory" => create_inventory_database(path),
-        _ => Err(RError::SqliteFailure(rusqlite::ffi::Error::new(1), Some("Unknown file ext".to_string())).to_string()),
-    }
-}
-
-// Данные для баллистики
-const BALLISTICS_CSV: &str = "Caliber,Caliber(in),Weight(g),Velocity(m/s),BC(G1),Area(cm²)
-7.62x39,0.312,7.9,720,0.280,0.48
-5.45x39,0.220,3.4,880,0.347,0.23
-.308 Winchester,0.308,11.3,800,0.475,0.48
-.223 Remington,0.224,4.0,930,0.304,0.25
-9x19 Parabellum,0.355,8.0,360,0.150,0.12
-12x70 Slug,0.729,28.0,480,0.210,2.15
-.338 Lapua Magnum,0.338,16.2,900,0.648,0.57
-6.5 Creedmoor,0.264,8.9,860,0.520,0.34
-.300 Winchester Magnum,0.308,11.7,880,0.590,0.42
-7.62x54R,0.312,9.6,830,0.420,0.48";

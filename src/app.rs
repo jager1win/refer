@@ -66,9 +66,11 @@ pub struct TableMeta {
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct Operation {
-    pub name: String, // "Total Price"
+    pub id: u32,
+    pub name: String,
     pub description: String,
     pub expression: String, // "f_6 * 17 / f_20"
+    pub precision: u32,
 }
 
 #[component]
@@ -397,7 +399,7 @@ fn Settings() -> impl IntoView {
                 </div>
             </div>
         </div>
-        <div class="gr info">
+        <div class="gr info center">
             {move || {
                 info.get()
                     .into_iter()
@@ -418,7 +420,7 @@ fn Refs() -> impl IntoView {
     let patterns = ["fail", "error"];
 
     view! {
-        <div class="refs-list grid2 gr">
+        <div class="grid2 gr">
             <For
                 each=move || stat.get().db_list.clone()
                 key=|item| item.clone()
@@ -729,10 +731,10 @@ fn Create() -> impl IntoView {
                 <div class="test_create gridl">
                     <button on:click=move |_| create_example(PathBuf::from("example/ballistics.refer"))>"Ballistics Data"</button>
                     <span>{t!(i18n, create.example_desc_1)}</span>
-                    <button on:click=move |_| create_example(PathBuf::from("example/222.refer"))>"222"</button>
+                    <button on:click=move |_| create_example(PathBuf::from("example/deposit.refer"))>"Deposit"</button>
                     <span>{t!(i18n, create.example_desc_2)}</span>
-                    <button on:click=move |_| create_example(PathBuf::from("example/333.refer"))>"333"</button>
-                    <span>{t!(i18n, create.example_desc_3)}</span>
+                    <button on:click=move |_| create_example(PathBuf::from("example/oscillator.refer"))>"Oscillator"</button>
+                    <span>{t!(i18n, create.example_desc_3)}</span> 
                 </div>
             </div>
         </Show>

@@ -8,10 +8,5 @@
     "devUrl": "http://localhost:1420",
     "beforeBuildCommand": "trunk build --release",
     "frontendDist": "../dist"
-  },
-  "bundle": {
-    "active": true,
-    "targets": "all",
-    "externalBin": []
   }
 }
