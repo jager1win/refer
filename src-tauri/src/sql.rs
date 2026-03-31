@@ -525,7 +525,7 @@ pub fn create_ballistics_database(path: &PathBuf) -> Result<(), String> {
         &conn,
         "Energy (J)",
         "f_2 * f_3 * f_3 / 2000",
-        Some("Kinetic energy in Joules"),
+        2
     )
     .map_err(|e| e.to_string())?;
 
