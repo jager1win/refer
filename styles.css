@@ -40,7 +40,7 @@ input.csv_deli{width: 2rem!important;padding: 0.4rem!important;}
 .btn{width: 2rem;height: 2rem;display: grid; place-items: center;line-height: 0;}
 .hidden{display:none}
 .db_line{display: flex;align-items: baseline;gap:1rem;}
-.tab-content {position: fixed;top: 6rem;left: 0;width: 100vw;height: calc(100vh - 6rem);z-index: 100;
+.tab-content {position: fixed;top: 6rem;left: 0;width: 100vw;height: calc(100vh - 6rem);z-index: 100;overflow-y:auto;
     opacity: 0;visibility: hidden;transition: opacity 0.2s ease;background-color: var( --pico-background-color);}
 .tab-content.active {opacity: 1;pointer-events: auto;visibility: visible;}
 .tab-content > * {max-height: 90vh;overflow-y: auto;}
@@ -60,7 +60,7 @@ code#logs{padding:0.2rem;overflow: scroll;width: 100%;white-space: pre-line;colo
 .info::before {content: "ℹ️";position: absolute;top: 0.2rem;right: 0.3rem;}
 .ref_fields{padding-right:1rem;}
 .ref_fields > *{display: grid;grid-template-columns: 3fr 2fr 1fr;gap: 1rem 1rem;}
-small{color:var(--pico-muted-color)}
+small{margin:2px;color: oklch(from currentColor l c h / 0.8);}
 .search_results {display: inline-grid;width: 100%;grid-template-columns: repeat(var(--cols), minmax(max-content, 1fr));overflow-x: auto;}
 .search_results .row {grid-column: 1 / span var(--cols);display: grid;grid-template-columns: subgrid;padding:0.3rem;width: 100%;min-width: max-content;margin-bottom:0.4rem;}
 .search_results .row:first-child {text-align: center;padding: 0;margin:0;}

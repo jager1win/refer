@@ -5,16 +5,27 @@ use std::path::{Path, PathBuf};
 use std::sync::Mutex;
 use std::time::{SystemTime, UNIX_EPOCH};
 use tauri::{Manager, State};
+use tracing::{error, info, warn};
+use tracing_appender::non_blocking::WorkerGuard;
+use tracing_subscriber::{EnvFilter, Layer, fmt, prelude::*};
 pub mod commands;
 pub mod import;
 pub mod sql;
 use crate::commands::*;
 use crate::sql::DbState;
-use tracing::{error, info, warn};
-use tracing_appender::non_blocking::WorkerGuard;
-use tracing_subscriber::{EnvFilter, Layer, fmt, prelude::*};
 
 pub const APP_EXT: &str = "refer";
+
+/// Демо-справочники: [(путь, Имя, Описание); 6]
+pub const DEMO_REFERENCES: [(&str, &str, &str); 6] = [
+    ("example/shrinkflation.refer", "Shrinkflation", "Compare prices per unit weight/volume"),
+    ("example/dilution.refer", "Dilution", "Calculate solution mixing ratios"),
+    ("example/ballistics.refer", "Ballistics", "Ballistic trajectory calculator for rifle calibers"),
+    ("example/deposit.refer", "Deposit", "Calculate compound interest growth"),
+    ("example/geometry.refer", "Geometry", "Circle and sphere measurements - enter your radius"),
+    ("example/oscillator.refer", "Oscillator", "Wave value at time t - use Time Hint for reference"),
+];
+
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SettingsStore {
@@ -35,13 +46,14 @@ impl Default for SettingsStore {
     }
 }
 
-#[derive(Default, Debug, Clone, Serialize, Deserialize)]
+#[derive(Default, Debug, Clone, Serialize)]
 pub struct StatisticsState {
     pub db_path: PathBuf,      // путь где хранятся базы
     pub db_path_size: u64,     // размер всех баз
     pub db_list: Vec<PathBuf>, // список имен баз включая пути от папки refer
     pub log_path: PathBuf,     // файл логов куда пишет tracing
     pub db_path_ok: String,    // Пустое если еще не проверяли, "Ok" если всё хорошо, иначе сообщение об ошибке
+    pub demo_refs: [(&'static str, &'static str, &'static str); 6],
     pub initialized: bool,     // Флаг, что инициализация уже выполнена
 }
 
@@ -101,6 +113,7 @@ fn init_stat_all(app: &tauri::AppHandle) -> Result<(), Box<dyn std::error::Error
             // Логируем результат проверки
             if state.db_path_ok == "Ok" {
                 info!("Directory /refer check: OK - {}", path.display());
+                state.demo_refs = DEMO_REFERENCES;
             } else {
                 warn!("Directory /refer check: {} - {}", state.db_path_ok, path.display());
             }

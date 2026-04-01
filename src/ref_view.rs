@@ -1,4 +1,4 @@
-use crate::{app::*, functions::*, i18n::*, tauri_args};
+use crate::{app::*, functions::*, i18n::*, ref_edit::*, tauri_args};
 use core::f64;
 use exmex::prelude::*;
 use leptos::prelude::*;
@@ -125,7 +125,7 @@ pub fn Ref_main() -> impl IntoView {
 
     Effect::new(move |_| {
         //log::info!("ref: {:?}", ref_state.get());
-        //log::info!("meta: {:#?}", meta.get());
+        log::info!("meta: {:#?}", meta.get());
         //log::info!("selected_ref: {:#?}", selected_ref.get());
         //log::info!("stat: {:#?}", stat.get());
         //log::info!("data: {:#?}", data.get());
@@ -188,16 +188,19 @@ pub fn Ref_main() -> impl IntoView {
                                         <button on:click=move |_| edit_ref.set(true)>"✎"</button>
                                     </div>
 
-                                    // input. remove if empty search_config or count = 0
+                                    // input. dont show if empty search_config or count < 11
                                     {
-                                        let metaclon = sorted_search.clone();
+                                        let sorted_search_clone = sorted_search.clone();
                                         move || {
-                                            if metaclon.is_empty() {
+                                            if sorted_search_clone.is_empty() {
+                                                // log::info!("count_data:{:?}",&table_meta.count_data );
                                                 view! {
                                                     <h5 class="warn">{t!(i18n, ref_main.no_fields_selected)}</h5>
                                                     <h6 class="warn">{t!(i18n, ref_main.fields_hint)}</h6>
                                                 }
                                                     .into_any()
+                                            } else if table_meta.count_data < 11 {
+                                                view! { "" }.into_any()
                                             } else {
                                                 let has_data = data.get().is_some_and(|d| !d.is_empty());
                                                 let query_len = query_string.get().len();
@@ -777,10 +780,7 @@ pub fn prettify_operation(
     result
 }
 
-#[component]
-fn Ref_el_edit() -> impl IntoView {
-    view! { "Ref_el_edit    " }
-}
+
 
 // let result = expr.eval(&[3.7, 2.5, 1.0]).map_err(|e| e.to_string());
 //expr.eval(&[3.7, 2.5, 1.0])   .map(|v| v.to_string())

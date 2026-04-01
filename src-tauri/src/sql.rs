@@ -549,6 +549,9 @@ pub fn create_example_refers(name: &str, path: &PathBuf) -> Result<(), String> {
         "example/ballistics.refer" => create_ballistics_refer(path),
         "example/deposit.refer" => create_deposit_refer(path),
         "example/oscillator.refer" => create_oscillator_refer(path),
+        "example/geometry.refer" => create_geometry_refer(path),
+        "example/shrinkflation.refer" => create_shrinkflation_refer(path),
+        "example/dilution.refer" => create_dilution_refer(path),
         _ => Err(RError::SqliteFailure(rusqlite::ffi::Error::new(1), Some("Unknown file ext".to_string())).to_string()),
     }
 }
@@ -581,7 +584,7 @@ pub fn create_ballistics_refer(path: &PathBuf) -> Result<(), String> {
 
     conn.execute(
         "UPDATE meta SET value = ?1 WHERE key = 'desc'",
-        params!["Ballistic trajectory calculator demo data"],
+        params!["Ballistic calculator demo data"],
     )
     .map_err(|e| e.to_string())?;
 
@@ -700,6 +703,138 @@ Green Light,545000000000000,1.0,0.000000000000001";
         "f_2 * sin(2 * PI * f_1 * input_time)",
         "Wave displacement at time t (seconds)",
         16,
+    )
+    .map_err(|e| e.to_string())?;
+
+    Ok(())
+}
+
+pub fn create_geometry_refer(path: &PathBuf) -> Result<(), String> {
+    const GEOMETRY_CSV: &str = "Calculation
+Circle/Sphere";
+
+    create_empty_database(path)?;
+    let conn = Connection::open(path).map_err(|e| e.to_string())?;
+
+    conn.execute("UPDATE meta SET value = ?1 WHERE key = 'name'", params!["Geometry"])
+        .map_err(|e| e.to_string())?;
+    conn.execute("UPDATE meta SET value = ?1 WHERE key = 'desc'", params!["Circle and sphere measurements - enter your radius"])
+        .map_err(|e| e.to_string())?;
+    conn.execute("UPDATE meta SET value = ?1 WHERE key = 'search_config'", params![serde_json::to_string(&vec!["f_0"]).unwrap()])
+        .map_err(|e| e.to_string())?;
+
+    import_csv(&conn, GEOMETRY_CSV, true).map_err(|e| e.to_string())?;
+
+    // Единицы измерения в названии операции - результат сразу понятен
+    add_operation(
+        &conn,
+        "Area (cm²/in²/etc)",
+        "PI * input_radius ^ 2",
+        "Area of circle in square units",
+        2,
+    )
+    .map_err(|e| e.to_string())?;
+
+    add_operation(
+        &conn,
+        "Circumference (cm/in/etc)",
+        "2 * PI * input_radius",
+        "Length of circle boundary in same units",
+        2,
+    )
+    .map_err(|e| e.to_string())?;
+
+    add_operation(
+        &conn,
+        "Volume (cm³/in³/etc)",
+        "4 / 3 * PI * input_radius ^ 3",
+        "Volume of sphere in cubic units",
+        2,
+    )
+    .map_err(|e| e.to_string())?;
+
+    add_operation(
+        &conn,
+        "Surface Area (cm²/in²/etc)",
+        "4 * PI * input_radius ^ 2",
+        "Surface area of sphere in square units",
+        2,
+    )
+    .map_err(|e| e.to_string())?;
+
+    Ok(())
+}
+
+pub fn create_shrinkflation_refer(path: &PathBuf) -> Result<(), String> {
+    // Пресеты систем: множитель для перевода к базовой единице
+    // Работает с любыми валютами и единицами измерения
+    const SHRINK_CSV: &str = "Unit System,Multiplier
+Per 1000 (kg/L),1000
+Per 16 (oz),16
+Per 1 (base unit),1";
+
+    create_empty_database(path)?;
+    let conn = Connection::open(path).map_err(|e| e.to_string())?;
+
+    conn.execute("UPDATE meta SET value = ?1 WHERE key = 'name'", params!["Shrinkflation"])
+        .map_err(|e| e.to_string())?;
+    conn.execute("UPDATE meta SET value = ?1 WHERE key = 'desc'", params!["Compare prices per unit weight/volume"])
+        .map_err(|e| e.to_string())?;
+    conn.execute("UPDATE meta SET value = ?1 WHERE key = 'search_config'", params![serde_json::to_string(&vec!["f_0"]).unwrap()])
+        .map_err(|e| e.to_string())?;
+
+    import_csv(&conn, SHRINK_CSV, true).map_err(|e| e.to_string())?;
+
+    // Универсальная формула: работает с любыми единицами
+    // Единицы в названии через черту — результат сразу понятен
+    add_operation(
+        &conn,
+        "Price per Unit (per kg/L/oz/lb/etc)",
+        "(input_price / input_weight) * f_1",
+        "Normalized price: enter price and weight/volume, get price per base unit",
+        2,
+    )
+    .map_err(|e| e.to_string())?;
+
+    Ok(())
+}
+
+pub fn create_dilution_refer(path: &PathBuf) -> Result<(), String> {
+    // Одна строка-шаблон: только имя для поиска
+    // Все параметры расчёта — input_ поля, вводятся каждый раз
+    const DILUTION_CSV: &str = "Calculator
+Dilution";
+
+    create_empty_database(path)?;
+    let conn = Connection::open(path).map_err(|e| e.to_string())?;
+
+    conn.execute("UPDATE meta SET value = ?1 WHERE key = 'name'", params!["Dilution"])
+        .map_err(|e| e.to_string())?;
+    conn.execute("UPDATE meta SET value = ?1 WHERE key = 'desc'", params!["Calculate solution mixing ratios"])
+        .map_err(|e| e.to_string())?;
+    conn.execute("UPDATE meta SET value = ?1 WHERE key = 'search_config'", params![serde_json::to_string(&vec!["f_0"]).unwrap()])
+        .map_err(|e| e.to_string())?;
+
+    import_csv(&conn, DILUTION_CSV, true).map_err(|e| e.to_string())?;
+
+    // Три input_ поля
+    // Formula 1: V_conc = (need% * need_vol) / have%
+    add_operation(
+        &conn,
+        "Concentrate Volume (ml/L/etc)",
+        "(input_Need_Pct * input_Need_Vol) / input_Have_Pct",
+        "Volume of stock solution to use",
+        2,
+    )
+    .map_err(|e| e.to_string())?;
+
+    // Formula 2: V_water = total - concentrate
+    add_operation(
+        &conn,
+        "Water Volume (ml/L/etc)",
+        "input_Need_Vol - ((input_Need_Pct * input_Need_Vol) / input_Have_Pct)",
+        "Volume of water/solvent to add",
+        2,
     )
     .map_err(|e| e.to_string())?;
 

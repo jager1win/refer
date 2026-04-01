@@ -1,4 +1,4 @@
-use crate::{functions::*, i18n::*, ref_view::*};
+use crate::{functions::*, i18n::*, ref_view::*, ref_edit::*};
 use leptos::prelude::*;
 use leptos::task::spawn_local;
 use serde::{Deserialize, Serialize};
@@ -6,7 +6,6 @@ use serde_wasm_bindgen::from_value;
 use std::collections::HashMap;
 use std::path::PathBuf;
 use wasm_bindgen::prelude::*;
-
 
 #[wasm_bindgen]
 extern "C" {
@@ -36,6 +35,7 @@ pub struct StatisticsState {
     pub db_list: Vec<PathBuf>,
     pub log_path: String,
     pub db_path_ok: String,
+    pub demo_refs: [(String, String, String); 6],
 }
 
 #[derive(Serialize, Deserialize, Clone, Default, Debug)]
@@ -120,6 +120,7 @@ pub fn App() -> impl IntoView {
 
     // now clean if not error+
     Effect::new(move |_| {
+        //log::debug!("stat: {:?}",stat.get());
         let cur = now.get();
         let contains_bad = er_pat.iter().any(|p| cur.to_lowercase().contains(p));
         if !contains_bad {
@@ -223,7 +224,7 @@ fn ReferencesContainer() -> impl IntoView {
     view! {
         <div class="references-container">
             <Show when=move || selected_ref.get().is_some() fallback=|| view! { <Refs /> }>
-                <Show when=move || !edit_ref.get() fallback=|| view! { <Edit /> }>
+                <Show when=move || !edit_ref.get() fallback=|| view! { <Ref_edit /> }>
                     <Ref_main />
                 </Show>
             </Show>
@@ -434,6 +435,17 @@ fn Refs() -> impl IntoView {
             />
         </div>
 
+        <div class="gr">
+            <div class="grid2">
+                <button>"Справочник/element"</button>
+                <button>"Может предлагать"</button>
+                <button>"Справочник/имя выбранное юзером"</button>
+                <button>"Справочник/element"</button>
+                <button>"Может предлагать"</button>
+                <button>"Справочник/имя выбранное юзером"</button>
+            </div>
+        </div>
+
         <div class="grid1a stat_table gr info">
             <b>{t!(i18n, refs.st_path)}": "</b>
             <span>{move || stat.get().db_path.display().to_string()}</span>
@@ -448,43 +460,6 @@ fn Refs() -> impl IntoView {
             <b>{t!(i18n, refs.st_log)}": "</b>
             <span>{move || stat.get().log_path}</span>
         </div>
-    }
-}
-
-#[component]
-fn Edit() -> impl IntoView {
-    let i18n = use_i18n();
-    let selected_ref = use_context::<RwSignal<Option<PathBuf>>>().expect("selected not found");
-    let edit_ref = use_context::<RwSignal<bool>>().expect("edit not found");
-    let now = use_context::<RwSignal<String>>().expect("now not found");
-    let stat = use_context::<RwSignal<StatisticsState>>().expect("stat not found");
-
-    let del_ref = move |name: PathBuf| {
-        spawn_local(async move {
-            match invoke("del_ref", &tauri_args!("val" : name.clone())).await {
-                Ok(_s) => {
-                    now.set(format!("{}: {:?}", tu_string!(i18n, edit.ok_del_ref), &name));
-                    selected_ref.set(None::<PathBuf>);
-                    edit_ref.set(false);
-                    upd_stat(stat, now);
-                }
-                Err(js) => {
-                    let error_msg = from_value::<String>(js).unwrap_or_else(|_| "Unknown error".into());
-                    now.set(format!(
-                        "{}: {:?} - {}",
-                        tu_string!(i18n, edit.er_del_ref),
-                        &name,
-                        error_msg
-                    ));
-                }
-            }
-        });
-    };
-    view! {
-        <h3>{t!(i18n, edit.test)}</h3>
-
-        <button on:click=move |_| { edit_ref.set(false) }>"✎ Save "</button>
-        <button on:click=move |_| del_ref(selected_ref.get().unwrap())>{t!(i18n, all.del)}</button>
     }
 }
 
@@ -729,12 +704,17 @@ fn Create() -> impl IntoView {
                 <h5>{t!(i18n, create.example)}</h5>
                 <p class="center">{t!(i18n, create.example_replace)}</p>
                 <div class="test_create gridl">
-                    <button on:click=move |_| create_example(PathBuf::from("example/ballistics.refer"))>"Ballistics Data"</button>
-                    <span>{t!(i18n, create.example_desc_1)}</span>
-                    <button on:click=move |_| create_example(PathBuf::from("example/deposit.refer"))>"Deposit"</button>
-                    <span>{t!(i18n, create.example_desc_2)}</span>
-                    <button on:click=move |_| create_example(PathBuf::from("example/oscillator.refer"))>"Oscillator"</button>
-                    <span>{t!(i18n, create.example_desc_3)}</span> 
+                    {stat
+                        .get_untracked()
+                        .demo_refs
+                        .into_iter()
+                        .map(|(path, name, desc)| {
+                            view! {
+                                <button on:click=move |_| create_example(PathBuf::from({ &path }))>{name}</button>
+                                <span>{desc}</span>
+                            }
+                        })
+                        .collect_view()}
                 </div>
             </div>
         </Show>
