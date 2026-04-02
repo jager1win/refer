@@ -22,20 +22,19 @@ impl RefState {
 #[component]
 pub fn Ref_main() -> impl IntoView {
     let i18n = use_i18n();
-    let selected_ref = use_context::<RwSignal<Option<PathBuf>>>().expect("selected not found");
+    let selected = use_context::<RwSignal<Selected>>().expect("selected not found");
     let edit_ref = use_context::<RwSignal<bool>>().expect("reference not found");
     let stat = use_context::<RwSignal<StatisticsState>>().expect("stat not found");
     let now = use_context::<RwSignal<String>>().expect("now not found");
-    let pb = full_pb(stat.get_untracked().db_path, selected_ref.get_untracked().unwrap());
+    let pb = full_pb(stat.get_untracked().db_path, selected.get_untracked().refer.unwrap());
     let query_string = RwSignal::new("".to_string());
     let meta = RwSignal::new(None::<TableMeta>);
     let data = RwSignal::new(None::<Vec<DataRecord>>);
-    let selected_el = RwSignal::new(None::<u32>);
     let ref_state = RwSignal::new(RefState::new());
 
     // get meta
     spawn_local(async move {
-        let pb = full_pb(stat.get_untracked().db_path, selected_ref.get_untracked().unwrap());
+        let pb = full_pb(stat.get_untracked().db_path, selected.get_untracked().refer.unwrap());
         match invoke("get_meta", &tauri_args!("pb": pb)).await {
             Ok(js) => {
                 let s = from_value::<TableMeta>(js).unwrap();
@@ -54,15 +53,19 @@ pub fn Ref_main() -> impl IntoView {
         };
     });
 
-    // get data. init - first 10 el. then - by input
+    // get data. всегда по 10 элементов.
     let search_items = move |pb: PathBuf, query: String| {
         spawn_local(async move {
             match invoke("search_items", &tauri_args!("pb": pb, "query": query)).await {
                 Ok(js) => {
                     let s = from_value::<Vec<DataRecord>>(js).unwrap();
-                    data.set(Some(s));
                     ref_state.update(|st| {
-                        st.data = 1;
+                        if query.is_empty() && s.is_empty() {
+                            st.data = -1;
+                        } else {
+                            st.data = 1;
+                            data.set(Some(s));
+                        }
                     });
                 }
                 Err(js) => {
@@ -80,7 +83,7 @@ pub fn Ref_main() -> impl IntoView {
         let Some(mut meta_data) = meta.get_untracked() else {
             return;
         };
-        let pb = full_pb(stat.get_untracked().db_path, selected_ref.get_untracked().unwrap());
+        let pb = full_pb(stat.get_untracked().db_path, selected.get_untracked().refer.unwrap());
         if let Some(pos) = meta_data.search_config.iter().position(|f| f == &field) {
             meta_data.search_config.remove(pos);
         } else {
@@ -106,7 +109,7 @@ pub fn Ref_main() -> impl IntoView {
             match invoke("del_ref", &tauri_args!("val" : name.clone())).await {
                 Ok(_s) => {
                     now.set(format!("{}: {:?}", tu_string!(i18n, edit.ok_del_ref), &name));
-                    selected_ref.set(None::<PathBuf>);
+                    selected.update(|c| c.refer = None);
                     edit_ref.set(false);
                     upd_stat(stat, now);
                 }
@@ -125,8 +128,8 @@ pub fn Ref_main() -> impl IntoView {
 
     Effect::new(move |_| {
         //log::info!("ref: {:?}", ref_state.get());
-        log::info!("meta: {:#?}", meta.get());
-        //log::info!("selected_ref: {:#?}", selected_ref.get());
+        //log::info!("meta: {:#?}", meta.get());
+        //log::info!("selected: {:#?}", selected.get());
         //log::info!("stat: {:#?}", stat.get());
         //log::info!("data: {:#?}", data.get());
     });
@@ -135,6 +138,9 @@ pub fn Ref_main() -> impl IntoView {
     Effect::new(move |_| {
         let _ = query_string.get();
         let Some(_) = meta.get() else {
+            return;
+        };
+        if meta.get().unwrap().count_data == 0 {
             return;
         };
 
@@ -150,10 +156,9 @@ pub fn Ref_main() -> impl IntoView {
             std::time::Duration::from_millis(250),
         );
     });
-    provide_context(selected_el);
     provide_context(meta);
     view! {
-        <Show when=move || { selected_el.get().is_none() } fallback=|| view! { <Ref_el /> }>
+        <Show when=move || { selected.get().element.is_none() } fallback=|| view! { <Ref_el /> }>
             <div class="ref">
                 {move || {
                     match ref_state.get().meta {
@@ -162,7 +167,7 @@ pub fn Ref_main() -> impl IntoView {
                                 <div class="gr">
                                     <h5 class="error">"🚫"</h5>
                                     <p class="err_send">
-                                        <button on:click=move |_| del_ref(selected_ref.get().unwrap())>{t!(i18n, all.del)}</button>
+                                        <button on:click=move |_| del_ref(selected.get().refer.unwrap())>{t!(i18n, all.del)}</button>
                                     </p>
                                 </div>
                             }
@@ -173,21 +178,21 @@ pub fn Ref_main() -> impl IntoView {
                             let table_meta = meta.get().unwrap();
                             let sorted_search = sort_f_keys_v(table_meta.clone().search_config);
                             view! {
-                                <div class="gr">
-                                    <div class="header-row">
-                                        <button on:click=move |_| selected_ref.set(None)>"←"</button>
+                                <div class="header-row gr">
+                                    <button on:click=move |_| selected.update(|c| c.refer = None)>"←"</button>
 
-                                        <div class="title-group">
-                                            <span>{move || remove_refer_ext(&selected_ref.get().unwrap_or_default())}</span>
-                                            <small class="meta grid">
-                                                <span>{table_meta.name.clone()}</span>
-                                                <span>{table_meta.desc.clone()}</span>
-                                            </small>
-                                        </div>
-
-                                        <button on:click=move |_| edit_ref.set(true)>"✎"</button>
+                                    <div class="title-group">
+                                        <span>{move || remove_refer_ext(&selected.get().refer.unwrap())}</span>
+                                        <small class="meta grid">
+                                            <span>{table_meta.name.clone()}</span>
+                                            <span>{table_meta.desc.clone()}</span>
+                                        </small>
                                     </div>
 
+                                    <button on:click=move |_| edit_ref.set(true)>"✎"</button>
+                                </div>
+
+                                <div class="gr">
                                     // input. dont show if empty search_config or count < 11
                                     {
                                         let sorted_search_clone = sorted_search.clone();
@@ -225,9 +230,7 @@ pub fn Ref_main() -> impl IntoView {
                                                     .into_any()
                                             }
                                         }
-                                    }
-
-                                    // search result
+                                    } // search result
                                     {match sorted_search.clone().is_empty() {
                                         true => view! { <div class="search_results">""</div> }.into_any(),
                                         false => {
@@ -250,7 +253,10 @@ pub fn Ref_main() -> impl IntoView {
                                                             let search_fields = sorted_search.clone();
 
                                                             view! {
-                                                                <button class="row" on:click=move |_| selected_el.set(Some(rec.id))>
+                                                                <button
+                                                                    class="row"
+                                                                    on:click=move |_| selected.update(|c| c.element = Some(rec.id))
+                                                                >
                                                                     {search_fields
                                                                         .into_iter()
                                                                         .filter_map(|k| { rec.fields.get(&k).map(|v| (k, v.clone())) })
@@ -374,20 +380,26 @@ pub fn Ref_main() -> impl IntoView {
 
 #[component]
 pub fn Ref_el() -> impl IntoView {
-    let selected_el = use_context::<RwSignal<Option<u32>>>().expect("element not found");
-    let selected_ref = use_context::<RwSignal<Option<PathBuf>>>().expect("selected not found");
+    let i18n = use_i18n();
+    let selected = use_context::<RwSignal<Selected>>().expect("selected not found");
+    let settings = use_context::<RwSignal<AppSettings>>().expect("settings not found");
     let stat = use_context::<RwSignal<StatisticsState>>().expect("stat not found");
     let meta = use_context::<RwSignal<Option<TableMeta>>>().expect("meta not found");
     let now = use_context::<RwSignal<String>>().expect("now not found");
     let edit_el = RwSignal::new(false);
     let data = RwSignal::new(None::<DataRecord>);
 
+    let in_qa = move || {
+        let (refer, element) = (selected.get().refer.clone().unwrap(), selected.get().element.unwrap());
+        settings.with(|s| s.qa.iter().any(|item| item.path == refer && item.id == element))
+    };
+
     // get el
     spawn_local(async move {
-        let pb = full_pb(stat.get_untracked().db_path, selected_ref.get_untracked().unwrap());
+        let pb = full_pb(stat.get_untracked().db_path, selected.get_untracked().refer.unwrap());
         match invoke(
             "get_el",
-            &tauri_args!("pb": pb, "id": Some(selected_el.get_untracked())),
+            &tauri_args!("pb": pb, "id": Some(selected.get_untracked().element)),
         )
         .await
         {
@@ -402,9 +414,31 @@ pub fn Ref_el() -> impl IntoView {
         };
     });
 
+    let toggle_qa = move |title| {
+        let (refer, element) = (selected.get().refer.clone().unwrap(), selected.get().element.unwrap());
+
+        settings.update(|s| {
+            if let Some(pos) = s.qa.iter().position(|item| item.path == refer && item.id == element) {
+                s.qa.remove(pos);
+                now.set(format!("- {}",tu_string!(i18n, all.qa)));
+            } else {
+                s.qa.push(QuickAccess {
+                    path: refer,
+                    id: element,
+                    name: title,
+                });
+                now.set(format!("+ {}",tu_string!(i18n, all.qa)));
+            }
+        });
+
+        spawn_local(async move {
+            let _ = invoke("set_settings", &tauri_args!("new": settings.get_untracked())).await;
+        });
+    };
+
     Effect::new(move |_| {
-        log::info!("meta: {:#?}", meta.get());
-        //log::info!("selected_ref: {:?}", selected_ref.get().unwrap());
+        //log::info!("meta: {:#?}", meta.get());
+        //log::info!("selected {:?}", selected.get());
         //log::info!("data: {:#?}", data.get());
     });
     view! {
@@ -413,14 +447,29 @@ pub fn Ref_el() -> impl IntoView {
                 match data.get().is_none() {
                     true => view! { <span class="gr" aria-busy="true"></span> }.into_any(),
                     false => {
+                        let title = get_item_title(&data.get_untracked().unwrap(), &meta.get_untracked().unwrap());
                         view! {
                             <div class="ref">
                                 <div class="header-row gr">
-                                    <button on:click=move |_| selected_el.set(None)>"←"</button>
+                                    <button on:click=move |_| selected.update(|c| c.element = None)>"←"</button>
 
                                     <div class="title-group">
-                                        <div>{get_item_title(&data.get_untracked().unwrap(), &meta.get_untracked().unwrap())}</div>
-                                        <small>{move || remove_refer_ext(&selected_ref.get().unwrap_or_default())}</small>
+                                        <div>
+                                            <span>{title.clone()}</span>
+                                            <button
+                                                class="ml1 sm_b"
+                                                on:click=move |_| toggle_qa(
+                                                    format!(
+                                                        "{} | {}",
+                                                        remove_refer_ext(&selected.get_untracked().refer.unwrap()),
+                                                        title.clone(),
+                                                    ),
+                                                )
+                                            >
+                                                {move || if in_qa() { "📍" } else { "📌" }}
+                                            </button>
+                                        </div>
+                                        <small>{move || remove_refer_ext(&selected.get().refer.unwrap())}</small>
                                     </div>
 
                                     <button on:click=move |_| edit_el.set(true)>"🔧"</button>
@@ -468,8 +517,6 @@ pub fn Ref_el() -> impl IntoView {
                                             .operations
                                             .into_iter()
                                             .partition(|op| op.expression.contains("input_"));
-                                        // let metaclon = meta.get().unwrap();
-                                        // let dataclon = data.get().unwrap().fields;
 
                                         view! {
                                             <For
@@ -527,7 +574,7 @@ pub fn Ref_el() -> impl IntoView {
 #[component]
 fn RunOperIn(op_id: u32, data: HashMap<String, String>) -> impl IntoView {
     let meta = use_context::<RwSignal<Option<TableMeta>>>().expect("meta not found");
-    let selected_ref = use_context::<RwSignal<Option<PathBuf>>>().expect("selected not found");
+    let selected = use_context::<RwSignal<Selected>>().expect("selected not found");
     let stat = use_context::<RwSignal<StatisticsState>>().expect("stat not found");
 
     let (initial_prec, op_name, op_expr_str, op_desc, names) = {
@@ -593,7 +640,7 @@ fn RunOperIn(op_id: u32, data: HashMap<String, String>) -> impl IntoView {
         let new_val = event_target_value(&ev).parse().unwrap_or(2);
         set_local_precision.set(new_val);
 
-        let pb = full_pb(stat.get_untracked().db_path, selected_ref.get_untracked().unwrap());
+        let pb = full_pb(stat.get_untracked().db_path, selected.get_untracked().refer.unwrap());
         let mut old_operations = meta.get_untracked().unwrap().operations;
         if let Some(op) = old_operations.iter_mut().find(|op| op.id == op_id) {
             op.precision = new_val;
@@ -686,7 +733,7 @@ fn RunOperIn(op_id: u32, data: HashMap<String, String>) -> impl IntoView {
 #[component]
 fn Prec(op_id: u32) -> impl IntoView {
     let meta = use_context::<RwSignal<Option<TableMeta>>>().expect("meta not found");
-    let selected_ref = use_context::<RwSignal<Option<PathBuf>>>().expect("selected not found");
+    let selected = use_context::<RwSignal<Selected>>().expect("selected not found");
     let stat = use_context::<RwSignal<StatisticsState>>().expect("stat not found");
 
     let precision = move || {
@@ -701,7 +748,7 @@ fn Prec(op_id: u32) -> impl IntoView {
 
     let on_input = move |ev: web_sys::Event| {
         let new_val = event_target_value(&ev).parse().unwrap_or(2);
-        let pb = full_pb(stat.get_untracked().db_path, selected_ref.get_untracked().unwrap());
+        let pb = full_pb(stat.get_untracked().db_path, selected.get_untracked().refer.unwrap());
 
         meta.update(|meta_opt| {
             let meta = meta_opt.as_mut().unwrap();
@@ -779,8 +826,6 @@ pub fn prettify_operation(
 
     result
 }
-
-
 
 // let result = expr.eval(&[3.7, 2.5, 1.0]).map_err(|e| e.to_string());
 //expr.eval(&[3.7, 2.5, 1.0])   .map(|v| v.to_string())

@@ -1,4 +1,4 @@
-use crate::{functions::*, i18n::*, ref_view::*, ref_edit::*};
+use crate::{functions::*, i18n::*, ref_edit::*, ref_view::*};
 use leptos::prelude::*;
 use leptos::task::spawn_local;
 use serde::{Deserialize, Serialize};
@@ -20,12 +20,32 @@ macro_rules! tauri_args {
     }};
 }
 
-#[derive(Default, Debug, Clone, Serialize, Deserialize)]
-struct AppSettings {
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AppSettings {
     theme: String,
     language: String,
     color: String,
     log: String,
+    pub qa: Vec<QuickAccess>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct QuickAccess {
+    pub path: PathBuf,
+    pub id: u32,
+    pub name: String,
+}
+
+impl Default for AppSettings {
+    fn default() -> Self {
+        Self {
+            theme: "light".to_string(),
+            language: "en".to_string(),
+            color: "blue".to_string(),
+            log: "false".to_string(),
+            qa: Vec::new(),
+        }
+    }
 }
 
 #[derive(Default, Debug, Clone, Serialize, Deserialize)]
@@ -40,11 +60,17 @@ pub struct StatisticsState {
 
 #[derive(Serialize, Deserialize, Clone, Default, Debug)]
 struct CreateForm {
-    mode: String,               // "empty", "sheet", "sqlite"
-    db_name: PathBuf,           // имя БД
-    has_header: bool,           // есть заголовок
-    file_extension: String,     // расширение файла
-    file_path: Option<PathBuf>, // содержимое файла
+    mode: String,           // "empty", "sheet", "sqlite"
+    db_name: PathBuf,       // имя БД
+    has_header: bool,       // есть заголовок
+    file_extension: String, // расширение файла
+    file_path: Option<PathBuf>,
+}
+
+#[derive(Serialize, Deserialize, Clone, Default, Debug)]
+pub struct Selected {
+    pub refer: Option<PathBuf>,
+    pub element: Option<u32>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -75,14 +101,9 @@ pub struct Operation {
 
 #[component]
 pub fn App() -> impl IntoView {
-    let settings: RwSignal<AppSettings> = RwSignal::new(AppSettings {
-        theme: "light".into(),
-        language: "en".into(),
-        color: "blue".into(),
-        log: "false".into(),
-    });
+    let settings: RwSignal<AppSettings> = RwSignal::new(AppSettings::default());
     let stat: RwSignal<StatisticsState> = RwSignal::new(StatisticsState::default());
-    let selected_ref: RwSignal<Option<PathBuf>> = RwSignal::new(None::<PathBuf>);
+    let selected: RwSignal<Selected> = RwSignal::new(Selected::default());
     let edit_ref: RwSignal<bool> = RwSignal::new(false);
     let active_tab: RwSignal<i32> = RwSignal::new(1);
     let now: RwSignal<String> = RwSignal::new(String::from(""));
@@ -90,7 +111,7 @@ pub fn App() -> impl IntoView {
 
     provide_context(settings);
     provide_context(stat);
-    provide_context(selected_ref);
+    provide_context(selected);
     provide_context(edit_ref);
     provide_context(now);
     provide_context(active_tab);
@@ -113,7 +134,10 @@ pub fn App() -> impl IntoView {
     upd_stat(stat, now);
 
     let clean = move || {
-        selected_ref.set(None::<PathBuf>);
+        selected.update(|cur| {
+            cur.refer = None;
+            cur.element = None;
+        });
         edit_ref.set(false);
         now.set(String::from(""))
     };
@@ -161,13 +185,7 @@ pub fn App() -> impl IntoView {
                         active_tab.set(1);
                     }
                 >
-                    "📚 "
-                    <span>
-                        {
-                            let i18n = use_i18n();
-                            t!(i18n, all.references)
-                        }
-                    </span>
+                    "🏠"
                 </button>
                 <button
                     class="navb"
@@ -218,12 +236,12 @@ pub fn App() -> impl IntoView {
 
 #[component]
 fn ReferencesContainer() -> impl IntoView {
-    let selected_ref = use_context::<RwSignal<Option<PathBuf>>>().expect("selected not found");
+    let selected = use_context::<RwSignal<Selected>>().expect("selected not found");
     let edit_ref = use_context::<RwSignal<bool>>().expect("edit not found");
 
     view! {
         <div class="references-container">
-            <Show when=move || selected_ref.get().is_some() fallback=|| view! { <Refs /> }>
+            <Show when=move || selected.get().refer.is_some() fallback=|| view! { <Refs /> }>
                 <Show when=move || !edit_ref.get() fallback=|| view! { <Ref_edit /> }>
                     <Ref_main />
                 </Show>
@@ -417,33 +435,54 @@ fn Settings() -> impl IntoView {
 fn Refs() -> impl IntoView {
     let i18n = use_i18n();
     let stat = use_context::<RwSignal<StatisticsState>>().expect("stat not found");
-    let selected_ref = use_context::<RwSignal<Option<PathBuf>>>().expect("selected not found");
+    let settings = use_context::<RwSignal<AppSettings>>().expect("settings not found");
+    let selected = use_context::<RwSignal<Selected>>().expect("selected not found");
     let patterns = ["fail", "error"];
 
     view! {
-        <div class="grid2 gr">
-            <For
-                each=move || stat.get().db_list.clone()
-                key=|item| item.clone()
-                children=move |item: PathBuf| {
-                    view! {
-                        <button class="rlist" on:click=move |_| { selected_ref.set(Some(item.clone())) }>
-                            {remove_refer_ext(&item)}
-                        </button>
-                    }
-                }
-            />
-        </div>
-
         <div class="gr">
-            <div class="grid2">
-                <button>"Справочник/element"</button>
-                <button>"Может предлагать"</button>
-                <button>"Справочник/имя выбранное юзером"</button>
-                <button>"Справочник/element"</button>
-                <button>"Может предлагать"</button>
-                <button>"Справочник/имя выбранное юзером"</button>
-            </div>
+            <details name="tabs" open>
+                <summary>
+                    <b>"📚 "{t!(i18n, all.references)}</b>
+                </summary>
+                <div class="grid2">
+                    <For
+                        each=move || stat.get().db_list.clone()
+                        key=|item| item.clone()
+                        children=move |item: PathBuf| {
+                            view! {
+                                <button on:click=move |_| {
+                                    selected.update(|c| c.refer = Some(item.clone()))
+                                }>{remove_refer_ext(&item)}</button>
+                            }
+                        }
+                    />
+                </div>
+            </details>
+            <hr />
+            <details name="tabs">
+                <summary>
+                    <b>"📍 "{t!(i18n, all.qa)}</b>
+                </summary>
+                <div class="grid">
+                    <For
+                        each=move || settings.get().qa
+                        key=|item| item.id
+                        children=move |item: QuickAccess| {
+                            let item_clone = item.clone();
+                            view! {
+                                <button on:click=move |_| {
+                                    selected
+                                        .update(|c| {
+                                            c.element = Some(item_clone.id);
+                                            c.refer = Some(item_clone.path.clone());
+                                        });
+                                }>{item.name}</button>
+                            }
+                        }
+                    />
+                </div>
+            </details>
         </div>
 
         <div class="grid1a stat_table gr info">
@@ -470,7 +509,7 @@ fn Create() -> impl IntoView {
     let stat = use_context::<RwSignal<StatisticsState>>().expect("stat not found");
     let now = use_context::<RwSignal<String>>().expect("now not found");
     let active_tab = use_context::<RwSignal<i32>>().expect("active_tab not found");
-    let selected_ref = use_context::<RwSignal<Option<PathBuf>>>().expect("selected not found");
+    let selected = use_context::<RwSignal<Selected>>().expect("selected not found");
     let err_form: RwSignal<String> = RwSignal::new("".to_string());
     let is_loading = RwSignal::new(false);
     // mode: "empty" | "sheet" | "sqlite"
@@ -548,7 +587,7 @@ fn Create() -> impl IntoView {
                         f.reset();
                     }
                     is_loading.set(false);
-                    selected_ref.set(Some(form_data.db_name));
+                    selected.update(|c| c.refer = Some(form_data.db_name));
                     active_tab.set(1);
                 }
                 Err(js) => {
@@ -576,7 +615,7 @@ fn Create() -> impl IntoView {
                 Ok(_js) => {
                     now.set(format!("{}: {:?}", tu_string!(i18n, create.ok_create), &name));
                     upd_stat(stat, now);
-                    selected_ref.set(Some(name));
+                    selected.update(|c| c.refer = Some(name));
                     active_tab.set(1);
                 }
                 Err(js) => {

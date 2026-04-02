@@ -9,7 +9,7 @@ use crate::{app::*, functions::*, i18n::*, tauri_args};
 #[component]
 pub fn Ref_edit() -> impl IntoView {
     let i18n = use_i18n();
-    let selected_ref = use_context::<RwSignal<Option<PathBuf>>>().expect("selected not found");
+    let selected = use_context::<RwSignal<Selected>>().expect("selected not found");
     let edit_ref = use_context::<RwSignal<bool>>().expect("edit not found");
     let now = use_context::<RwSignal<String>>().expect("now not found");
     let stat = use_context::<RwSignal<StatisticsState>>().expect("stat not found");
@@ -19,7 +19,7 @@ pub fn Ref_edit() -> impl IntoView {
             match invoke("del_ref", &tauri_args!("val" : name.clone())).await {
                 Ok(_s) => {
                     now.set(format!("{}: {:?}", tu_string!(i18n, edit.ok_del_ref), &name));
-                    selected_ref.set(None::<PathBuf>);
+                    selected.update(|c| c.refer = None);
                     edit_ref.set(false);
                     upd_stat(stat, now);
                 }
@@ -39,7 +39,7 @@ pub fn Ref_edit() -> impl IntoView {
         <h3>{t!(i18n, edit.test)}</h3>
 
         <button on:click=move |_| { edit_ref.set(false) }>"✎ Save "</button>
-        <button on:click=move |_| del_ref(selected_ref.get().unwrap())>{t!(i18n, all.del)}</button>
+        <button on:click=move |_| del_ref(selected.get_untracked().refer.unwrap())>{t!(i18n, all.del)}</button>
     }
 }
 

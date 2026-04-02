@@ -33,6 +33,14 @@ pub struct SettingsStore {
     pub language: String,
     pub color: String,
     log: String,
+    pub qa: Vec<QuickAccess>
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct QuickAccess {
+    pub path: PathBuf,
+    pub id: u32,
+    pub name: String,
 }
 
 impl Default for SettingsStore {
@@ -42,6 +50,7 @@ impl Default for SettingsStore {
             language: "en".to_string(),
             color: "blue".to_string(),
             log: "false".to_string(),
+            qa: Vec::new()
         }
     }
 }

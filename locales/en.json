@@ -2,6 +2,7 @@
   "all": {
     "reference":  "Reference",
     "references": "References",
+    "qa": "Quick access",
     "err_unknown": "unknown error",
     "del": "Delete"
   },

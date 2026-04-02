@@ -2,8 +2,6 @@ use crate::import::*;
 use crate::sql::{self, *};
 use crate::{APP_EXT, DbState, SettingsStore, StatisticsState};
 use serde::{Deserialize, Serialize};
-use serde_json::Value;
-use std::collections::HashMap;
 use std::fs::File;
 use std::fs::{self};
 use std::io::{self, Read};
@@ -38,37 +36,15 @@ pub async fn get_settings(app: tauri::AppHandle) -> Result<SettingsStore, String
     let config_dir = app.path().app_config_dir().map_err(|e| e.to_string())?;
     let settings_path = config_dir.join(".settings.json");
 
-    if !config_dir.exists() {
+    if !settings_path.exists() {
         return Ok(SettingsStore::default());
     }
 
-    //println!("{:?},{:?}", config_dir, settings_path);
-
     let content = fs::read_to_string(&settings_path).map_err(|e| e.to_string())?;
-    let json: Value = serde_json::from_str(&content).map_err(|e| e.to_string())?;
-
-    let theme = json
-        .get("theme")
-        .and_then(|v| v.as_str())
-        .unwrap_or("light")
-        .to_string();
-
-    let language = json
-        .get("language")
-        .and_then(|v| v.as_str())
-        .unwrap_or("en")
-        .to_string();
-
-    let color = json.get("color").and_then(|v| v.as_str()).unwrap_or("blue").to_string();
-    let log = json.get("log").and_then(|v| v.as_str()).unwrap_or("false").to_string();
-    //let settings: SettingsStore = serde_json::from_value(json).unwrap_or_default();
-
-    Ok(SettingsStore {
-        theme,
-        language,
-        color,
-        log,
-    })
+    let settings: SettingsStore = serde_json::from_str(&content)
+        .map_err(|e| e.to_string())?;
+    
+    Ok(settings)
 }
 
 #[tauri::command]
@@ -374,12 +350,14 @@ pub async fn get_el(pb: PathBuf, id: u32, state: State<'_, Mutex<DbState>>) -> R
 }
 
 #[tauri::command]
-pub async fn update_meta_field(pb: PathBuf, key: &str, value: serde_json::Value, state: State<'_, Mutex<DbState>>) -> Result<(), String> {
+pub async fn update_meta_field(
+    pb: PathBuf, key: &str, value: serde_json::Value, state: State<'_, Mutex<DbState>>,
+) -> Result<(), String> {
     let mut db = state.lock().map_err(|e| e.to_string())?;
 
     db.with_conn(pb, |conn, _meta| match sql::update_meta_field(conn, key, &value) {
         Ok(()) => {
-            info!("Meta field saved: {}",key);
+            info!("Meta field saved: {}", key);
             Ok(())
         }
         Err(e) => {
@@ -429,16 +407,6 @@ pub async fn add_field(
     Ok(field_name)
 }
 
-fn f2name(v: Vec<String>, names: HashMap<String, String>) -> Vec<String> {
-    let mut res: Vec<String> = Vec::new();
-    for f in v {
-        if names.contains_key(&f) {
-            res.push(names[&f].clone());
-        }
-    }
-    res
-}
-
 fn try_remove(path: &std::path::Path) -> io::Result<()> {
     match fs::remove_file(path) {
         Ok(()) => Ok(()),
@@ -446,6 +414,16 @@ fn try_remove(path: &std::path::Path) -> io::Result<()> {
         Err(e) => Err(e),
     }
 }
+
+/*fn f2name(v: Vec<String>, names: HashMap<String, String>) -> Vec<String> {
+    let mut res: Vec<String> = Vec::new();
+    for f in v {
+        if names.contains_key(&f) {
+            res.push(names[&f].clone());
+        }
+    }
+    res
+}*/
 /*
    let mut path = root.join(String::from("example"));
    let _ = std::fs::create_dir_all(&path);
