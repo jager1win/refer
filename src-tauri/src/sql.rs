@@ -600,7 +600,7 @@ pub fn create_ballistics_refer(path: &PathBuf) -> Result<(), String> {
     add_operation(
         &conn,
         "Energy (J)",
-        "f_2 * f_3 * f_3 / 2000",
+        "{Weight(g)} * {Velocity(m/s)} * {Velocity(m/s)} / 2000",
         "Kinetic energy in Joules",
         2,
     )
@@ -609,7 +609,7 @@ pub fn create_ballistics_refer(path: &PathBuf) -> Result<(), String> {
     add_operation(
         &conn,
         "Sectional Density",
-        "(f_2 * 15.4324) / (f_1 * f_1)",
+        "({Weight(g)} * 15.4324) / ({Caliber(in)} * {Caliber(in)})",
         "Sectional Density in lb/in² (classic)",
         2,
     )
@@ -618,7 +618,7 @@ pub fn create_ballistics_refer(path: &PathBuf) -> Result<(), String> {
     add_operation(
         &conn,
         "Vertical Drop (m)",
-        "((9.81 * (input_distance / f_3) * (input_distance / f_3)) / 2)",
+        "((9.81 * ({distance} / {Velocity(m/s)}) * ({distance} / {Velocity(m/s)})) / 2)",
         "Bullet drop in meters due to gravity",
         2,
     )
@@ -627,7 +627,7 @@ pub fn create_ballistics_refer(path: &PathBuf) -> Result<(), String> {
     add_operation(
         &conn,
         "Wind Drift (m)",
-        "input_wind_speed * (input_distance / f_3) * (1 / f_4)",
+        "{wind speed} * ({distance} / {Velocity(m/s)}) * (1 / {BC(G1)})",
         "Wind drift in meters (simplified with BC factor)",
         2,
     )
@@ -636,7 +636,6 @@ pub fn create_ballistics_refer(path: &PathBuf) -> Result<(), String> {
 }
 
 pub fn create_deposit_refer(path: &PathBuf) -> Result<(), String> {
-    // Только f_0 для поиска/названия записи. Все параметры в input_
     const DEPOSIT_CSV: &str = "Operation
 Deposit";
 
@@ -661,7 +660,7 @@ Deposit";
     add_operation(
         &conn,
         "Future Value",
-        "input_sum * (1 + input_rate / 100) ^ input_years",
+        "Principal * (1 + Rate / 100) ^ Years",
         "Projected amount after compound interest",
         2,
     )
@@ -700,7 +699,7 @@ Green Light,545000000000000,1.0,0.000000000000001";
     add_operation(
         &conn,
         "Instant Value",
-        "f_2 * sin(2 * PI * f_1 * input_time)",
+        "Amplitude * sin(2 * PI * {Frequency Hz} * time)",
         "Wave displacement at time t (seconds)",
         16,
     )
@@ -729,7 +728,7 @@ Circle/Sphere";
     add_operation(
         &conn,
         "Area (cm²/in²/etc)",
-        "PI * input_radius ^ 2",
+        "PI * Radius ^ 2",
         "Area of circle in square units",
         2,
     )
@@ -738,7 +737,7 @@ Circle/Sphere";
     add_operation(
         &conn,
         "Circumference (cm/in/etc)",
-        "2 * PI * input_radius",
+        "2 * PI * Radius",
         "Length of circle boundary in same units",
         2,
     )
@@ -747,7 +746,7 @@ Circle/Sphere";
     add_operation(
         &conn,
         "Volume (cm³/in³/etc)",
-        "4 / 3 * PI * input_radius ^ 3",
+        "4 / 3 * PI * Radius ^ 3",
         "Volume of sphere in cubic units",
         2,
     )
@@ -756,7 +755,7 @@ Circle/Sphere";
     add_operation(
         &conn,
         "Surface Area (cm²/in²/etc)",
-        "4 * PI * input_radius ^ 2",
+        "4 * PI * Radius ^ 2",
         "Surface area of sphere in square units",
         2,
     )
@@ -790,7 +789,7 @@ Per 1 (base unit),1";
     add_operation(
         &conn,
         "Price per Unit (per kg/L/oz/lb/etc)",
-        "(input_price / input_weight) * f_1",
+        "(Price / Weight) * Multiplier",
         "Normalized price: enter price and weight/volume, get price per base unit",
         2,
     )
@@ -800,8 +799,6 @@ Per 1 (base unit),1";
 }
 
 pub fn create_dilution_refer(path: &PathBuf) -> Result<(), String> {
-    // Одна строка-шаблон: только имя для поиска
-    // Все параметры расчёта — input_ поля, вводятся каждый раз
     const DILUTION_CSV: &str = "Calculator
 Dilution";
 
@@ -817,12 +814,11 @@ Dilution";
 
     import_csv(&conn, DILUTION_CSV, true).map_err(|e| e.to_string())?;
 
-    // Три input_ поля
     // Formula 1: V_conc = (need% * need_vol) / have%
     add_operation(
         &conn,
         "Concentrate Volume (ml/L/etc)",
-        "(input_Need_Pct * input_Need_Vol) / input_Have_Pct",
+        "(TargetConc * TargetVol) / StockConc",
         "Volume of stock solution to use",
         2,
     )
@@ -832,7 +828,7 @@ Dilution";
     add_operation(
         &conn,
         "Water Volume (ml/L/etc)",
-        "input_Need_Vol - ((input_Need_Pct * input_Need_Vol) / input_Have_Pct)",
+        "TargetVol - ((TargetConc * TargetVol) / StockConc)",
         "Volume of water/solvent to add",
         2,
     )

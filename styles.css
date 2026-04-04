@@ -16,6 +16,7 @@ h1,h2,h3,h4,h5,h6,.center{text-align: center;}
 .gridl{display: grid;grid-auto-columns: 1fr; grid-template-columns: 1fr 2fr;gap: 1rem;align-items: center;}
 .grid1a{display: grid;grid-template-columns: max-content 1fr;gap: 0.5rem 1rem;}
 .gridline {display: grid;grid-auto-flow: column;grid-auto-columns: minmax(0, 1fr);}
+.grid1a button{text-wrap: nowrap;overflow-inline: auto;}
 div.now{display: flex;align-items: flex-start;margin:0 0.5rem;height:2rem;position:relative;justify-content: center;}
 div.now p{white-space: nowrap;padding: 0;margin:0;margin-bottom: 1rem;overflow-x: auto;height: 100%;}
 .sp_close{flex: 0 0 auto;cursor:pointer;padding-left:1rem;}
@@ -30,6 +31,7 @@ button:not(.navb){padding:0.4rem;max-height: 3rem;};
 .stat_table span{overflow-wrap: anywhere; word-break: break-word;white-space: normal;}
 .flex{display:flex;flex: auto;}
 .m0{margin:0;}
+.gap04{gap:0.4rem;}
 .err_send{display: inline-block; width: 100%; min-height:1rem;color:#AD6400;text-align: center;}
 .required {color: red; margin-left: 0.25rem;}
 .w1{width: 1rem!important;}

@@ -437,7 +437,17 @@ fn Refs() -> impl IntoView {
     let stat = use_context::<RwSignal<StatisticsState>>().expect("stat not found");
     let settings = use_context::<RwSignal<AppSettings>>().expect("settings not found");
     let selected = use_context::<RwSignal<Selected>>().expect("selected not found");
+    let now = use_context::<RwSignal<String>>().expect("now not found");
     let patterns = ["fail", "error"];
+
+    let remove_qa = move |path, id| {
+        settings.update(|s| {
+            if let Some(pos) = s.qa.iter().position(|item| item.path == path && item.id == id) {
+                s.qa.remove(pos);
+                now.set(format!("- {}", tu_string!(i18n, all.qa)));
+            }
+        });
+    };
 
     view! {
         <div class="gr">
@@ -467,17 +477,28 @@ fn Refs() -> impl IntoView {
                 <div class="grid">
                     <For
                         each=move || settings.get().qa
-                        key=|item| item.id
+                        key=|item| (item.id, item.path.clone())
                         children=move |item: QuickAccess| {
-                            let item_clone = item.clone();
+                            let clone = item.clone();
+                            let clone1 = item.clone();
                             view! {
-                                <button on:click=move |_| {
-                                    selected
-                                        .update(|c| {
-                                            c.element = Some(item_clone.id);
-                                            c.refer = Some(item_clone.path.clone());
-                                        });
-                                }>{item.name}</button>
+                                <div class="grid1a">
+                                    <button class="sm_b" on:click=move |_| remove_qa(clone.path.clone(), clone.id)>
+                                        "🗑️"
+                                    </button>
+                                    <button
+                                        class="ml1"
+                                        on:click=move |_| {
+                                            selected
+                                                .update(|c| {
+                                                    c.element = Some(clone1.id);
+                                                    c.refer = Some(clone1.path.clone());
+                                                });
+                                        }
+                                    >
+                                        {item.name}
+                                    </button>
+                                </div>
                             }
                         }
                     />
@@ -800,3 +821,4 @@ fn LogViewer() -> impl IntoView {
         </div>
     }
 }
+

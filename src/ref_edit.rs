@@ -1,8 +1,6 @@
-use exmex::prelude::*;
 use leptos::prelude::*;
 use leptos::task::spawn_local;
 use serde_wasm_bindgen::from_value;
-use std::collections::HashMap;
 use std::path::PathBuf;
 use crate::{app::*, functions::*, i18n::*, tauri_args};
 
@@ -45,5 +43,5 @@ pub fn Ref_edit() -> impl IntoView {
 
 #[component]
 pub fn Ref_el_edit() -> impl IntoView {
-    view! { "Ref_el_edit    " }
+    view! { "Ref_el_edit  ыва к" }
 }
