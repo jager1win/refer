@@ -272,7 +272,7 @@ pub fn Ref_main() -> impl IntoView {
                                     }}
                                 </div>
 
-                                <div class="grid1a stat_table gr info">
+                                <div class="grid1a stat_table gr info a-start">
                                     {
                                         let names = table_meta.clone().field_names;
                                         let oper = table_meta.clone().operations;
@@ -440,6 +440,9 @@ pub fn Ref_el() -> impl IntoView {
                 now.set(format!("- {}", tu_string!(i18n, all.qa)));
                 selected.update(|c| {c.refer = None;c.element = None;});
             }
+        });
+        spawn_local(async move {
+            let _ = invoke("set_settings", &tauri_args!("new": settings.get_untracked())).await;
         });
     };
 
