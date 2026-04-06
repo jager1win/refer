@@ -1,8 +1,8 @@
-use std::path::PathBuf;
+use crate::{app::*, functions::*, i18n::*, ref_edit::*, tauri_args};
 use leptos::prelude::*;
 use leptos::task::spawn_local;
 use serde_wasm_bindgen::from_value;
-use crate::{app::*, functions::*, i18n::*, ref_edit::*, tauri_args};
+use std::path::PathBuf;
 
 #[derive(Debug, Clone)]
 struct RefState {
@@ -432,10 +432,22 @@ pub fn Ref_el() -> impl IntoView {
         });
     };
 
+    let remove_qa = move || {
+        let remove = selected.get_untracked();
+        settings.update(|s| {
+            if let Some(pos) = s.qa.iter().position(|item| &item.path == remove.refer.as_ref().unwrap() && item.id == remove.element.unwrap()) {
+                s.qa.remove(pos);
+                now.set(format!("- {}", tu_string!(i18n, all.qa)));
+                selected.update(|c| {c.refer = None;c.element = None;});
+            }
+        });
+    };
+
     Effect::new(move |_| {
         //log::info!("meta: {:#?}", meta.get());
         //log::info!("selected {:?}", selected.get());
         //log::info!("data: {:#?}", data.get());
+        //log::info!("sett: {:#?}", settings.get());
     });
     view! {
         <Show when=move || { !edit_el.get() } fallback=|| view! { <Ref_el_edit /> }>
@@ -446,9 +458,15 @@ pub fn Ref_el() -> impl IntoView {
                             <div class="gr">
                                 <h5 class="error">"🚫"</h5>
                                 <p class="err_send">
-                                    <span class="" id="ref_el">
-                                        {t!(i18n, all.element_not_found)}
-                                    </span>
+                                    <span class="">{t!(i18n, all.element_not_found)}</span>
+                                    {move || {
+                                        if in_qa() {
+                                            view! { <button class="ml1" on:click=move |_| remove_qa()>"🗑️"</button> }
+                                                .into_any()
+                                        } else {
+                                            view! { <span>{t!(i18n, all.err_unknown)}</span> }.into_any()
+                                        }
+                                    }}
                                 </p>
                             </div>
                         }
@@ -524,18 +542,15 @@ pub fn Ref_el() -> impl IntoView {
                                             &meta.get().unwrap().field_types,
                                             &data.get().unwrap().fields,
                                         ) {
-                                            Err(e) => {
-                                                view! { <p>{e}</p> }.into_any()
-                                            }
+                                            Err(e) => view! { <p>{e}</p> }.into_any(),
                                             Ok(vars) => {
                                                 meta.get()
                                                     .unwrap()
                                                     .operations
                                                     .into_iter()
-                                                    .map(|op| {
-                                                        view! { <RunOper oper=op vars=vars.clone() /> }.into_any()
-                                                    })
-                                                    .collect_view().into_any()
+                                                    .map(|op| { view! { <RunOper oper=op vars=vars.clone() /> }.into_any() })
+                                                    .collect_view()
+                                                    .into_any()
                                             }
                                         }
                                     }}
@@ -549,7 +564,6 @@ pub fn Ref_el() -> impl IntoView {
         </Show>
     }
 }
-
 
 /*#[component]
 fn RunOperIn(op_id: u32, data: HashMap<String, String>) -> impl IntoView {
