@@ -70,13 +70,22 @@ struct CreateForm {
 #[derive(Serialize, Deserialize, Clone, Default, Debug)]
 pub struct Selected {
     pub refer: Option<PathBuf>,
-    pub element: Option<u32>,
+    pub id: Option<u32>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct DataRecord {
     pub id: u32,
     pub fields: HashMap<String, String>, // f_0, f_1 и т.д.
+}
+
+impl DataRecord {
+    pub fn new() -> Self {
+        Self{
+            id: 0,
+            fields: HashMap::new(),
+        }
+    }
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
@@ -136,7 +145,7 @@ pub fn App() -> impl IntoView {
     let clean = move || {
         selected.update(|cur| {
             cur.refer = None;
-            cur.element = None;
+            cur.id = None;
         });
         edit_ref.set(false);
         now.set(String::from(""))
@@ -203,8 +212,8 @@ pub fn App() -> impl IntoView {
                     "✚"
                 </button>
             </nav>
-            <div class="now" class:error=move || er_pat.iter().any(|p| now.get().to_lowercase().contains(p))>
-                <p>{move || now.get()}</p>
+            <div class="now">
+                <p class:error=move || er_pat.iter().any(|p| now.get().to_lowercase().contains(p))>{move || now.get()}</p>
                 <span class="sp_close" class:hidden=move || now.get().is_empty() on:click=move |_| now.set("".to_string())>
                     "x"
                 </span>
@@ -491,7 +500,7 @@ fn Refs() -> impl IntoView {
                                         on:click=move |_| {
                                             selected
                                                 .update(|c| {
-                                                    c.element = Some(clone1.id);
+                                                    c.id = Some(clone1.id);
                                                     c.refer = Some(clone1.path.clone());
                                                 });
                                         }
@@ -821,4 +830,3 @@ fn LogViewer() -> impl IntoView {
         </div>
     }
 }
-

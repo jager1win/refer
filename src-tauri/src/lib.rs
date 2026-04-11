@@ -94,7 +94,8 @@ pub fn run() {
             get_meta,
             search_items,
             update_meta_field,
-            get_el
+            get_el,
+            apply_el_action
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

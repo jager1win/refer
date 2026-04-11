@@ -4,16 +4,10 @@ use leptos::task::spawn_local;
 use serde_wasm_bindgen::from_value;
 use std::path::PathBuf;
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone)] // -1,0,1
 struct RefState {
-    // -1,0,1
     meta: i8,
     data: i8,
-}
-impl RefState {
-    fn new() -> Self {
-        Self { meta: 0, data: 0 }
-    }
 }
 
 #[component]
@@ -27,7 +21,7 @@ pub fn Ref_main() -> impl IntoView {
     let query_string = RwSignal::new("".to_string());
     let meta = RwSignal::new(None::<TableMeta>);
     let data = RwSignal::new(None::<Vec<DataRecord>>);
-    let ref_state = RwSignal::new(RefState::new());
+    let ref_state = RwSignal::new(RefState { meta: 0, data: 0 });
 
     // get meta
     spawn_local(async move {
@@ -124,11 +118,17 @@ pub fn Ref_main() -> impl IntoView {
     };
 
     Effect::new(move |_| {
+        selected.track();
+        let pbclon = full_pb(stat.get_untracked().db_path, selected.get_untracked().refer.unwrap());
+        search_items(pbclon, "".to_string());
+    });
+
+    Effect::new(move |_| {
         //log::info!("ref: {:?}", ref_state.get());
         //log::info!("meta: {:#?}", meta.get());
         //log::info!("selected: {:#?}", selected.get());
         //log::info!("stat: {:#?}", stat.get());
-        //log::info!("data: {:#?}", data.get());
+        //log::info!("ref_main data: {:#?}", data.get());
     });
 
     // debounce for search. run if upd query_string || meta
@@ -155,7 +155,7 @@ pub fn Ref_main() -> impl IntoView {
     });
     provide_context(meta);
     view! {
-        <Show when=move || { selected.get().element.is_none() } fallback=|| view! { <Ref_el /> }>
+        <Show when=move || { selected.get().id.is_none() } fallback=|| view! { <Ref_el /> }>
             <div class="ref">
                 {move || {
                     match ref_state.get().meta {
@@ -252,7 +252,7 @@ pub fn Ref_main() -> impl IntoView {
                                                             view! {
                                                                 <button
                                                                     class="row"
-                                                                    on:click=move |_| selected.update(|c| c.element = Some(rec.id))
+                                                                    on:click=move |_| selected.update(|c| c.id = Some(rec.id))
                                                                 >
                                                                     {search_fields
                                                                         .into_iter()
@@ -386,32 +386,35 @@ pub fn Ref_el() -> impl IntoView {
     let data = RwSignal::new(None::<DataRecord>);
 
     let in_qa = move || {
-        let (refer, element) = (selected.get().refer.clone().unwrap(), selected.get().element.unwrap());
+        let (refer, element) = (selected.get().refer.clone().unwrap(), selected.get().id.unwrap());
         settings.with(|s| s.qa.iter().any(|item| item.path == refer && item.id == element))
     };
 
     // get el
-    spawn_local(async move {
-        let pb = full_pb(stat.get_untracked().db_path, selected.get_untracked().refer.unwrap());
-        match invoke(
-            "get_el",
-            &tauri_args!("pb": pb, "id": Some(selected.get_untracked().element)),
-        )
-        .await
-        {
-            Ok(js) => {
-                let s = from_value::<DataRecord>(js).unwrap();
-                data.set(Some(s))
-            }
-            Err(js) => {
-                let error_msg = from_value::<String>(js).unwrap_or_else(|_| "Unknown error".into());
-                now.set(format!("{} {}", "Error:", &error_msg));
-            }
-        };
-    });
+    let get_el = move || {
+        spawn_local(async move {
+            let pb = full_pb(stat.get_untracked().db_path, selected.get_untracked().refer.unwrap());
+            match invoke(
+                "get_el",
+                &tauri_args!("pb": pb, "id": Some(selected.get_untracked().id)),
+            )
+            .await
+            {
+                Ok(js) => {
+                    let s = from_value::<DataRecord>(js).unwrap();
+                    data.set(Some(s))
+                }
+                Err(js) => {
+                    let error_msg = from_value::<String>(js).unwrap_or_else(|_| "Unknown error".into());
+                    now.set(format!("{} {}", "Error:", &error_msg));
+                }
+            };
+        })
+    };
+    get_el();
 
     let toggle_qa = move |title| {
-        let (refer, element) = (selected.get().refer.clone().unwrap(), selected.get().element.unwrap());
+        let (refer, element) = (selected.get().refer.clone().unwrap(), selected.get().id.unwrap());
 
         settings.update(|s| {
             if let Some(pos) = s.qa.iter().position(|item| item.path == refer && item.id == element) {
@@ -435,10 +438,16 @@ pub fn Ref_el() -> impl IntoView {
     let remove_qa = move || {
         let remove = selected.get_untracked();
         settings.update(|s| {
-            if let Some(pos) = s.qa.iter().position(|item| &item.path == remove.refer.as_ref().unwrap() && item.id == remove.element.unwrap()) {
+            if let Some(pos) =
+                s.qa.iter()
+                    .position(|item| &item.path == remove.refer.as_ref().unwrap() && item.id == remove.id.unwrap())
+            {
                 s.qa.remove(pos);
                 now.set(format!("- {}", tu_string!(i18n, all.qa)));
-                selected.update(|c| {c.refer = None;c.element = None;});
+                selected.update(|c| {
+                    c.refer = None;
+                    c.id = None;
+                });
             }
         });
         spawn_local(async move {
@@ -447,13 +456,19 @@ pub fn Ref_el() -> impl IntoView {
     };
 
     Effect::new(move |_| {
+        edit_el.track();
+        get_el();
+    });
+
+    Effect::new(move |_| {
         //log::info!("meta: {:#?}", meta.get());
         //log::info!("selected {:?}", selected.get());
-        //log::info!("data: {:#?}", data.get());
+        log::info!("ref_el data: {:#?}", data.get());
         //log::info!("sett: {:#?}", settings.get());
     });
+    provide_context(edit_el);
     view! {
-        <Show when=move || { !edit_el.get() } fallback=|| view! { <Ref_el_edit /> }>
+        <Show when=move || { !edit_el.get() } fallback=move || view! { <Ref_el_edit /> }>
             {move || {
                 match data.get().is_none() {
                     true => {
@@ -464,7 +479,11 @@ pub fn Ref_el() -> impl IntoView {
                                     <span class="">{t!(i18n, all.element_not_found)}</span>
                                     {move || {
                                         if in_qa() {
-                                            view! { <button class="ml1" on:click=move |_| remove_qa()>"🗑️"</button> }
+                                            view! {
+                                                <button class="ml1" on:click=move |_| remove_qa()>
+                                                    "🗑️"
+                                                </button>
+                                            }
                                                 .into_any()
                                         } else {
                                             view! { <span>{t!(i18n, all.err_unknown)}</span> }.into_any()
@@ -480,7 +499,7 @@ pub fn Ref_el() -> impl IntoView {
                         view! {
                             <div class="ref">
                                 <div class="header-row gr">
-                                    <button on:click=move |_| selected.update(|c| c.element = None)>"←"</button>
+                                    <button on:click=move |_| selected.update(|c| c.id = None)>"←"</button>
 
                                     <div class="title-group">
                                         <div>
@@ -547,6 +566,7 @@ pub fn Ref_el() -> impl IntoView {
                                         ) {
                                             Err(e) => view! { <p>{e}</p> }.into_any(),
                                             Ok(vars) => {
+                                                log::debug!("tf: {:?}",&vars);
                                                 meta.get()
                                                     .unwrap()
                                                     .operations
@@ -567,162 +587,3 @@ pub fn Ref_el() -> impl IntoView {
         </Show>
     }
 }
-
-/*#[component]
-fn RunOperIn(op_id: u32, data: HashMap<String, String>) -> impl IntoView {
-    let meta = use_context::<RwSignal<Option<TableMeta>>>().expect("meta not found");
-    let selected = use_context::<RwSignal<Selected>>().expect("selected not found");
-    let stat = use_context::<RwSignal<StatisticsState>>().expect("stat not found");
-
-    let (initial_prec, op_name, op_expr_str, op_desc, names) = {
-        let m = meta.get_untracked().expect("meta empty");
-        let o = m.operations.iter().find(|o| o.id == op_id).expect("op not found");
-        (
-            o.precision,
-            o.name.clone(),
-            o.expression.clone(),
-            o.description.clone(),
-            m.field_names.clone(),
-        )
-    };
-
-    let (local_precision, set_local_precision) = signal(initial_prec);
-    let (input_values, set_input_values) = signal(HashMap::<String, String>::new());
-    let (result, set_result) = signal(None::<f64>);
-
-    let input_names: Vec<String> = {
-        let expr = exmex::parse::<f64>(&op_expr_str).expect("failed to parse");
-        expr.var_names()
-            .iter()
-            .filter(|n| n.starts_with("input_"))
-            .cloned()
-            .collect()
-    };
-
-    let is_all_filled = Memo::new({
-        let names = input_names.clone();
-        move |_| {
-            input_values
-                .with(|map| !names.is_empty() && names.iter().all(|n| map.get(n).is_some_and(|v| !v.is_empty())))
-        }
-    });
-
-    let calc_expr = op_expr_str.clone();
-    let calc_data = data.clone();
-
-    let on_calc = move |_| {
-        if !is_all_filled.get() {
-            set_result.set(None);
-            return;
-        }
-        let mut all_data = calc_data.clone();
-        input_values.with(|map| {
-            for (k, v) in map {
-                if !v.is_empty() {
-                    all_data.insert(k.clone(), v.clone());
-                }
-            }
-        });
-        if let Ok(val) = run_oper(&calc_expr, &all_data) {
-            set_result.set(Some(val));
-        }
-    };
-
-    let on_clear = move |_| {
-        set_input_values.set(HashMap::new());
-        set_result.set(None);
-    };
-
-    let set_prec = move |ev: web_sys::Event| {
-        let new_val = event_target_value(&ev).parse().unwrap_or(2);
-        set_local_precision.set(new_val);
-
-        let pb = full_pb(stat.get_untracked().db_path, selected.get_untracked().refer.unwrap());
-        let mut old_operations = meta.get_untracked().unwrap().operations;
-        if let Some(op) = old_operations.iter_mut().find(|op| op.id == op_id) {
-            op.precision = new_val;
-        }
-        //let new_operations = old_operations.clone();
-
-        spawn_local(async move {
-            let _ = invoke(
-                "update_meta_field",
-                &tauri_args! {
-                    "pb": pb,
-                    "key": "operations",
-                    "value": old_operations
-                },
-            )
-            .await;
-        });
-    };
-
-    view! {
-        <div class="oper gr grid center">
-            <strong class="center">
-                {op_name} " : "
-                <span class="success">
-                    {move || {
-                        let p = local_precision.get() as usize;
-                        match result.get() {
-                            Some(val) => format!("{:.*}", p, val),
-                            None => "?".to_string(),
-                        }
-                    }}
-                </span>"  " <select class="precision" on:change=set_prec prop:value=move || local_precision.get()>
-                    {(0..18).map(|n| view! { <option value=n>{n}</option> }).collect_view()}
-                </select>
-            </strong>
-
-            <div class="flex_wrap3">
-                {input_names
-                    .into_iter()
-                    .map(|name| {
-                        let n1 = name.clone();
-                        let n2 = name.clone();
-                        let n3 = name.clone();
-                        let display = name.strip_prefix("input_").unwrap_or(&name).to_string();
-                        view! {
-                            <label>
-                                <small>{display}</small>
-                                <input
-                                    type="text"
-                                    inputmode="decimal"
-                                    prop:value=move || input_values.with(|m| m.get(&n1).cloned().unwrap_or_default())
-                                    on:input=move |ev| {
-                                        let node = event_target::<web_sys::HtmlInputElement>(&ev);
-                                        let raw = node.value().replace(',', ".");
-                                        let is_valid = raw
-                                            .chars()
-                                            .enumerate()
-                                            .all(|(i, c)| { c.is_ascii_digit() || c == '.' || (c == '-' && i == 0) })
-                                            && raw.matches('.').count() <= 1 && raw.matches('-').count() <= 1;
-                                        if is_valid || raw.is_empty() {
-                                            let n = n2.clone();
-                                            set_input_values
-                                                .update(|m| {
-                                                    m.insert(n, raw);
-                                                });
-                                        } else {
-                                            node.set_value(&input_values.get_untracked().get(&n3).cloned().unwrap_or_default());
-                                        }
-                                    }
-                                />
-                            </label>
-                        }
-                    })
-                    .collect_view()}
-            </div>
-
-            <div class="flex_wrap3 center">
-                <button on:click=on_clear>"🧹"</button>
-                <button on:click=on_calc prop:disabled=move || !is_all_filled.get()>
-                    "="
-                </button>
-            </div>
-
-            <small>{op_desc}</small>
-            <small>{prettify_operation(&op_expr_str, &names)}</small>
-        </div>
-    }
-}*/

@@ -268,7 +268,43 @@ pub fn update_meta_field<T: Serialize>(conn: &Connection, key: &str, value: &T) 
     Ok(())
 }
 
-// Получить один элемент по ID
+/// action: "create" | "update" | "delete"
+pub fn apply_el_action(conn: &Connection, action: &str, rec: DataRecord) -> Result<u32, String> {
+    match action {
+        "create" => {
+            // Создаем новую запись
+            conn.execute("INSERT INTO data DEFAULT VALUES", [])
+                .map_err(|e| e.to_string())?;
+            let new_id = conn.last_insert_rowid();
+            
+            // Обновляем каждое поле
+            for (field_name, value) in &rec.fields {
+                let sql = format!("UPDATE data SET {} = ?1 WHERE id = ?2", field_name);
+                conn.execute(&sql, params![value, new_id])
+                    .map_err(|e| e.to_string())?;
+            }
+            Ok(new_id as u32)
+        }
+        "update" => {
+            // Обновляем каждое поле
+            for (field_name, value) in &rec.fields {
+                let sql = format!("UPDATE data SET {} = ?1 WHERE id = ?2", field_name);
+                conn.execute(&sql, params![value, rec.id])
+                    .map_err(|e| e.to_string())?;
+            }
+            Ok(rec.id)
+        }
+        "delete" => {
+            conn.execute("DELETE FROM data WHERE id = ?1", params![rec.id])
+                .map_err(|e| e.to_string())?;
+            Ok(rec.id)
+        }
+        _ => Err("Unknown action".to_string()),
+    }
+}
+
+
+/// Получить один элемент по ID
 pub fn get_el(conn: &Connection, id: u32) -> Result<DataRecord, String> {
     let mut stmt = conn
         .prepare("SELECT * FROM data WHERE id = ?1")
@@ -279,35 +315,6 @@ pub fn get_el(conn: &Connection, id: u32) -> Result<DataRecord, String> {
         Err(e) => Err(e.to_string()),
     }
 }
-
-/*fn row_to_record(row: &Row) -> Result<DataRecord> {
-    let id: u32 = row.get(0)?;
-    let mut fields = HashMap::new();
-
-    let column_count = row.as_ref().column_count();
-    for i in 1..column_count {
-        let name = row.as_ref().column_name(i)?.to_string();
-        match row.get_ref_unwrap(i) {
-            ValueRef::Null => {
-                fields.insert(name, "FieldValue::Null");
-            }
-            ValueRef::Integer(n) => {
-                fields.insert(name, FieldValue::Number(n as f64));
-            }
-            ValueRef::Real(f) => {
-                fields.insert(name, FieldValue::Number(f));
-            }
-            ValueRef::Text(b) => {
-                let s = String::from_utf8_lossy(b).into_owned();
-                fields.insert(name, FieldValue::Text(s));
-            }
-            ValueRef::Blob(_) => {
-                fields.insert(name, FieldValue::Null);
-            }
-        }
-    }
-    Ok(DataRecord { id, fields })
-}*/
 
 fn row_to_record(row: &Row) -> rusqlite::Result<DataRecord> {
     let mut fields = HashMap::new();
@@ -337,7 +344,7 @@ fn row_to_record(row: &Row) -> rusqlite::Result<DataRecord> {
     })
 }
 
-// Добавление поля в существующую базу
+/// Добавление поля в существующую базу
 pub fn add_field(
     conn: &Connection, field_index: usize, display_name: Option<&str>, field_type: &str,
 ) -> Result<String> {

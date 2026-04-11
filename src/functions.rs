@@ -458,3 +458,21 @@ pub fn transform_fields(
 
     Ok(successes.into_iter().map(Result::unwrap).collect())
 }
+
+pub fn transform_fields2(
+    names: &HashMap<String, String>,
+    types: &HashMap<String, String>,
+    values: &HashMap<String, String>,
+) -> Vec<(String, String, String, String)> { 
+    let mut vec: Vec<_> = names
+        .iter()
+        .map(|(id, name)| {
+            let t = types.get(id).cloned().unwrap_or_default();
+            let v = values.get(id).cloned().unwrap_or_default();
+            (id.clone(), name.clone(), t, v)
+        })
+        .collect();
+
+    vec.sort_by(|a, b| a.0.cmp(&b.0));
+    vec
+}

@@ -145,7 +145,11 @@ pub async fn create_empty(val: CreateForm, stat_state: State<'_, Mutex<Statistic
 }
 
 #[tauri::command]
-pub async fn create_example(val: CreateForm, stat_state: State<'_, Mutex<StatisticsState>>) -> Result<(), String> {
+pub async fn create_example(val: CreateForm, stat_state: State<'_, Mutex<StatisticsState>>, db_state: State<'_, Mutex<DbState>>) -> Result<(), String> {
+    // kill DbState - нужно если пересоздается справочник
+    let mut dbs = db_state.lock().map_err(|e| e.to_string())?;
+    *dbs = DbState::default();
+
     let s_state = stat_state.lock().unwrap();
     let mut root = s_state.db_path.clone();
 
@@ -328,7 +332,9 @@ pub async fn search_items(
         };
 
         match sql::search_items(conn, meta, &query).map_err(|e| e.to_string()) {
-            Ok(h) => Ok(h),
+            Ok(h) => {
+                Ok(h)
+            },
             Err(e) => {
                 warn!("{}", e);
                 Err(e)
@@ -344,6 +350,21 @@ pub async fn get_el(pb: PathBuf, id: u32, state: State<'_, Mutex<DbState>>) -> R
         Ok(el) => Ok(el),
         Err(e) => {
             error!("Failed to get element: {}", e);
+            Err(e.to_string())
+        }
+    })
+}
+
+#[tauri::command]
+pub async fn apply_el_action(pb: PathBuf, action: &str, dr: DataRecord, state: State<'_, Mutex<DbState>>) -> Result<(), String>{
+    let mut db = state.lock().map_err(|e| e.to_string())?;
+    db.with_conn(pb, |conn, _meta| match sql::apply_el_action(conn, action, dr) {
+        Ok(el) => {
+            info!("Ok {} element id {}", action, el);
+            Ok(())
+        },
+        Err(e) => {
+            error!("Failed to {} element: {}", action, e);
             Err(e.to_string())
         }
     })

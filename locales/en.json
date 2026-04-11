@@ -20,7 +20,10 @@
   "edit": {
     "test": "test",
     "ok_del_ref": "Reference deleted",
-    "er_del_ref": "Failed delete reference"
+    "er_del_ref": "Failed delete reference",
+    "cancel": "Cancel",
+    "save": "Save",
+    "saved": "Saved"
   },
   "create": {
     "button": "Create",
