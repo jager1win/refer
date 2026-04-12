@@ -78,6 +78,7 @@ small{margin:2px;color: oklch(from currentColor l c h / 0.8);}
 .gr details[open]>summary:not([role]){color:inherit;text-decoration: underline;}
 .sm_b{height: 1.6rem;width: 1.6rem;padding: 0!important;}
 .field-col{display: inline-flex;flex-direction: column;gap: 0.2rem;align-items: flex-start;margin:0;}
+.pre-line{white-space: pre-line;line-height: 1.4rem;font-weight:bolder;}
 
 /* COLORS */
 .error{color:red;}

@@ -4,41 +4,11 @@ use leptos::task::spawn_local;
 use serde_wasm_bindgen::from_value;
 use std::path::PathBuf;
 
-#[component]
-pub fn Ref_edit() -> impl IntoView {
-    let i18n = use_i18n();
-    let selected = use_context::<RwSignal<Selected>>().expect("selected not found");
-    let edit_ref = use_context::<RwSignal<bool>>().expect("edit not found");
-    let now = use_context::<RwSignal<String>>().expect("now not found");
-    let stat = use_context::<RwSignal<StatisticsState>>().expect("stat not found");
-
-    let del_ref = move |name: PathBuf| {
-        spawn_local(async move {
-            match invoke("del_ref", &tauri_args!("val" : name.clone())).await {
-                Ok(_s) => {
-                    now.set(format!("{}: {:?}", tu_string!(i18n, edit.ok_del_ref), &name));
-                    selected.update(|c| c.refer = None);
-                    edit_ref.set(false);
-                    upd_stat(stat, now);
-                }
-                Err(js) => {
-                    let error_msg = from_value::<String>(js).unwrap_or_else(|_| "Unknown error".into());
-                    now.set(format!(
-                        "{}: {:?} - {}",
-                        tu_string!(i18n, edit.er_del_ref),
-                        &name,
-                        error_msg
-                    ));
-                }
-            }
-        });
-    };
-    view! {
-        <h3>{t!(i18n, edit.test)}</h3>
-
-        <button on:click=move |_| { edit_ref.set(false) }>"✎ Save "</button>
-        <button on:click=move |_| del_ref(selected.get_untracked().refer.unwrap())>{t!(i18n, all.del)}</button>
-    }
+#[derive(Clone, Copy, PartialEq)]
+enum Tab {
+    Element,
+    Fields,
+    Oper,
 }
 
 #[component]
@@ -102,7 +72,7 @@ pub fn Ref_el_edit() -> impl IntoView {
                     match action.as_str() {
                         "delete" => selected.update(|c| c.id = None),
                         "update" => edit_el.set(false),
-                        &_ => todo!()
+                        &_ => todo!(),
                     };
                     //selected.update(|c| c.refer = None);
                 }
@@ -191,10 +161,126 @@ pub fn Ref_el_edit() -> impl IntoView {
                 </button>
 
                 <button disabled=move || !can_save() on:click=move |_| save.with_value(|a| a("update"))>
-                    "✓ "
+                    "💾 "
                     {t!(i18n, edit.save)}
                 </button>
             </div>
         </Show>
     }
 }
+
+#[component]
+pub fn Ref_edit() -> impl IntoView {
+    let i18n = use_i18n();
+    let selected = use_context::<RwSignal<Selected>>().expect("selected not found");
+    let edit_ref = use_context::<RwSignal<bool>>().expect("edit not found");
+    let now = use_context::<RwSignal<String>>().expect("now not found");
+    let stat = use_context::<RwSignal<StatisticsState>>().expect("stat not found");
+    let active_tab = RwSignal::new(None::<Tab>);
+
+    /*
+    - CRUD элемента - только добавление одного нового
+    - CRUD полей
+    - CRUD операций(плюс тесты сразу на ошибки - первые 10 элементов или случайных)
+    - CRUD meta
+1 группа
+    name:
+    desc:
+    field_names:
+    field_types:
+2 группа
+    operations: [
+        Operation {
+            name: "Energy (J)",
+            description: "Kinetic energy in Joules",
+            expression: "f_1 * f_2 * f_2 / 2000",
+            precision: 2,
+        },
+3 группа
+    добавить элемент
+
+    добавить поля
+
+    */
+
+    let del_ref = move |name: PathBuf| {
+        spawn_local(async move {
+            match invoke("del_ref", &tauri_args!("val" : name.clone())).await {
+                Ok(_s) => {
+                    now.set(format!("{}: {:?}", tu_string!(i18n, edit.ok_del_ref), &name));
+                    selected.update(|c| c.refer = None);
+                    edit_ref.set(false);
+                    upd_stat(stat, now);
+                }
+                Err(js) => {
+                    let error_msg = from_value::<String>(js).unwrap_or_else(|_| "Unknown error".into());
+                    now.set(format!(
+                        "{}: {:?} - {}",
+                        tu_string!(i18n, edit.er_del_ref),
+                        &name,
+                        error_msg
+                    ));
+                }
+            }
+        });
+    };
+    view! {
+        <div class="header-row gr">
+            <button on:click=move |_| selected.update(|c| c.refer = None)>"←"</button>
+
+            <div class="title-group">"🔧 " <span>{move || remove_refer_ext(&selected.get().refer.unwrap())}</span></div>
+
+            <nav class="gap04">
+                <button class:active=move || active_tab.get() == Some(Tab::Fields) on:click=move |_| active_tab.set(Some(Tab::Fields))>
+                    "Поля"
+                </button>
+                <button class:active=move || active_tab.get() == Some(Tab::Oper) on:click=move |_| active_tab.set(Some(Tab::Oper))>
+                    "Operations"
+                </button>
+                <button class:active=move || active_tab.get() == Some(Tab::Element) on:click=move |_| active_tab.set(Some(Tab::Element))>
+                    "✚ Элемент"
+                </button>
+            </nav>
+        </div>
+
+        <div class="gr">
+            {move || match active_tab.get() {
+                None => view! { <p class="warn pre-line">{t!(i18n, edit.warning)}</p> }.into_any(),
+                Some(Tab::Element) => view! { <ElementCrud /> }.into_any(),
+                Some(Tab::Fields) => view! { <FieldsCrud /> }.into_any(),
+                Some(Tab::Oper) => view! { <OperCrud /> }.into_any(),
+            }}
+        </div>
+
+        <div class="gr center">
+            <button on:click=move |_| del_ref(selected.get_untracked().refer.unwrap())>"🗑️ "{t!(i18n, all.del)}</button>
+        </div>
+    }
+}
+
+#[component]
+pub fn ElementCrud() -> impl IntoView {
+    view! { <>"Element"</> }
+}
+
+#[component]
+pub fn FieldsCrud() -> impl IntoView {
+    view! { <>"Fields"</> }
+}
+
+#[component]
+pub fn OperCrud() -> impl IntoView {
+    view! { <>"Oper"</> }
+}
+
+#[component]
+pub fn MetaCrud() -> impl IntoView {
+    view! { <>" Meta"</> }
+}
+
+/*
+
+        <button on:click=move |_| { edit_ref.set(false) }>"💾 "{t!(i18n, edit.save)}</button>
+        <button on:click=move |_| del_ref(selected.get_untracked().refer.unwrap())>"🗑️ "{t!(i18n, all.del)}</button>
+
+*/

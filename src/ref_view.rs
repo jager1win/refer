@@ -186,7 +186,7 @@ pub fn Ref_main() -> impl IntoView {
                                         </small>
                                     </div>
 
-                                    <button on:click=move |_| edit_ref.set(true)>"✎"</button>
+                                    <button on:click=move |_| edit_ref.set(true)>"🔧"</button>
                                 </div>
 
                                 <div class="gr">

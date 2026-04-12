@@ -71,7 +71,10 @@ pub async fn get_stat(stat_state: State<'_, Mutex<StatisticsState>>) -> Result<S
 }
 
 #[tauri::command]
-pub async fn del_ref(app: tauri::AppHandle, val: PathBuf) -> Result<String, String> {
+pub async fn del_ref(app: tauri::AppHandle, val: PathBuf, state: State<'_, Mutex<DbState>>) -> Result<String, String> {
+    let mut dbs = state.lock().map_err(|e| e.to_string())?;
+    *dbs = DbState::default();
+    
     let document_dir = app.path().document_dir().map_err(|e| e.to_string())?;
     let reference_path = document_dir.join(APP_EXT).join(&val);
 
