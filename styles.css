@@ -68,8 +68,7 @@ small{margin:2px;color: oklch(from currentColor l c h / 0.8);}
 .search_results .row > div {white-space: nowrap;}
 .header-row {display: flex;align-items: center;justify-content: space-between;}
 .title-group {flex: 1;text-align: center;min-width: 0;}
-.meta {display:flex; white-space: nowrap;overflow: hidden;text-overflow: ellipsis;gap: 2ch;justify-content: center;}
-.meta span {display: inline;flex-shrink: 1; overflow: hidden;text-overflow: ellipsis;}
+.info-show {display:flex; gap: 1rem;line-height: normal;}
 .precision{max-width:fit-content;display: inline-flex;margin:0 0 0 1rem;padding: 0 1.6rem 0 1rem !important;}
 .flex_wrap2,.flex_wrap3{ display: flex;flex-wrap: wrap;gap: 1rem; align-items: center;}
 .flex_wrap2 > * {flex: 1 1 calc(50% - 2rem);}

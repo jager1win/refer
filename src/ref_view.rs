@@ -180,14 +180,22 @@ pub fn Ref_main() -> impl IntoView {
 
                                     <div class="title-group">
                                         <span>{move || remove_refer_ext(&selected.get().refer.unwrap())}</span>
-                                        <small class="meta grid">
-                                            <span>{table_meta.name.clone()}</span>
-                                            <span>{table_meta.desc.clone()}</span>
-                                        </small>
                                     </div>
 
                                     <button on:click=move |_| edit_ref.set(true)>"🔧"</button>
                                 </div>
+                                // name & desc
+                                {match table_meta.info[0].0.is_empty() && table_meta.info[1].0.is_empty() {
+                                    true => view! { <div></div> }.into_any(),
+                                    false => {
+                                        view! {
+                                            <p class="info-show gr">
+                                                {table_meta.info.clone().into_iter().map(|(_k,v)| view! { <span>{v}</span> }).collect_view()}
+                                            </p>
+                                        }
+                                            .into_any()
+                                    }
+                                }}
 
                                 <div class="gr">
                                     // input. dont show if empty search_config or count < 11

@@ -115,8 +115,9 @@ pub fn Ref_el_edit() -> impl IntoView {
     });
     view! {
         <Show when=move || data_new.read().is_some() fallback=|| view! { <progress /> }>
-            <div class="gr">
-                <h5 class="m0">
+            <div class="header-row gr">
+                <button on:click=move |_| edit_el.set(false)>"←"</button>
+                <h5 class="m0 title-group">
                     "🔧 ID " {selected.get_untracked().id.unwrap()} " | " {format!("{:?}", selected.get_untracked().refer.unwrap())}
                 </h5>
             </div>
@@ -153,9 +154,7 @@ pub fn Ref_el_edit() -> impl IntoView {
                         .collect_view()
                 }}
             </div>
-            <div class="gr flex_wrap3 m04">
-                <button on:click=move |_| edit_el.set(false)>"← " {t!(i18n, edit.cancel)}</button>
-
+            <div class="gr bfc flex_wrap3 m04">
                 <button on:click=move |_| save.with_value(|a| a("delete"))>
                     <span class="error">"🗑️ "{t!(i18n, all.del)}</span>
                 </button>
@@ -172,6 +171,7 @@ pub fn Ref_el_edit() -> impl IntoView {
 #[component]
 pub fn Ref_edit() -> impl IntoView {
     let i18n = use_i18n();
+    let meta = use_context::<RwSignal<Option<TableMeta>>>().expect("meta not found");
     let selected = use_context::<RwSignal<Selected>>().expect("selected not found");
     let edit_ref = use_context::<RwSignal<bool>>().expect("edit not found");
     let now = use_context::<RwSignal<String>>().expect("now not found");
@@ -179,29 +179,26 @@ pub fn Ref_edit() -> impl IntoView {
     let active_tab = RwSignal::new(None::<Tab>);
 
     /*
-    - CRUD элемента - только добавление одного нового
-    - CRUD полей
-    - CRUD операций(плюс тесты сразу на ошибки - первые 10 элементов или случайных)
-    - CRUD meta
-1 группа
-    name:
-    desc:
-    field_names:
-    field_types:
-2 группа
-    operations: [
-        Operation {
-            name: "Energy (J)",
-            description: "Kinetic energy in Joules",
-            expression: "f_1 * f_2 * f_2 / 2000",
-            precision: 2,
-        },
-3 группа
-    добавить элемент
-
-    добавить поля
-
-    */
+        - CRUD элемента - только добавление одного нового
+        - CRUD полей
+        - CRUD операций(плюс тесты сразу на ошибки - первые 10 элементов или случайных)
+        - CRUD meta
+    1 группа Fields
+        name:
+        desc:
+        field_names:
+        field_types:
+        добавить поля
+    2 группа Oper
+        operations: [
+            Operation {
+                name: "Energy (J)",
+                description: "Kinetic energy in Joules",
+                expression: "f_1 * f_2 * f_2 / 2000",
+                precision: 2,
+            },
+    3 группа Element
+        добавить элемент */
 
     let del_ref = move |name: PathBuf| {
         spawn_local(async move {
@@ -226,7 +223,7 @@ pub fn Ref_edit() -> impl IntoView {
     };
     view! {
         <div class="header-row gr">
-            <button on:click=move |_| selected.update(|c| c.refer = None)>"←"</button>
+            <button on:click=move |_| edit_ref.set(false)>"←"</button>
 
             <div class="title-group">"🔧 " <span>{move || remove_refer_ext(&selected.get().refer.unwrap())}</span></div>
 
@@ -246,9 +243,9 @@ pub fn Ref_edit() -> impl IntoView {
         <div class="gr">
             {move || match active_tab.get() {
                 None => view! { <p class="warn pre-line">{t!(i18n, edit.warning)}</p> }.into_any(),
-                Some(Tab::Element) => view! { <ElementCrud /> }.into_any(),
                 Some(Tab::Fields) => view! { <FieldsCrud /> }.into_any(),
                 Some(Tab::Oper) => view! { <OperCrud /> }.into_any(),
+                Some(Tab::Element) => view! { <ElementCrud /> }.into_any(),
             }}
         </div>
 
@@ -258,24 +255,116 @@ pub fn Ref_edit() -> impl IntoView {
     }
 }
 
-#[component]
-pub fn ElementCrud() -> impl IntoView {
-    view! { <>"Element"</> }
-}
+/*#[component]
+pub fn FieldsCrud() -> impl IntoView {
+    let stat = use_context::<RwSignal<StatisticsState>>().expect("stat not found");
+    let meta = use_context::<RwSignal<Option<TableMeta>>>().expect("meta not found");
+    let selected = use_context::<RwSignal<Selected>>().expect("selected not found");
+
+    let form_ref = NodeRef::<leptos::html::Form>::new();
+    let on_submit = move |ev: web_sys::SubmitEvent| {
+        ev.prevent_default();
+
+        let pb = full_pb(stat.get_untracked().db_path, selected.get_untracked().refer.unwrap());
+
+        spawn_local(async move {
+            let _ = invoke(
+                "update_meta_field",
+                &tauri_args! {
+                    "pb": pb,
+                    "key": "info",
+                    "value": TableInfo {name: "ttt".to_string(), desc: "rrr".to_string()}
+                },
+            )
+            .await;
+        });
+
+    };
+    view! {
+        /*<form on:submit=on_submit>
+            <input type="text" name="name" value={meta.get_untracked().unwrap().info.name} node_ref=form_ref />
+            <input type="text" name="desc" value=name node_ref=form_ref />
+            <input type="submit" value="Submit" />
+        </form>*/
+
+
+    }
+}*/
 
 #[component]
 pub fn FieldsCrud() -> impl IntoView {
-    view! { <>"Fields"</> }
+    let meta = use_context::<RwSignal<Option<TableMeta>>>().expect("meta not found");
+    let selected = use_context::<RwSignal<Selected>>().expect("selected not found");
+    let stat = use_context::<RwSignal<StatisticsState>>().expect("stat not found");
+    
+    // Одна структура для всей info
+    let (info, set_info) = signal(Vec::new());
+    
+    let _ = move || set_info.set(meta.get().unwrap().info.clone());
+    
+    let save = move |_| {
+        let pb = full_pb(stat.get_untracked().db_path, selected.get_untracked().refer.unwrap());
+        let new_info = info.get_untracked();
+
+        spawn_local(async move {
+            let _ = invoke(
+                "update_meta_field",
+                &tauri_args! {
+                    "pb": pb,
+                    "key": "info",
+                    "value": new_info
+                },
+            )
+            .await;
+        });
+    };
+    
+    view! {
+        <div class="grid1a gr">
+            {move || {
+                //meta.get().unwrap().info.into_iter()
+                /*let info_val = info.get();
+                // Динамические поля на основе структуры
+                vec![
+                    view! { 
+                        <>
+                            <label>"Название"</label>
+                            <input 
+                                prop:value={info_val.name.clone()}
+                                on:input=move |ev| {
+                                    set_info.update(|i| i.name = event_target_value(&ev));
+                                }
+                            />
+                        </>
+                    }.into_view(),
+                    view! { 
+                        <>
+                            <label>"Описание"</label>
+                            <input 
+                                prop:value={info_val.desc.clone()}
+                                on:input=move |ev| {
+                                    set_info.update(|i| i.desc = event_target_value(&ev));
+                                }
+                            />
+                        </>
+                    }.into_view(),
+                ]*/
+            }}
+            <button on:click=save>"Сохранить"</button>
+        </div>
+    }
 }
 
 #[component]
 pub fn OperCrud() -> impl IntoView {
+    let meta = use_context::<RwSignal<Option<TableMeta>>>().expect("meta not found");
     view! { <>"Oper"</> }
 }
 
 #[component]
-pub fn MetaCrud() -> impl IntoView {
-    view! { <>" Meta"</> }
+pub fn ElementCrud() -> impl IntoView {
+    let meta = use_context::<RwSignal<Option<TableMeta>>>().expect("meta not found");
+    view! { <>"Element"</> }
 }
 
 /*
@@ -283,4 +372,30 @@ pub fn MetaCrud() -> impl IntoView {
         <button on:click=move |_| { edit_ref.set(false) }>"💾 "{t!(i18n, edit.save)}</button>
         <button on:click=move |_| del_ref(selected.get_untracked().refer.unwrap())>"🗑️ "{t!(i18n, all.del)}</button>
 
+*/
+/*
+    let save_search_config = move |field: String| {
+        let Some(mut meta_data) = meta.get_untracked() else {
+            return;
+        };
+        let pb = full_pb(stat.get_untracked().db_path, selected.get_untracked().refer.unwrap());
+        if let Some(pos) = meta_data.search_config.iter().position(|f| f == &field) {
+            meta_data.search_config.remove(pos);
+        } else {
+            meta_data.search_config.push(field);
+        }
+        meta.set(Some(meta_data.clone()));
+
+        spawn_local(async move {
+            let _ = invoke(
+                "update_meta_field",
+                &tauri_args! {
+                    "pb": pb,
+                    "key": "search_config",
+                    "value": meta_data.search_config
+                },
+            )
+            .await;
+        });
+    };
 */

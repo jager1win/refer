@@ -90,8 +90,7 @@ impl DataRecord {
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct TableMeta {
-    pub name: String,
-    pub desc: String,
+    pub info: Vec<(String, String)>,  
     pub field_names: HashMap<String, String>,
     pub field_types: HashMap<String, String>,
     pub operations: Vec<Operation>,

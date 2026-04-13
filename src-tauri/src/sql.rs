@@ -16,8 +16,7 @@ pub struct DataRecord {
 // Метаданные таблицы из таблицы meta
 #[derive(Default, Clone, Debug, Deserialize, Serialize)]
 pub struct TableMeta {
-    pub name: String,
-    pub desc: String,
+    pub info: Vec<(String, String)>,          // name, desc
     pub field_names: HashMap<String, String>, // f_0 -> "Name", f_1 -> "Age"
     pub field_types: HashMap<String, String>, // f_0 -> Text, f_1 -> Number
     pub operations: Vec<Operation>,           // вычисляемые поля
@@ -105,10 +104,14 @@ impl DbState {
             meta_data.insert(key, value);
         }
 
-        let name = meta_data.get("name").cloned().unwrap_or_default();
-        let desc = meta_data.get("desc").cloned().unwrap_or_default();
+        //let name = meta_data.get("name").cloned().unwrap_or_default();
+        //let desc = meta_data.get("desc").cloned().unwrap_or_default();
 
         // Парсим с обработкой ошибок, но не паникуем
+        let info: Vec<(String, String)> = match meta_data.get("info") {
+            Some(s) => serde_json::from_str(s).unwrap_or_default(),
+            None => Vec::new(),
+        };
         let field_names: HashMap<String, String> = match meta_data.get("field_names") {
             Some(s) => serde_json::from_str(s).unwrap_or_default(),
             None => HashMap::new(),
@@ -132,8 +135,7 @@ impl DbState {
         let count_data: u32 = conn.query_row(&format!("SELECT COUNT(*) FROM \"{}\"", "data"), [], |r| r.get(0))?;
 
         Ok(TableMeta {
-            name,
-            desc,
+            info,
             field_names,
             field_types,
             operations,
@@ -149,8 +151,7 @@ impl DbState {
             let tx = conn.unchecked_transaction().map_err(|e| e.to_string())?;
 
             let params = [
-                ("name", serde_json::to_value(&new_meta.name)),
-                ("desc", serde_json::to_value(&new_meta.desc)),
+                ("info", serde_json::to_value(&new_meta.info)),
                 ("field_names", serde_json::to_value(&new_meta.field_names)),
                 ("field_types", serde_json::to_value(&new_meta.field_types)),
                 ("operations", serde_json::to_value(&new_meta.operations)),
@@ -276,12 +277,11 @@ pub fn apply_el_action(conn: &Connection, action: &str, rec: DataRecord) -> Resu
             conn.execute("INSERT INTO data DEFAULT VALUES", [])
                 .map_err(|e| e.to_string())?;
             let new_id = conn.last_insert_rowid();
-            
+
             // Обновляем каждое поле
             for (field_name, value) in &rec.fields {
                 let sql = format!("UPDATE data SET {} = ?1 WHERE id = ?2", field_name);
-                conn.execute(&sql, params![value, new_id])
-                    .map_err(|e| e.to_string())?;
+                conn.execute(&sql, params![value, new_id]).map_err(|e| e.to_string())?;
             }
             Ok(new_id as u32)
         }
@@ -289,8 +289,7 @@ pub fn apply_el_action(conn: &Connection, action: &str, rec: DataRecord) -> Resu
             // Обновляем каждое поле
             for (field_name, value) in &rec.fields {
                 let sql = format!("UPDATE data SET {} = ?1 WHERE id = ?2", field_name);
-                conn.execute(&sql, params![value, rec.id])
-                    .map_err(|e| e.to_string())?;
+                conn.execute(&sql, params![value, rec.id]).map_err(|e| e.to_string())?;
             }
             Ok(rec.id)
         }
@@ -302,7 +301,6 @@ pub fn apply_el_action(conn: &Connection, action: &str, rec: DataRecord) -> Resu
         _ => Err("Unknown action".to_string()),
     }
 }
-
 
 /// Получить один элемент по ID
 pub fn get_el(conn: &Connection, id: u32) -> Result<DataRecord, String> {
@@ -468,21 +466,24 @@ pub fn create_empty_database(path: &PathBuf) -> Result<(), String> {
     )
     .map_err(|e| e.to_string())?;
 
+    let info = serde_json::to_string(&vec![
+        ("name".to_string(), "".to_string()),
+        ("desc".to_string(), "".to_string()),
+    ]).unwrap();
+
     // Базовая meta для пустой базы
     let now = chrono::Local::now().to_rfc3339();
 
     conn.execute(
         "INSERT INTO meta (key, value) VALUES 
-         ('name', ?1),
-         ('desc', ?2),
-         ('field_names', ?3),
-         ('field_types', ?4),
-         ('operations', ?5),
-         ('search_config', ?6),
-         ('created_at', ?7)",
+         ('info', ?1),
+         ('field_names', ?2),
+         ('field_types', ?3),
+         ('operations', ?4),
+         ('search_config', ?5),
+         ('created_at', ?6)",
         params![
-            "",   // name - пустое, юзер сам заполнит
-            "",   // desc - пустое
+            info, // info - пустое, юзер сам заполнит
             "{}", // field_names - пустой JSON объект
             "{}", // field_types - пустой JSON объект
             "[]", // operations - пустой JSON массив
@@ -583,15 +584,23 @@ pub fn create_ballistics_refer(path: &PathBuf) -> Result<(), String> {
     let conn = Connection::open(path).map_err(|e| e.to_string())?;
 
     // Обновляем name и desc
-    conn.execute(
-        "UPDATE meta SET value = ?1 WHERE key = 'name'",
-        params!["Ballistics Data"],
-    )
-    .map_err(|e| e.to_string())?;
+    /*let info = serde_json::to_string(&TableInfo {
+        name: "Ballistics Data".to_string(),
+        desc: "Ballistic calculator demo data".to_string(),
+    })
+    .unwrap();
+
+    conn.execute("UPDATE meta SET value = ?1 WHERE key = 'info'", params![info])
+        .map_err(|e| e.to_string())?;*/
+
+    let info: Vec<(String, String)> = vec![
+        ("name".to_string(), "Ballistics Data".to_string()),
+        ("desc".to_string(), "Ballistic calculator demo data".to_string()),
+    ];
 
     conn.execute(
-        "UPDATE meta SET value = ?1 WHERE key = 'desc'",
-        params!["Ballistic calculator demo data"],
+        "UPDATE meta SET value = ?1 WHERE key = 'info'",
+        params![serde_json::to_string(&info).unwrap()],
     )
     .map_err(|e| e.to_string())?;
 
@@ -724,10 +733,16 @@ Circle/Sphere";
 
     conn.execute("UPDATE meta SET value = ?1 WHERE key = 'name'", params!["Geometry"])
         .map_err(|e| e.to_string())?;
-    conn.execute("UPDATE meta SET value = ?1 WHERE key = 'desc'", params!["Circle and sphere measurements - enter your radius"])
-        .map_err(|e| e.to_string())?;
-    conn.execute("UPDATE meta SET value = ?1 WHERE key = 'search_config'", params![serde_json::to_string(&vec!["f_0"]).unwrap()])
-        .map_err(|e| e.to_string())?;
+    conn.execute(
+        "UPDATE meta SET value = ?1 WHERE key = 'desc'",
+        params!["Circle and sphere measurements - enter your radius"],
+    )
+    .map_err(|e| e.to_string())?;
+    conn.execute(
+        "UPDATE meta SET value = ?1 WHERE key = 'search_config'",
+        params![serde_json::to_string(&vec!["f_0"]).unwrap()],
+    )
+    .map_err(|e| e.to_string())?;
 
     import_csv(&conn, GEOMETRY_CSV, true).map_err(|e| e.to_string())?;
 
@@ -782,12 +797,21 @@ Per 1 (base unit),1";
     create_empty_database(path)?;
     let conn = Connection::open(path).map_err(|e| e.to_string())?;
 
-    conn.execute("UPDATE meta SET value = ?1 WHERE key = 'name'", params!["Shrinkflation"])
-        .map_err(|e| e.to_string())?;
-    conn.execute("UPDATE meta SET value = ?1 WHERE key = 'desc'", params!["Compare prices per unit weight/volume"])
-        .map_err(|e| e.to_string())?;
-    conn.execute("UPDATE meta SET value = ?1 WHERE key = 'search_config'", params![serde_json::to_string(&vec!["f_0"]).unwrap()])
-        .map_err(|e| e.to_string())?;
+    conn.execute(
+        "UPDATE meta SET value = ?1 WHERE key = 'name'",
+        params!["Shrinkflation"],
+    )
+    .map_err(|e| e.to_string())?;
+    conn.execute(
+        "UPDATE meta SET value = ?1 WHERE key = 'desc'",
+        params!["Compare prices per unit weight/volume"],
+    )
+    .map_err(|e| e.to_string())?;
+    conn.execute(
+        "UPDATE meta SET value = ?1 WHERE key = 'search_config'",
+        params![serde_json::to_string(&vec!["f_0"]).unwrap()],
+    )
+    .map_err(|e| e.to_string())?;
 
     import_csv(&conn, SHRINK_CSV, true).map_err(|e| e.to_string())?;
 
@@ -814,10 +838,16 @@ Dilution";
 
     conn.execute("UPDATE meta SET value = ?1 WHERE key = 'name'", params!["Dilution"])
         .map_err(|e| e.to_string())?;
-    conn.execute("UPDATE meta SET value = ?1 WHERE key = 'desc'", params!["Calculate solution mixing ratios"])
-        .map_err(|e| e.to_string())?;
-    conn.execute("UPDATE meta SET value = ?1 WHERE key = 'search_config'", params![serde_json::to_string(&vec!["f_0"]).unwrap()])
-        .map_err(|e| e.to_string())?;
+    conn.execute(
+        "UPDATE meta SET value = ?1 WHERE key = 'desc'",
+        params!["Calculate solution mixing ratios"],
+    )
+    .map_err(|e| e.to_string())?;
+    conn.execute(
+        "UPDATE meta SET value = ?1 WHERE key = 'search_config'",
+        params![serde_json::to_string(&vec!["f_0"]).unwrap()],
+    )
+    .map_err(|e| e.to_string())?;
 
     import_csv(&conn, DILUTION_CSV, true).map_err(|e| e.to_string())?;
 
