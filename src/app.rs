@@ -247,6 +247,9 @@ fn ReferencesContainer() -> impl IntoView {
     let selected = use_context::<RwSignal<Selected>>().expect("selected not found");
     let edit_ref = use_context::<RwSignal<bool>>().expect("edit not found");
 
+    let meta: RwSignal<Option<TableMeta>> = RwSignal::new(None::<TableMeta>);
+    provide_context(meta);
+
     view! {
         <div class="references-container">
             <Show when=move || selected.get().refer.is_some() fallback=|| view! { <Refs /> }>

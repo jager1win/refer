@@ -171,7 +171,7 @@ pub fn Ref_el_edit() -> impl IntoView {
 #[component]
 pub fn Ref_edit() -> impl IntoView {
     let i18n = use_i18n();
-    let meta = use_context::<RwSignal<Option<TableMeta>>>().expect("meta not found");
+    //let meta = use_context::<RwSignal<Option<TableMeta>>>().expect("meta not found");
     let selected = use_context::<RwSignal<Selected>>().expect("selected not found");
     let edit_ref = use_context::<RwSignal<bool>>().expect("edit not found");
     let now = use_context::<RwSignal<String>>().expect("now not found");
@@ -225,8 +225,6 @@ pub fn Ref_edit() -> impl IntoView {
         <div class="header-row gr">
             <button on:click=move |_| edit_ref.set(false)>"←"</button>
 
-            <div class="title-group">"🔧 " <span>{move || remove_refer_ext(&selected.get().refer.unwrap())}</span></div>
-
             <nav class="gap04">
                 <button class:active=move || active_tab.get() == Some(Tab::Fields) on:click=move |_| active_tab.set(Some(Tab::Fields))>
                     "Поля"
@@ -238,119 +236,62 @@ pub fn Ref_edit() -> impl IntoView {
                     "✚ Элемент"
                 </button>
             </nav>
+
+            <div on:click=move |_| active_tab.set(None) class="title-group sp_close">"🔧 " <span>{move || remove_refer_ext(&selected.get().refer.unwrap())}</span></div>
         </div>
 
-        <div class="gr">
-            {move || match active_tab.get() {
-                None => view! { <p class="warn pre-line">{t!(i18n, edit.warning)}</p> }.into_any(),
-                Some(Tab::Fields) => view! { <FieldsCrud /> }.into_any(),
-                Some(Tab::Oper) => view! { <OperCrud /> }.into_any(),
-                Some(Tab::Element) => view! { <ElementCrud /> }.into_any(),
-            }}
-        </div>
-
-        <div class="gr center">
-            <button on:click=move |_| del_ref(selected.get_untracked().refer.unwrap())>"🗑️ "{t!(i18n, all.del)}</button>
-        </div>
+        {move || match active_tab.get() {
+            None => view! { 
+                <div class="gr center">
+                    <p class="warn pre-line">{t!(i18n, edit.warning)}</p>
+                    <button role="button" class="error" on:click=move |_| del_ref(selected.get_untracked().refer.unwrap())>"🗑️ "{t!(i18n, all.del)}" "{t!(i18n,all.reference)}</button>
+                </div>
+             }.into_any(),
+            Some(Tab::Fields) => view! { <FieldsCrud /> }.into_any(),
+            Some(Tab::Oper) => view! { <OperCrud /> }.into_any(),
+            Some(Tab::Element) => view! { <ElementCrud /> }.into_any(),
+        }}
     }
 }
 
-/*#[component]
-pub fn FieldsCrud() -> impl IntoView {
-    let stat = use_context::<RwSignal<StatisticsState>>().expect("stat not found");
-    let meta = use_context::<RwSignal<Option<TableMeta>>>().expect("meta not found");
-    let selected = use_context::<RwSignal<Selected>>().expect("selected not found");
-
-    let form_ref = NodeRef::<leptos::html::Form>::new();
-    let on_submit = move |ev: web_sys::SubmitEvent| {
-        ev.prevent_default();
-
-        let pb = full_pb(stat.get_untracked().db_path, selected.get_untracked().refer.unwrap());
-
-        spawn_local(async move {
-            let _ = invoke(
-                "update_meta_field",
-                &tauri_args! {
-                    "pb": pb,
-                    "key": "info",
-                    "value": TableInfo {name: "ttt".to_string(), desc: "rrr".to_string()}
-                },
-            )
-            .await;
-        });
-
-    };
-    view! {
-        /*<form on:submit=on_submit>
-            <input type="text" name="name" value={meta.get_untracked().unwrap().info.name} node_ref=form_ref />
-            <input type="text" name="desc" value=name node_ref=form_ref />
-            <input type="submit" value="Submit" />
-        </form>*/
-
-
-    }
-}*/
-
 #[component]
 pub fn FieldsCrud() -> impl IntoView {
+    let i18n = use_i18n();
     let meta = use_context::<RwSignal<Option<TableMeta>>>().expect("meta not found");
     let selected = use_context::<RwSignal<Selected>>().expect("selected not found");
     let stat = use_context::<RwSignal<StatisticsState>>().expect("stat not found");
-    
-    // Одна структура для всей info
-    let (info, set_info) = signal(Vec::new());
-    
-    let _ = move || set_info.set(meta.get().unwrap().info.clone());
-    
+
+    let (info_list, set_info_list) = signal(Vec::<(String, String)>::new());
+
+    // Инициализация через эффект
+    Effect::new(move |_| {
+        if let Some(meta) = meta.get() {
+            set_info_list.set(meta.info.clone());
+        }
+    });
+
     let save = move |_| {
         let pb = full_pb(stat.get_untracked().db_path, selected.get_untracked().refer.unwrap());
-        let new_info = info.get_untracked();
+        let new_info = info_list.get_untracked();
 
         spawn_local(async move {
-            let _ = invoke(
-                "update_meta_field",
-                &tauri_args! {
-                    "pb": pb,
-                    "key": "info",
-                    "value": new_info
-                },
-            )
-            .await;
+            let _ = invoke("update_meta_field", &tauri_args! { "pb": pb, "key": "info", "value": new_info }).await;
         });
     };
-    
+
     view! {
-        <div class="grid1a gr">
-            {move || {
-                //meta.get().unwrap().info.into_iter()
-                /*let info_val = info.get();
-                // Динамические поля на основе структуры
-                vec![
-                    view! { 
-                        <>
-                            <label>"Название"</label>
-                            <input 
-                                prop:value={info_val.name.clone()}
-                                on:input=move |ev| {
-                                    set_info.update(|i| i.name = event_target_value(&ev));
-                                }
-                            />
-                        </>
-                    }.into_view(),
-                    view! { 
-                        <>
-                            <label>"Описание"</label>
-                            <input 
-                                prop:value={info_val.desc.clone()}
-                                on:input=move |ev| {
-                                    set_info.update(|i| i.desc = event_target_value(&ev));
-                                }
-                            />
-                        </>
-                    }.into_view(),
-                ]*/
-            }}
-            <button on:click=save>"Сохранить"</button>
+        <div class="gr center">
+            <div class="grid1a">
+                {move || info_list.get().iter().enumerate().map(|(idx, (label, value))| {
+                    view! {
+                        <label>{label.clone()}</label>
+                        <input type="text" prop:value={value.clone()} on:input=move |ev| {
+                            set_info_list.update(|list| list[idx].1 = event_target_value(&ev));
+                        } />
+                    }
+                }).collect::<Vec<_>>()}
+            </div>
+            <button class="m04" on:click=save>{t!(i18n, edit.save)}</button>
         </div>
     }
 }

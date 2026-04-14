@@ -19,7 +19,7 @@ pub fn Ref_main() -> impl IntoView {
     let now = use_context::<RwSignal<String>>().expect("now not found");
     let pb = full_pb(stat.get_untracked().db_path, selected.get_untracked().refer.unwrap());
     let query_string = RwSignal::new("".to_string());
-    let meta = RwSignal::new(None::<TableMeta>);
+    let meta = use_context::<RwSignal<Option<TableMeta>>>().expect("meta not found");
     let data = RwSignal::new(None::<Vec<DataRecord>>);
     let ref_state = RwSignal::new(RefState { meta: 0, data: 0 });
 
@@ -153,7 +153,7 @@ pub fn Ref_main() -> impl IntoView {
             std::time::Duration::from_millis(250),
         );
     });
-    provide_context(meta);
+
     view! {
         <Show when=move || { selected.get().id.is_none() } fallback=|| view! { <Ref_el /> }>
             <div class="ref">
