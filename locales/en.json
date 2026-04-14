@@ -5,8 +5,9 @@
     "qa": "Quick access",
     "err_unknown": "unknown error",
     "del": "Delete",
-    "element_not_found": "Element not found",
-    "refer_not_found": "Reference not found"
+    "element_not_found": "Item not found",
+    "refer_not_found": "Reference not found",
+    "element": "Item"
   },
   "settings": {
     "title": "App settings",

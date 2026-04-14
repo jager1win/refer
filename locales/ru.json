@@ -6,7 +6,8 @@
     "err_unknown": "неизвестная ошибка",
     "del": "Удалить",
     "element_not_found": "Элемент не найден",
-    "refer_not_found": "Справочник не найден"
+    "refer_not_found": "Справочник не найден",
+    "element": "Элемент"
   },
   "settings": {
     "title": "Настройки приложения",

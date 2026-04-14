@@ -227,13 +227,13 @@ pub fn Ref_edit() -> impl IntoView {
 
             <nav class="gap04">
                 <button class:active=move || active_tab.get() == Some(Tab::Fields) on:click=move |_| active_tab.set(Some(Tab::Fields))>
-                    "Поля"
+                    {t!(i18n, ref_main.columns)}
                 </button>
                 <button class:active=move || active_tab.get() == Some(Tab::Oper) on:click=move |_| active_tab.set(Some(Tab::Oper))>
-                    "Operations"
+                    {t!(i18n, ref_main.operations)}
                 </button>
                 <button class:active=move || active_tab.get() == Some(Tab::Element) on:click=move |_| active_tab.set(Some(Tab::Element))>
-                    "✚ Элемент"
+                    "✚"{t!(i18n, all.element)}
                 </button>
             </nav>
 
