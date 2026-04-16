@@ -81,7 +81,7 @@ pub struct DataRecord {
 
 impl DataRecord {
     pub fn new() -> Self {
-        Self{
+        Self {
             id: 0,
             fields: HashMap::new(),
         }
@@ -90,12 +90,18 @@ impl DataRecord {
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct TableMeta {
-    pub info: Vec<(String, String)>,  
-    pub field_names: HashMap<String, String>,
-    pub field_types: HashMap<String, String>,
+    pub info: Vec<(String, String)>,
+    pub fields: HashMap<String, FieldDef>,
     pub operations: Vec<Operation>,
     pub search_config: Vec<String>,
     pub count_data: u32,
+    pub names: Vec<String>,
+}
+
+#[derive(Default, Clone, Debug, Deserialize, Serialize)]
+pub struct FieldDef {
+    pub name: String,
+    pub ftype: String,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
@@ -271,17 +277,19 @@ fn Settings() -> impl IntoView {
         "taupe", "mauve", "mist", "olive",
     ];
     /* Possible color choices: orange, lime, green, cyan, blue, indigo, purple, fuchsia, pink, rose, slate, zinc, taupe, mauve, mist, olive*/
-    let info = RwSignal::new(Vec::<String>::new());
+    let info = RwSignal::new(Vec::<(String, String)>::new());
+    let now = use_context::<RwSignal<String>>().expect("now not found");
+
     spawn_local(async move {
         match invoke("get_app_info", &JsValue::NULL).await {
             Ok(js) => {
-                let s = from_value::<Vec<String>>(js).unwrap_or_default();
+                let s = from_value::<Vec<(String, String)>>(js).unwrap_or_default();
                 info.set(s);
             }
             Err(js) => {
                 let error_msg = from_value::<String>(js).unwrap_or_else(|_| "Unknown error".into());
-                let v = vec!["Failed get app info:".to_string(), error_msg];
-                info.set(v);
+                let v = format!("Failed get app info: {}", error_msg);
+                now.set(v);
             }
         };
     });
@@ -430,11 +438,12 @@ fn Settings() -> impl IntoView {
             </div>
         </div>
         <div class="gr info center">
+            <p>"Сreated with Rust, Tauri & Leptos"</p>
             {move || {
                 info.get()
                     .into_iter()
-                    .map(|n| {
-                        view! { <p>{n}</p> }
+                    .map(|(k, v)| {
+                        view! { <p>{k}" → "{v}</p> }
                     })
                     .collect_view()
             }}

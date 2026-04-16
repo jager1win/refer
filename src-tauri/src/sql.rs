@@ -17,11 +17,17 @@ pub struct DataRecord {
 #[derive(Default, Clone, Debug, Deserialize, Serialize)]
 pub struct TableMeta {
     pub info: Vec<(String, String)>,          // name, desc
-    pub field_names: HashMap<String, String>, // f_0 -> "Name", f_1 -> "Age"
-    pub field_types: HashMap<String, String>, // f_0 -> Text, f_1 -> Number
+    pub fields: HashMap<String, FieldDef>,
     pub operations: Vec<Operation>,           // вычисляемые поля
     pub search_config: Vec<String>,           // настройки поиска
     pub count_data: u32,
+    pub names: Vec<String>,
+}
+
+#[derive(Default, Clone, Debug, Deserialize, Serialize)]
+pub struct FieldDef {
+    pub name: String,
+    pub ftype: String,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
@@ -112,12 +118,8 @@ impl DbState {
             Some(s) => serde_json::from_str(s).unwrap_or_default(),
             None => Vec::new(),
         };
-        let field_names: HashMap<String, String> = match meta_data.get("field_names") {
-            Some(s) => serde_json::from_str(s).unwrap_or_default(),
-            None => HashMap::new(),
-        };
 
-        let field_types: HashMap<String, String> = match meta_data.get("field_types") {
+        let fields: HashMap<String, FieldDef> = match meta_data.get("fields") {
             Some(s) => serde_json::from_str(s).unwrap_or_default(),
             None => HashMap::new(),
         };
@@ -132,15 +134,22 @@ impl DbState {
             None => Vec::new(),
         };
 
+        let mut stmt = conn.prepare("PRAGMA table_info('data')")?;
+        let names: Vec<String> = stmt.query_map([], |row| row.get::<_, String>(1))?
+            .filter_map(|res| res.ok()) 
+            .skip(1)                    // пропускаем первую строку (id)
+            .collect();
+
+
         let count_data: u32 = conn.query_row(&format!("SELECT COUNT(*) FROM \"{}\"", "data"), [], |r| r.get(0))?;
 
         Ok(TableMeta {
             info,
-            field_names,
-            field_types,
+            fields,
             operations,
             search_config,
             count_data,
+            names,
         })
     }
 
@@ -152,8 +161,7 @@ impl DbState {
 
             let params = [
                 ("info", serde_json::to_value(&new_meta.info)),
-                ("field_names", serde_json::to_value(&new_meta.field_names)),
-                ("field_types", serde_json::to_value(&new_meta.field_types)),
+                ("fields", serde_json::to_value(&new_meta.fields)),
                 ("operations", serde_json::to_value(&new_meta.operations)),
                 ("search_config", serde_json::to_value(&new_meta.search_config)),
             ];
@@ -221,7 +229,7 @@ impl DbState {
 pub fn search_items(conn: &Connection, meta: &TableMeta, query: &str) -> Result<Vec<DataRecord>, String> {
     // 1. Собираем поля для поиска
     let search_fields = if meta.search_config.is_empty() {
-        meta.field_types.keys().cloned().collect::<Vec<String>>()
+        meta.fields.keys().cloned().collect::<Vec<String>>()
     } else {
         meta.search_config.clone()
     };
@@ -342,8 +350,8 @@ fn row_to_record(row: &Row) -> rusqlite::Result<DataRecord> {
     })
 }
 
-/// Добавление поля в существующую базу
-pub fn add_field(
+// Добавление поля в существующую базу
+/*pub fn add_field(
     conn: &Connection, field_index: usize, display_name: Option<&str>, field_type: &str,
 ) -> Result<String> {
     let field_name = format!("f_{}", field_index);
@@ -382,8 +390,29 @@ pub fn add_field(
     )?;
 
     Ok(field_name)
-}
+}*/
 
+/// Добавление поля в существующую базу // Новая версия
+pub fn add_field(conn: &Connection, field_index: usize, display_name: Option<&str>, field_type: &str) -> Result<String> {
+    let field_name = format!("f_{}", field_index);
+    let sql = format!("ALTER TABLE data ADD COLUMN {} TEXT", field_name);
+    conn.execute(&sql, [])?;
+
+    let fields_json: String = conn.query_row("SELECT value FROM meta WHERE key = 'fields'", [], |row| row.get(0))?;
+    let mut fields: HashMap<String, FieldDef> = serde_json::from_str(&fields_json).unwrap_or_default();
+
+    fields.insert(field_name.clone(), FieldDef {
+        name: display_name.unwrap_or(&format!("#{}", field_index)).to_string(),
+        ftype: field_type.to_string(),
+    });
+
+    conn.execute(
+        "UPDATE meta SET value = ?1 WHERE key = 'fields'",
+        params![serde_json::to_string(&fields).unwrap()],
+    )?;
+
+    Ok(field_name)
+}
 // Добавление операции
 /*pub fn add_operation(conn: &Connection, name: &str, expression: &str, description: Option<&str>) -> Result<()> {
     let ops_json: String = conn.query_row("SELECT value FROM meta WHERE key = 'operations'", [], |row| row.get(0))?;
@@ -477,15 +506,13 @@ pub fn create_empty_database(path: &PathBuf) -> Result<(), String> {
     conn.execute(
         "INSERT INTO meta (key, value) VALUES 
          ('info', ?1),
-         ('field_names', ?2),
-         ('field_types', ?3),
-         ('operations', ?4),
-         ('search_config', ?5),
-         ('created_at', ?6)",
+         ('fields', ?2),
+         ('operations', ?3),
+         ('search_config', ?4),
+         ('created_at', ?5)",
         params![
             info, // info - пустое, юзер сам заполнит
-            "{}", // field_names - пустой JSON объект
-            "{}", // field_types - пустой JSON объект
+            "{}", // fields - пустой JSON объект
             "[]", // operations - пустой JSON массив
             "{}", // fields to search
             &now,
@@ -583,16 +610,6 @@ pub fn create_ballistics_refer(path: &PathBuf) -> Result<(), String> {
 
     let conn = Connection::open(path).map_err(|e| e.to_string())?;
 
-    // Обновляем name и desc
-    /*let info = serde_json::to_string(&TableInfo {
-        name: "Ballistics Data".to_string(),
-        desc: "Ballistic calculator demo data".to_string(),
-    })
-    .unwrap();
-
-    conn.execute("UPDATE meta SET value = ?1 WHERE key = 'info'", params![info])
-        .map_err(|e| e.to_string())?;*/
-
     let info: Vec<(String, String)> = vec![
         ("name".to_string(), "Ballistics Data".to_string()),
         ("desc".to_string(), "Ballistic calculator demo data".to_string()),
@@ -658,13 +675,17 @@ Deposit";
     create_empty_database(path)?;
     let conn = Connection::open(path).map_err(|e| e.to_string())?;
 
-    conn.execute("UPDATE meta SET value = ?1 WHERE key = 'name'", params!["Deposit"])
-        .map_err(|e| e.to_string())?;
+    let info: Vec<(String, String)> = vec![
+        ("name".to_string(), "Deposit".to_string()),
+        ("desc".to_string(), "Calculate compound interest growth".to_string()),
+    ];
+
     conn.execute(
-        "UPDATE meta SET value = ?1 WHERE key = 'desc'",
-        params!["Calculate compound interest growth"],
+        "UPDATE meta SET value = ?1 WHERE key = 'info'",
+        params![serde_json::to_string(&info).unwrap()],
     )
     .map_err(|e| e.to_string())?;
+
     conn.execute(
         "UPDATE meta SET value = ?1 WHERE key = 'search_config'",
         params![serde_json::to_string(&vec!["f_0"]).unwrap()],
@@ -697,13 +718,17 @@ Green Light,545000000000000,1.0,0.000000000000001";
     create_empty_database(path)?;
     let conn = Connection::open(path).map_err(|e| e.to_string())?;
 
-    conn.execute("UPDATE meta SET value = ?1 WHERE key = 'name'", params!["Oscillator"])
-        .map_err(|e| e.to_string())?;
+    let info: Vec<(String, String)> = vec![
+        ("name".to_string(), "Oscillator".to_string()),
+        ("desc".to_string(), "Wave value at time t - use Time Hint for reference".to_string()),
+    ];
+
     conn.execute(
-        "UPDATE meta SET value = ?1 WHERE key = 'desc'",
-        params!["Wave value at time t - use Time Hint for reference"],
+        "UPDATE meta SET value = ?1 WHERE key = 'info'",
+        params![serde_json::to_string(&info).unwrap()],
     )
     .map_err(|e| e.to_string())?;
+
     conn.execute(
         "UPDATE meta SET value = ?1 WHERE key = 'search_config'",
         params![serde_json::to_string(&vec!["f_0"]).unwrap()],
@@ -731,13 +756,17 @@ Circle/Sphere";
     create_empty_database(path)?;
     let conn = Connection::open(path).map_err(|e| e.to_string())?;
 
-    conn.execute("UPDATE meta SET value = ?1 WHERE key = 'name'", params!["Geometry"])
-        .map_err(|e| e.to_string())?;
+    let info: Vec<(String, String)> = vec![
+        ("name".to_string(), "Geometry".to_string()),
+        ("desc".to_string(), "Circle and sphere measurements - enter your radius".to_string()),
+    ];
+
     conn.execute(
-        "UPDATE meta SET value = ?1 WHERE key = 'desc'",
-        params!["Circle and sphere measurements - enter your radius"],
+        "UPDATE meta SET value = ?1 WHERE key = 'info'",
+        params![serde_json::to_string(&info).unwrap()],
     )
     .map_err(|e| e.to_string())?;
+
     conn.execute(
         "UPDATE meta SET value = ?1 WHERE key = 'search_config'",
         params![serde_json::to_string(&vec!["f_0"]).unwrap()],
@@ -797,16 +826,17 @@ Per 1 (base unit),1";
     create_empty_database(path)?;
     let conn = Connection::open(path).map_err(|e| e.to_string())?;
 
+    let info: Vec<(String, String)> = vec![
+        ("name".to_string(), "Shrinkflation".to_string()),
+        ("desc".to_string(), "Compare prices per unit weight/volume".to_string()),
+    ];
+
     conn.execute(
-        "UPDATE meta SET value = ?1 WHERE key = 'name'",
-        params!["Shrinkflation"],
+        "UPDATE meta SET value = ?1 WHERE key = 'info'",
+        params![serde_json::to_string(&info).unwrap()],
     )
     .map_err(|e| e.to_string())?;
-    conn.execute(
-        "UPDATE meta SET value = ?1 WHERE key = 'desc'",
-        params!["Compare prices per unit weight/volume"],
-    )
-    .map_err(|e| e.to_string())?;
+
     conn.execute(
         "UPDATE meta SET value = ?1 WHERE key = 'search_config'",
         params![serde_json::to_string(&vec!["f_0"]).unwrap()],
@@ -836,13 +866,17 @@ Dilution";
     create_empty_database(path)?;
     let conn = Connection::open(path).map_err(|e| e.to_string())?;
 
-    conn.execute("UPDATE meta SET value = ?1 WHERE key = 'name'", params!["Dilution"])
-        .map_err(|e| e.to_string())?;
+    let info: Vec<(String, String)> = vec![
+        ("name".to_string(), "Dilution".to_string()),
+        ("desc".to_string(), "Calculate solution mixing ratios".to_string()),
+    ];
+
     conn.execute(
-        "UPDATE meta SET value = ?1 WHERE key = 'desc'",
-        params!["Calculate solution mixing ratios"],
+        "UPDATE meta SET value = ?1 WHERE key = 'info'",
+        params![serde_json::to_string(&info).unwrap()],
     )
     .map_err(|e| e.to_string())?;
+
     conn.execute(
         "UPDATE meta SET value = ?1 WHERE key = 'search_config'",
         params![serde_json::to_string(&vec!["f_0"]).unwrap()],

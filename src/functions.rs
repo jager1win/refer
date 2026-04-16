@@ -437,7 +437,7 @@ pub fn get_standard_operators() -> Vec<&'static str> {
     ]
 }
 
-pub fn transform_fields(
+/*pub fn transform_fields(
     field_names: &HashMap<String, String>, field_types: &HashMap<String, String>, fields: &HashMap<String, String>,
 ) -> Result<HashMap<String, f64>, String> {
     // partition рулит
@@ -457,22 +457,35 @@ pub fn transform_fields(
     }
 
     Ok(successes.into_iter().map(Result::unwrap).collect())
-}
+}*/
 
-pub fn transform_fields2(
-    names: &HashMap<String, String>,
-    types: &HashMap<String, String>,
-    values: &HashMap<String, String>,
-) -> Vec<(String, String, String, String)> { 
-    let mut vec: Vec<_> = names
-        .iter()
-        .map(|(id, name)| {
-            let t = types.get(id).cloned().unwrap_or_default();
-            let v = values.get(id).cloned().unwrap_or_default();
-            (id.clone(), name.clone(), t, v)
-        })
+pub fn transform_fields(
+    fields_def: &HashMap<String, FieldDef>,
+    data_fields: &HashMap<String, String>,
+) -> Result<HashMap<String, f64>, String> {
+    // Создаём HashMap для быстрого поиска по ключу
+    let field_types_map: HashMap<_, _> = fields_def.iter()
+        .map(|(k, def)| (k.clone(), def.ftype.as_str()))
         .collect();
-
-    vec.sort_by(|a, b| a.0.cmp(&b.0));
-    vec
+    
+    let field_names_map: HashMap<_, _> = fields_def.iter()
+        .map(|(k, def)| (k.clone(), def.name.as_str()))
+        .collect();
+    
+    let (successes, errors): (Vec<_>, Vec<_>) = data_fields
+        .iter()
+        // только числовые поля
+        .filter(|(k, _)| field_types_map.get(*k).copied() == Some("number"))
+        .map(|(k, v)| {
+            let name = field_names_map.get(k).cloned().unwrap_or(k.as_str()).to_string();
+            v.parse::<f64>().map(|val| (name.clone(), val)).map_err(|_| name)
+        })
+        .partition(Result::is_ok);
+    
+    if !errors.is_empty() {
+        let err_names: Vec<String> = errors.into_iter().map(Result::unwrap_err).collect();
+        return Err(format!("Invalid number format in fields: {}", err_names.join(", ")));
+    }
+    
+    Ok(successes.into_iter().map(Result::unwrap).collect())
 }

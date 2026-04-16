@@ -22,6 +22,7 @@ pub fn Ref_main() -> impl IntoView {
     let meta = use_context::<RwSignal<Option<TableMeta>>>().expect("meta not found");
     let data = RwSignal::new(None::<Vec<DataRecord>>);
     let ref_state = RwSignal::new(RefState { meta: 0, data: 0 });
+    let search_run = RwSignal::new(false);
 
     // get meta
     spawn_local(async move {
@@ -47,6 +48,7 @@ pub fn Ref_main() -> impl IntoView {
     // get data. всегда по 10 элементов.
     let search_items = move |pb: PathBuf, query: String| {
         spawn_local(async move {
+            search_run.set(true);
             match invoke("search_items", &tauri_args!("pb": pb, "query": query)).await {
                 Ok(js) => {
                     let s = from_value::<Vec<DataRecord>>(js).unwrap();
@@ -67,6 +69,7 @@ pub fn Ref_main() -> impl IntoView {
                     });
                 }
             };
+            search_run.set(false);
         });
     };
 
@@ -147,10 +150,13 @@ pub fn Ref_main() -> impl IntoView {
         set_timeout(
             move || {
                 if query_string.get_untracked() == current_query {
-                    search_items(pbclon, current_query);
+                    // Откладываем тяжёлую работу
+                    request_animation_frame(move || {
+                        search_items(pbclon, current_query);
+                    });
                 }
             },
-            std::time::Duration::from_millis(250),
+            std::time::Duration::from_millis(150),
         );
     });
 
@@ -173,102 +179,119 @@ pub fn Ref_main() -> impl IntoView {
                         0 => view! { <span class="gr" aria-busy="true"></span> }.into_any(),
                         1 => {
                             let table_meta = meta.get().unwrap();
-                            let sorted_search = sort_f_keys_v(table_meta.clone().search_config);
+                            let sorted_search: Vec<String> = table_meta
+                                .names
+                                .iter()
+                                .filter(|name| table_meta.search_config.contains(*name))
+                                .filter_map(|name| table_meta.fields.get(name))
+                                .map(|field_def| field_def.name.clone())
+                                .collect();
+                            log::info!("sorted_search:{:?}",&sorted_search);
                             view! {
                                 <div class="header-row gr">
                                     <button on:click=move |_| selected.update(|c| c.refer = None)>"←"</button>
 
                                     <div class="title-group">
                                         <span>{move || remove_refer_ext(&selected.get().refer.unwrap())}</span>
+                                        // name & desc
+                                        <p class="info-show m0">
+                                            {match table_meta.info[0].1.is_empty() && table_meta.info[1].1.is_empty() {
+                                                true => view! { <span></span> }.into_any(),
+                                                false => {
+                                                    view! {
+                                                        {table_meta
+                                                            .info
+                                                            .clone()
+                                                            .into_iter()
+                                                            .map(|(_k, v)| view! { <span>{v}</span> })
+                                                            .collect_view()}
+                                                    }
+                                                        .into_any()
+                                                }
+                                            }}
+                                        </p>
                                     </div>
 
                                     <button on:click=move |_| edit_ref.set(true)>"🔧"</button>
                                 </div>
-                                // name & desc
-                                {match table_meta.info[0].0.is_empty() && table_meta.info[1].0.is_empty() {
-                                    true => view! { <div></div> }.into_any(),
-                                    false => {
-                                        view! {
-                                            <p class="info-show gr">
-                                                {table_meta.info.clone().into_iter().map(|(_k,v)| view! { <span>{v}</span> }).collect_view()}
-                                            </p>
-                                        }
-                                            .into_any()
-                                    }
-                                }}
 
+                                // input. add "hidden" if empty search_config or count < 11
                                 <div class="gr">
-                                    // input. dont show if empty search_config or count < 11
-                                    {
-                                        let sorted_search_clone = sorted_search.clone();
-                                        move || {
-                                            if sorted_search_clone.is_empty() {
-                                                // log::info!("count_data:{:?}",&table_meta.count_data );
+                                    <div class="search-input">
+                                        {
+                                            let tm_clon = table_meta.clone();
+                                            let has_data = data.get().is_some_and(|d| !d.is_empty());
+                                            let query_len = query_string.get().len();
+                                            let text = match (query_len, has_data) {
+                                                (0, true) => tu_string!(i18n, ref_main.first_records),
+                                                (0, false) => tu_string!(i18n, ref_main.ref_empty),
+                                                (_, true) => tu_string!(i18n, ref_main.found),
+                                                (_, false) => tu_string!(i18n, ref_main.nothing_found),
+                                            };
+                                            log::info!("query_len:{},has_data:{}",query_len, has_data);
+                                            view! {
+                                                <div class:hidden=move || {
+                                                    (tm_clon.count_data < 11) || (tm_clon.search_config.is_empty())
+                                                }>
+                                                    <div class="header-row">
+                                                        <label for="peas">
+                                                            {move || match search_run.get() {
+                                                                true => view! { <span aria-busy="true"></span> }.into_any(),
+                                                                false => view! { <span>"🔍"</span> }.into_any(),
+                                                            }}
+                                                        </label>
+                                                        <input
+                                                            type="text"
+                                                            name="peas"
+                                                            on:input:target=move |ev| {
+                                                                query_string.set(ev.target().value());
+                                                            }
+                                                            prop:value=move || query_string.get()
+                                                        />
+
+                                                        <span class="">{text}</span>
+                                                    </div>
+                                                    <hr />
+                                                </div>
+                                            }
+                                        }
+                                        {(table_meta.search_config.is_empty())
+                                            .then(|| {
                                                 view! {
                                                     <h5 class="warn">{t!(i18n, ref_main.no_fields_selected)}</h5>
                                                     <h6 class="warn">{t!(i18n, ref_main.fields_hint)}</h6>
                                                 }
-                                                    .into_any()
-                                            } else if table_meta.count_data < 11 {
-                                                view! { "" }.into_any()
-                                            } else {
-                                                let has_data = data.get().is_some_and(|d| !d.is_empty());
-                                                let query_len = query_string.get().len();
-                                                let text = match (query_len, has_data) {
-                                                    (0, true) => tu_string!(i18n, ref_main.first_records),
-                                                    (0, false) => tu_string!(i18n, ref_main.ref_empty),
-                                                    (_, true) => tu_string!(i18n, ref_main.found),
-                                                    (_, false) => tu_string!(i18n, ref_main.nothing_found),
-                                                };
-                                                // log::info!("query_len:{},has_data:{}",query_len, has_data);
+                                            })}
+                                    </div>
 
-                                                view! {
-                                                    <input
-                                                        type="text"
-                                                        on:input:target=move |ev| {
-                                                            query_string.set(ev.target().value());
-                                                        }
-                                                        prop:value=move || query_string.get()
-                                                    />
-                                                    <small class="m0">{text}</small>
-                                                }
-                                                    .into_any()
-                                            }
-                                        }
-                                    } // search result
-                                    {match sorted_search.clone().is_empty() {
-                                        true => view! { <div class="search_results">""</div> }.into_any(),
-                                        false => {
+                                    // search result
+                                    {match  data.get()/*sorted_search.is_empty()*/ {
+                                        None => view! { <div class="search_results"></div> }.into_any(),
+                                        Some(d) => {
                                             let col_count = sorted_search.clone().len();
-                                            let names = table_meta.clone().field_names;
+                                            let meta = table_meta.clone();
+                                            let names = sorted_search.clone();
                                             view! {
                                                 <div class="search_results" style=format!("--cols: {}", col_count)>
                                                     <div class="row">
-                                                        {{
-                                                            f2name_v(&sorted_search, &names)
-                                                                .into_iter()
-                                                                .map(|n| view! { <small>{n}</small> })
-                                                                .collect_view()
-                                                        }}
+                                                        {{ names.into_iter().map(|n| view! { <small>{n}</small> }).collect_view() }}
                                                     </div>
                                                     <For
-                                                        each=move || data.get().unwrap_or_default()
+                                                        each=move || d.clone()
                                                         key=|rec: &DataRecord| rec.id
                                                         children=move |rec: DataRecord| {
-                                                            let search_fields = sorted_search.clone();
+                                                            let search_fields_info = meta.search_config.clone();
 
                                                             view! {
                                                                 <button
                                                                     class="row"
                                                                     on:click=move |_| selected.update(|c| c.id = Some(rec.id))
                                                                 >
-                                                                    {search_fields
-                                                                        .into_iter()
-                                                                        .filter_map(|k| { rec.fields.get(&k).map(|v| (k, v.clone())) })
-                                                                        .map(|(_k, v)| {
-                                                                            view! { <div>{v}</div> }
-                                                                        })
-                                                                        .collect_view()}
+                                                                    {search_fields_info
+                                                                        .iter()
+                                                                        .filter_map(|k| rec.fields.get(k))
+                                                                        .map(|v| view! { <div>{v.clone()}</div> })
+                                                                        .collect::<Vec<_>>()}
                                                                 </button>
                                                             }
                                                         }
@@ -282,13 +305,16 @@ pub fn Ref_main() -> impl IntoView {
 
                                 <div class="grid1a stat_table gr info a-start">
                                     {
-                                        let names = table_meta.clone().field_names;
                                         let oper = table_meta.clone().operations;
                                         let search_vec = table_meta.clone().search_config;
+
                                         view! {
+                                            <b>{t!(i18n, ref_main.total_records)}</b>
+                                            <span>{table_meta.count_data}</span>
+
                                             <b>{t!(i18n, ref_main.columns)}</b>
                                             <div class="ref_fields">
-                                                {match names.is_empty() {
+                                                {match table_meta.names.is_empty() {
                                                     true => view! { <span>"-"</span> }.into_any(),
                                                     false => {
                                                         let header = // Сначала создаем заголовок
@@ -299,36 +325,23 @@ pub fn Ref_main() -> impl IntoView {
                                                                 <span>{t!(i18n, ref_main.column_in_search)}</span>
                                                             </small>
                                                         };
-                                                        let names = table_meta.field_names.clone();
-                                                        let mut sorted_keys: Vec<String> = names.keys().cloned().collect();
-                                                        sorted_keys
-                                                            .sort_by(|a, b| {
-                                                                let num_a = a[2..].parse::<i32>().unwrap_or(0);
-                                                                let num_b = b[2..].parse::<i32>().unwrap_or(0);
-                                                                num_a.cmp(&num_b)
-                                                            });
-                                                        let list = sorted_keys
-                                                            .into_iter()
-                                                            .filter_map(|key| {
-                                                                let name = names.get(&key)?;
-                                                                let ft = table_meta.field_types.get(&key)?;
-                                                                Some((name.clone(), ft.clone(), key))
-                                                            })
-                                                            .map(|(name, ft, k)| {
+                                                        let list = table_meta
+                                                            .names
+                                                            .iter()
+                                                            .map(|field_key| {
+                                                                let field_def = table_meta.fields.get(field_key).unwrap();
+
                                                                 view! {
                                                                     <li>
-                                                                        <span>{name}</span>
-                                                                        <span>{ft}</span>
+                                                                        <span>{field_def.name.clone()}</span>
+                                                                        <span>{field_def.ftype.clone()}</span>
                                                                         <label>
                                                                             <input
                                                                                 type="checkbox"
-                                                                                prop:checked={
-                                                                                    let k = k.clone();
-                                                                                    search_vec.contains(&k)
-                                                                                }
+                                                                                prop:checked=search_vec.contains(field_key)
                                                                                 on:click={
-                                                                                    let k = k.clone();
-                                                                                    move |_| { save_search_config(k.clone()) }
+                                                                                    let k = field_key.clone();
+                                                                                    move |_| save_search_config(k.clone())
                                                                                 }
                                                                             />
                                                                         </label>
@@ -365,9 +378,6 @@ pub fn Ref_main() -> impl IntoView {
                                                         .into_any()
                                                 }}
                                             </div>
-
-                                            <b>{t!(i18n, ref_main.total_records)}</b>
-                                            <span>{table_meta.count_data}</span>
                                         }
                                     }
                                 </div>
@@ -392,6 +402,7 @@ pub fn Ref_el() -> impl IntoView {
     let now = use_context::<RwSignal<String>>().expect("now not found");
     let edit_el = RwSignal::new(false);
     let data = RwSignal::new(None::<DataRecord>);
+    let ref_state = RwSignal::new(RefState { meta: 1, data: 0 });
 
     let in_qa = move || {
         let (refer, element) = (selected.get().refer.clone().unwrap(), selected.get().id.unwrap());
@@ -410,11 +421,17 @@ pub fn Ref_el() -> impl IntoView {
             {
                 Ok(js) => {
                     let s = from_value::<DataRecord>(js).unwrap();
-                    data.set(Some(s))
+                    data.set(Some(s));
+                    ref_state.update(|st| {
+                        st.data = 1;
+                    });
                 }
                 Err(js) => {
                     let error_msg = from_value::<String>(js).unwrap_or_else(|_| "Unknown error".into());
                     now.set(format!("{} {}", "Error:", &error_msg));
+                    ref_state.update(|st| {
+                        st.data = -1;
+                    });
                 }
             };
         })
@@ -471,15 +488,15 @@ pub fn Ref_el() -> impl IntoView {
     Effect::new(move |_| {
         //log::info!("meta: {:#?}", meta.get());
         //log::info!("selected {:?}", selected.get());
-        log::info!("ref_el data: {:#?}", data.get());
+        //log::info!("ref_el data: {:#?}", data.get());
         //log::info!("sett: {:#?}", settings.get());
     });
     provide_context(edit_el);
     view! {
         <Show when=move || { !edit_el.get() } fallback=move || view! { <Ref_el_edit /> }>
             {move || {
-                match data.get().is_none() {
-                    true => {
+                match ref_state.get().data {
+                    -1 => {
                         view! {
                             <div class="gr">
                                 <h5 class="error">"🚫"</h5>
@@ -502,7 +519,8 @@ pub fn Ref_el() -> impl IntoView {
                         }
                             .into_any()
                     }
-                    false => {
+                    0 => view! { <span class="gr" aria-busy="true"></span> }.into_any(),
+                    1 => {
                         let title = get_item_title(&data.get_untracked().unwrap(), &meta.get_untracked().unwrap());
                         view! {
                             <div class="ref">
@@ -542,10 +560,11 @@ pub fn Ref_el() -> impl IntoView {
                                                 .into_iter()
                                                 .map(|(k, v)| {
                                                     let display_name = m
-                                                        .field_names
-                                                        .get(k)
-                                                        .map(|n| n.to_string())
-                                                        .unwrap_or_else(|| k.to_string());
+                                                        .fields
+                                                        .iter()
+                                                        .find(|(field_key, _)| *field_key == k)
+                                                        .map(|(_, field_def)| field_def.name.clone())
+                                                        .unwrap_or_else(|| k.clone());
                                                     view! {
                                                         <span>{display_name}</span>
                                                         <span>{v.to_string()}</span>
@@ -567,19 +586,14 @@ pub fn Ref_el() -> impl IntoView {
                                     }
                                 >
                                     {move || {
-                                        match transform_fields(
-                                            &meta.get().unwrap().field_names,
-                                            &meta.get().unwrap().field_types,
-                                            &data.get().unwrap().fields,
-                                        ) {
+                                        match transform_fields(&meta.get().unwrap().fields, &data.get().unwrap().fields) {
                                             Err(e) => view! { <p>{e}</p> }.into_any(),
                                             Ok(vars) => {
-                                                log::debug!("tf: {:?}",&vars);
                                                 meta.get()
                                                     .unwrap()
                                                     .operations
-                                                    .into_iter()
-                                                    .map(|op| { view! { <RunOper oper=op vars=vars.clone() /> }.into_any() })
+                                                    .iter()
+                                                    .map(|op| { view! { <RunOper oper=op.clone() vars=vars.clone() /> }.into_any() })
                                                     .collect_view()
                                                     .into_any()
                                             }
@@ -590,8 +604,44 @@ pub fn Ref_el() -> impl IntoView {
                         }
                             .into_any()
                     }
+                    _ => view! { <span class="gr">{t!(i18n, all.err_unknown)}</span> }.into_any(),
                 }
             }}
         </Show>
     }
 }
+
+/*
+Было:
+```rust
+let names = table_meta.clone().field_names;
+```
+
+Стало (если `fields: HashMap<String, FieldDef>`):
+
+```rust
+// Получить все имена полей:
+let names: Vec<String> = table_meta.fields.iter()
+    .map(|(_, field_def)| field_def.name.clone())
+    .collect();
+
+// Или если нужно с ключами (f_0, f_1...):
+let fields_with_keys = table_meta.fields.clone();
+
+// Для конкретного поля по ключу:
+if let Some((_, field_def)) = table_meta.fields.iter().find(|(k, _)| k == &field_key) {
+    let display_name = &field_def.name;
+}
+```
+
+**Для быстрого доступа по ключу** (как раньше с HashMap), создайте локальный хешмап:
+
+```rust
+let field_names_map: HashMap<String, String> = table_meta.fields.iter()
+    .map(|(k, v)| (k.clone(), v.name.clone()))
+    .collect();
+
+let name = field_names_map.get("f_0");
+```
+
+*/

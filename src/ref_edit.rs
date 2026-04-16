@@ -11,7 +11,7 @@ enum Tab {
     Oper,
 }
 
-#[component]
+/*#[component]
 pub fn Ref_el_edit() -> impl IntoView {
     let i18n = use_i18n();
     let stat = use_context::<RwSignal<StatisticsState>>().expect("stat not found");
@@ -166,6 +166,140 @@ pub fn Ref_el_edit() -> impl IntoView {
             </div>
         </Show>
     }
+}*/
+
+#[component]
+pub fn Ref_el_edit() -> impl IntoView {
+    let i18n = use_i18n();
+    let stat = use_context::<RwSignal<StatisticsState>>().expect("stat not found");
+    let meta = use_context::<RwSignal<Option<TableMeta>>>().expect("meta not found");
+    let selected = use_context::<RwSignal<Selected>>().expect("selected not found");
+    let data = RwSignal::new(None::<DataRecord>);
+    let data_new = RwSignal::new(None::<DataRecord>);
+    let now = use_context::<RwSignal<String>>().expect("now not found");
+    let edit_el = use_context::<RwSignal<bool>>().expect("edit_el not found");
+
+    // get el
+    spawn_local(async move {
+        let pb = full_pb(stat.get_untracked().db_path, selected.get_untracked().refer.unwrap());
+        match invoke("get_el", &tauri_args!("pb": pb, "id": Some(selected.get_untracked().id))).await {
+            Ok(js) => {
+                let s = from_value::<DataRecord>(js).unwrap();
+                data.set(Some(s.clone()));
+                data_new.set(Some(s));
+            }
+            Err(js) => {
+                let error_msg = from_value::<String>(js).unwrap_or_else(|_| "Unknown error".into());
+                now.set(format!("{} {}", "Error:", &error_msg));
+            }
+        };
+    });
+
+    let save = StoredValue::new_local(move |name: &str| {
+        let action = name.to_string();
+        let pb = full_pb(stat.get_untracked().db_path, selected.get_untracked().refer.unwrap());
+        spawn_local(async move {
+            match invoke("apply_el_action", &tauri_args!(
+                "pb": pb,
+                "action": action.clone(),
+                "dr": data_new.get_untracked().unwrap(),
+            )).await {
+                Ok(_s) => {
+                    now.set(format!("{}: {}", &action, tu_string!(i18n, edit.saved)));
+                    match action.as_str() {
+                        "delete" => selected.update(|c| c.id = None),
+                        "update" => edit_el.set(false),
+                        &_ => todo!(),
+                    };
+                }
+                Err(js) => {
+                    let error_msg = from_value::<String>(js).unwrap_or_else(|_| "Error".into());
+                    now.set(format!("{}: {:?}", &action, error_msg));
+                }
+            }
+        });
+    });
+
+    let is_valid = Memo::new(move |_| {
+        data_new.with(|maybe_record| {
+            let record = match maybe_record {
+                Some(r) => r,
+                None => return false,
+            };
+            let meta_fields = &meta.get_untracked().unwrap().fields;
+            
+            meta_fields.iter().all(|(field_key, field_def)| {
+                if field_def.ftype == "number" {
+                    let val = record.fields.get(field_key).cloned().unwrap_or_default();
+                    val.is_empty() || val.parse::<f64>().is_ok()
+                } else {
+                    true
+                }
+            })
+        })
+    });
+
+    let is_changed = Memo::new(move |_| {
+        data_new.get().unwrap().fields != data.get_untracked().unwrap().fields
+    });
+
+    let can_save = move || is_valid.get() && is_changed.get();
+
+    view! {
+        <Show when=move || data_new.read().is_some() fallback=|| view! { <progress /> }>
+            <div class="header-row gr">
+                <button on:click=move |_| edit_el.set(false)>"←"</button>
+                <h5 class="m0 title-group">
+                    "🔧 ID " {selected.get_untracked().id.unwrap()} " | " {format!("{:?}", selected.get_untracked().refer.unwrap())}
+                </h5>
+            </div>
+            <div class="grid1a gr a-start">
+                {move || {
+                    let meta_fields = meta.get().unwrap().fields.clone();
+                    let data_new_val = data_new.get().unwrap();
+                    
+                    meta_fields.iter()
+                        .map(|(field_key, field_def)| {
+                            let field_key_clone = field_key.clone();
+                            let field_key_clone2 = field_key.clone();
+                            let current_val = data_new_val.fields.get(field_key).cloned().unwrap_or_default();
+                            
+                            view! {
+                                <label class="field-col">
+                                    {field_def.name.clone()}
+                                    <small>{field_def.ftype.clone()}</small>
+                                </label>
+                                <input
+                                    type=field_def.ftype.clone()
+                                    class:modified=move || {
+                                        data_new.get().unwrap().fields.get(&field_key_clone).cloned().unwrap_or_default() 
+                                            != data.get_untracked().unwrap().fields.get(&field_key_clone).cloned().unwrap_or_default()
+                                    }
+                                    prop:value=current_val
+                                    on:input=move |ev| {
+                                        let val = event_target_value(&ev);
+                                        data_new.update(|d| {
+                                            if let Some(record) = d.as_mut() {
+                                                record.fields.insert(field_key_clone2.clone(), val);
+                                            }
+                                        });
+                                    }
+                                />
+                            }
+                        })
+                        .collect_view()
+                }}
+            </div>
+            <div class="gr bfc flex_wrap3 m04">
+                <button on:click=move |_| save.with_value(|a| a("delete"))>
+                    <span class="error">"🗑️ "{t!(i18n, all.del)}</span>
+                </button>
+                <button disabled=move || !can_save() on:click=move |_| save.with_value(|a| a("update"))>
+                    "💾 "{t!(i18n, edit.save)}
+                </button>
+            </div>
+        </Show>
+    }
 }
 
 #[component]
@@ -262,15 +396,17 @@ pub fn FieldsCrud() -> impl IntoView {
     let stat = use_context::<RwSignal<StatisticsState>>().expect("stat not found");
 
     let (info_list, set_info_list) = signal(Vec::<(String, String)>::new());
+    let (fields_list, set_fields_list) = signal(Vec::<(String, String)>::new());
 
     // Инициализация через эффект
     Effect::new(move |_| {
         if let Some(meta) = meta.get() {
             set_info_list.set(meta.info.clone());
+            //set_fields_list.set(meta.fields.clone());
         }
     });
 
-    let save = move |_| {
+    let save_info = move |_| {
         let pb = full_pb(stat.get_untracked().db_path, selected.get_untracked().refer.unwrap());
         let new_info = info_list.get_untracked();
 
@@ -278,6 +414,15 @@ pub fn FieldsCrud() -> impl IntoView {
             let _ = invoke("update_meta_field", &tauri_args! { "pb": pb, "key": "info", "value": new_info }).await;
         });
     };
+
+    /*let save_fields = move |_| {
+        let pb = full_pb(stat.get_untracked().db_path, selected.get_untracked().refer.unwrap());
+        let new_fields = fields_list.get_untracked();
+
+        spawn_local(async move {
+            let _ = invoke("update_meta_field", &tauri_args! { "pb": pb, "key": "fields", "value": new_fields }).await;
+        });
+    };*/
 
     view! {
         <div class="gr center">
@@ -291,8 +436,10 @@ pub fn FieldsCrud() -> impl IntoView {
                     }
                 }).collect::<Vec<_>>()}
             </div>
-            <button class="m04" on:click=save>{t!(i18n, edit.save)}</button>
+            <button class="m04" on:click=save_info>{t!(i18n, edit.save)}</button>
         </div>
+
+
     }
 }
 

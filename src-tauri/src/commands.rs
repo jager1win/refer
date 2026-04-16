@@ -21,14 +21,13 @@ pub struct CreateForm {
 }
 
 #[tauri::command]
-pub async fn get_app_info() -> Vec<String> {
-    let mut result = Vec::new();
-    result.push(format!("Version: {}", env!("CARGO_PKG_VERSION")));
-    result.push(format!("Author: {}", env!("CARGO_PKG_AUTHORS")));
-    result.push(format!("License: {}", env!("CARGO_PKG_LICENSE")));
-    result.push(format!("Githab: {}", env!("CARGO_PKG_REPOSITORY")));
-
-    result
+pub async fn get_app_info() -> Result<Vec<(String,String)>, String> {
+    let result = vec![
+    ("Version".to_string(), env!("CARGO_PKG_VERSION").to_string()),
+    ("License".to_string(), env!("CARGO_PKG_LICENSE").to_string()),
+    ("Githab".to_string(), env!("CARGO_PKG_REPOSITORY").to_string()),
+    ];
+    Ok(result)
 }
 
 #[tauri::command]
@@ -41,9 +40,8 @@ pub async fn get_settings(app: tauri::AppHandle) -> Result<SettingsStore, String
     }
 
     let content = fs::read_to_string(&settings_path).map_err(|e| e.to_string())?;
-    let settings: SettingsStore = serde_json::from_str(&content)
-        .map_err(|e| e.to_string())?;
-    
+    let settings: SettingsStore = serde_json::from_str(&content).map_err(|e| e.to_string())?;
+
     Ok(settings)
 }
 
@@ -74,7 +72,7 @@ pub async fn get_stat(stat_state: State<'_, Mutex<StatisticsState>>) -> Result<S
 pub async fn del_ref(app: tauri::AppHandle, val: PathBuf, state: State<'_, Mutex<DbState>>) -> Result<String, String> {
     let mut dbs = state.lock().map_err(|e| e.to_string())?;
     *dbs = DbState::default();
-    
+
     let document_dir = app.path().document_dir().map_err(|e| e.to_string())?;
     let reference_path = document_dir.join(APP_EXT).join(&val);
 
@@ -148,7 +146,9 @@ pub async fn create_empty(val: CreateForm, stat_state: State<'_, Mutex<Statistic
 }
 
 #[tauri::command]
-pub async fn create_example(val: CreateForm, stat_state: State<'_, Mutex<StatisticsState>>, db_state: State<'_, Mutex<DbState>>) -> Result<(), String> {
+pub async fn create_example(
+    val: CreateForm, stat_state: State<'_, Mutex<StatisticsState>>, db_state: State<'_, Mutex<DbState>>,
+) -> Result<(), String> {
     // kill DbState - нужно если пересоздается справочник
     let mut dbs = db_state.lock().map_err(|e| e.to_string())?;
     *dbs = DbState::default();
@@ -335,9 +335,7 @@ pub async fn search_items(
         };
 
         match sql::search_items(conn, meta, &query).map_err(|e| e.to_string()) {
-            Ok(h) => {
-                Ok(h)
-            },
+            Ok(h) => Ok(h),
             Err(e) => {
                 warn!("{}", e);
                 Err(e)
@@ -359,13 +357,15 @@ pub async fn get_el(pb: PathBuf, id: u32, state: State<'_, Mutex<DbState>>) -> R
 }
 
 #[tauri::command]
-pub async fn apply_el_action(pb: PathBuf, action: &str, dr: DataRecord, state: State<'_, Mutex<DbState>>) -> Result<(), String>{
+pub async fn apply_el_action(
+    pb: PathBuf, action: &str, dr: DataRecord, state: State<'_, Mutex<DbState>>,
+) -> Result<(), String> {
     let mut db = state.lock().map_err(|e| e.to_string())?;
     db.with_conn(pb, |conn, _meta| match sql::apply_el_action(conn, action, dr) {
         Ok(el) => {
             info!("Ok {} element id {}", action, el);
             Ok(())
-        },
+        }
         Err(e) => {
             error!("Failed to {} element: {}", action, e);
             Err(e.to_string())
@@ -394,41 +394,23 @@ pub async fn update_meta_field(
 #[tauri::command]
 pub async fn add_field(
     pb: PathBuf, display_name: String, field_type: String, state: State<'_, Mutex<DbState>>,
-) -> Result<String, String> {
-    // 1. Получаем доступ к состоянию
+) -> Result<(), String> {
     let mut db = state.lock().map_err(|e| e.to_string())?;
-
-    // 2. Вычисляем next_index из текущего meta
-    let next_index = db.meta.as_ref().map(|m| m.field_names.len() + 1).unwrap_or(1);
-
-    // 3. Получаем соединение (но не через with_conn, чтобы не заимствовать db)
-    let conn = match db.conn.as_ref() {
-        Some(c) => c,
-        None => return Err("No active connection".to_string()),
-    };
-
-    // Проверяем путь
-    if db.current_path.as_ref() != Some(&pb) {
-        return Err("Wrong database".to_string());
-    }
-
-    // 4. Добавляем поле в БД
-    let field_name = sql::add_field(conn, next_index, Some(&display_name), &field_type).map_err(|e| e.to_string())?;
-
-    // 5. Обновляем meta в памяти (прямая модификация state)
-    if let Some(meta) = db.meta.as_mut() {
-        meta.field_names.insert(field_name.clone(), display_name);
-        meta.field_types.insert(
-            field_name.clone(),
-            if field_type == "number" {
-                "number".to_string()
-            } else {
-                "text".to_string()
-            },
-        );
-    }
-
-    Ok(field_name)
+    
+    db.with_conn(pb, |conn, meta| {
+        let next_index = meta.as_ref().map(|m| m.fields.len() + 1).unwrap_or(1);
+        
+        match sql::add_field(conn, next_index, Some(&display_name), &field_type) {
+            Ok(field_name) => {
+                info!("Field added: {}", field_name);
+                Ok(())
+            }
+            Err(e) => {
+                error!("Failed to add field: {}", e);
+                Err(e.to_string())
+            }
+        }
+    })
 }
 
 fn try_remove(path: &std::path::Path) -> io::Result<()> {
