@@ -61,10 +61,10 @@ code#logs{padding:0.2rem;overflow: scroll;width: 100%;white-space: pre-line;colo
 .ref_fields{padding-right:1rem;}
 .ref_fields > *{display: grid;grid-template-columns: 3fr 2fr 1fr;gap: 1rem 1rem;}
 small{margin:2px;color: oklch(from currentColor l c h / 0.8);}
-.search_results {display: inline-grid;width: 100%;grid-template-columns: repeat(var(--cols), minmax(max-content, 1fr));overflow-x: auto;}
+.search_results {display: inline-grid;width: 100%;grid-template-columns: repeat(var(--cols), minmax(max-content, 1fr));overflow-x: auto;-webkit-overflow-scrolling: touch;scrollbar-width: thin;}
 .search_results .row {grid-column: 1 / span var(--cols);display: grid;grid-template-columns: subgrid;padding:0.3rem;width: 100%;min-width: max-content;margin-bottom:0.4rem;}
 .search_results .row:first-child {text-align: center;padding: 0;margin:0;}
-.search_results .row > div {white-space: nowrap;}
+.search_results .row div {white-space: nowrap;padding: 0 8px 0 0;}
 .header-row {display: flex;align-items: center;justify-content: space-between;gap:1rem;}
 .title-group {text-align: center;min-width: 0;}
 .info-show {display:flex; gap: 1rem;line-height: normal;}

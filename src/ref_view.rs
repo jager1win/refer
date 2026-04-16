@@ -120,18 +120,27 @@ pub fn Ref_main() -> impl IntoView {
         });
     };
 
+    // first run
     Effect::new(move |_| {
         selected.track();
-        let pbclon = full_pb(stat.get_untracked().db_path, selected.get_untracked().refer.unwrap());
-        search_items(pbclon, "".to_string());
-    });
 
-    Effect::new(move |_| {
-        //log::info!("ref: {:?}", ref_state.get());
-        //log::info!("meta: {:#?}", meta.get());
-        //log::info!("selected: {:#?}", selected.get());
-        //log::info!("stat: {:#?}", stat.get());
-        //log::info!("ref_main data: {:#?}", data.get());
+        if meta.get().is_none() {
+            return;
+        }
+
+        let meta_data = meta.get().unwrap();
+        if meta_data.search_config.is_empty() || meta_data.count_data == 0 {
+            data.set(None);
+            ref_state.update(|st| st.data = if meta_data.count_data == 0 { -1 } else { 0 });
+            return;
+        }
+
+        let pbclon = full_pb(stat.get_untracked().db_path, selected.get_untracked().refer.unwrap());
+        let current_query = query_string.get_untracked();
+
+        // Если query_string пустой — первый вход, показываем первые 10
+        // Если не пустой — вернулись из элемента, восстанавливаем поиск
+        search_items(pbclon, current_query);
     });
 
     // debounce for search. run if upd query_string || meta
@@ -160,6 +169,14 @@ pub fn Ref_main() -> impl IntoView {
         );
     });
 
+    Effect::new(move |_| {
+        //log::info!("ref: {:?}", ref_state.get());
+        //log::info!("meta: {:#?}", meta.get());
+        //log::info!("selected: {:#?}", selected.get());
+        //log::info!("stat: {:#?}", stat.get());
+        //log::info!("ref_main data: {:#?}", data.get());
+    });
+
     view! {
         <Show when=move || { selected.get().id.is_none() } fallback=|| view! { <Ref_el /> }>
             <div class="ref">
@@ -186,7 +203,6 @@ pub fn Ref_main() -> impl IntoView {
                                 .filter_map(|name| table_meta.fields.get(name))
                                 .map(|field_def| field_def.name.clone())
                                 .collect();
-                            log::info!("sorted_search:{:?}",&sorted_search);
                             view! {
                                 <div class="header-row gr">
                                     <button on:click=move |_| selected.update(|c| c.refer = None)>"←"</button>
@@ -228,7 +244,7 @@ pub fn Ref_main() -> impl IntoView {
                                                 (_, true) => tu_string!(i18n, ref_main.found),
                                                 (_, false) => tu_string!(i18n, ref_main.nothing_found),
                                             };
-                                            log::info!("query_len:{},has_data:{}",query_len, has_data);
+                                            // log::info!("query_len:{},has_data:{}",query_len, has_data);
                                             view! {
                                                 <div class:hidden=move || {
                                                     (tm_clon.count_data < 11) || (tm_clon.search_config.is_empty())
@@ -265,7 +281,7 @@ pub fn Ref_main() -> impl IntoView {
                                     </div>
 
                                     // search result
-                                    {match  data.get()/*sorted_search.is_empty()*/ {
+                                    {match data.get() {
                                         None => view! { <div class="search_results"></div> }.into_any(),
                                         Some(d) => {
                                             let col_count = sorted_search.clone().len();
