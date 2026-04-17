@@ -2,6 +2,7 @@ use crate::{app::*, functions::*, i18n::*, tauri_args};
 use leptos::prelude::*;
 use leptos::task::spawn_local;
 use serde_wasm_bindgen::from_value;
+use std::collections::HashMap;
 use std::path::PathBuf;
 
 #[derive(Clone, Copy, PartialEq)]
@@ -182,7 +183,12 @@ pub fn Ref_el_edit() -> impl IntoView {
     // get el
     spawn_local(async move {
         let pb = full_pb(stat.get_untracked().db_path, selected.get_untracked().refer.unwrap());
-        match invoke("get_el", &tauri_args!("pb": pb, "id": Some(selected.get_untracked().id))).await {
+        match invoke(
+            "get_el",
+            &tauri_args!("pb": pb, "id": Some(selected.get_untracked().id)),
+        )
+        .await
+        {
             Ok(js) => {
                 let s = from_value::<DataRecord>(js).unwrap();
                 data.set(Some(s.clone()));
@@ -199,11 +205,16 @@ pub fn Ref_el_edit() -> impl IntoView {
         let action = name.to_string();
         let pb = full_pb(stat.get_untracked().db_path, selected.get_untracked().refer.unwrap());
         spawn_local(async move {
-            match invoke("apply_el_action", &tauri_args!(
-                "pb": pb,
-                "action": action.clone(),
-                "dr": data_new.get_untracked().unwrap(),
-            )).await {
+            match invoke(
+                "apply_el_action",
+                &tauri_args!(
+                    "pb": pb,
+                    "action": action.clone(),
+                    "dr": data_new.get_untracked().unwrap(),
+                ),
+            )
+            .await
+            {
                 Ok(_s) => {
                     now.set(format!("{}: {}", &action, tu_string!(i18n, edit.saved)));
                     match action.as_str() {
@@ -227,7 +238,7 @@ pub fn Ref_el_edit() -> impl IntoView {
                 None => return false,
             };
             let meta_fields = &meta.get_untracked().unwrap().fields;
-            
+
             meta_fields.iter().all(|(field_key, field_def)| {
                 if field_def.ftype == "number" {
                     let val = record.fields.get(field_key).cloned().unwrap_or_default();
@@ -239,9 +250,7 @@ pub fn Ref_el_edit() -> impl IntoView {
         })
     });
 
-    let is_changed = Memo::new(move |_| {
-        data_new.get().unwrap().fields != data.get_untracked().unwrap().fields
-    });
+    let is_changed = Memo::new(move |_| data_new.get().unwrap().fields != data.get_untracked().unwrap().fields);
 
     let can_save = move || is_valid.get() && is_changed.get();
 
@@ -257,32 +266,30 @@ pub fn Ref_el_edit() -> impl IntoView {
                 {move || {
                     let meta_fields = meta.get().unwrap().fields.clone();
                     let data_new_val = data_new.get().unwrap();
-                    
-                    meta_fields.iter()
+                    meta_fields
+                        .iter()
                         .map(|(field_key, field_def)| {
                             let field_key_clone = field_key.clone();
                             let field_key_clone2 = field_key.clone();
                             let current_val = data_new_val.fields.get(field_key).cloned().unwrap_or_default();
-                            
+
                             view! {
-                                <label class="field-col">
-                                    {field_def.name.clone()}
-                                    <small>{field_def.ftype.clone()}</small>
-                                </label>
+                                <label class="field-col">{field_def.name.clone()} <small>{field_def.ftype.clone()}</small></label>
                                 <input
                                     type=field_def.ftype.clone()
                                     class:modified=move || {
-                                        data_new.get().unwrap().fields.get(&field_key_clone).cloned().unwrap_or_default() 
+                                        data_new.get().unwrap().fields.get(&field_key_clone).cloned().unwrap_or_default()
                                             != data.get_untracked().unwrap().fields.get(&field_key_clone).cloned().unwrap_or_default()
                                     }
                                     prop:value=current_val
                                     on:input=move |ev| {
                                         let val = event_target_value(&ev);
-                                        data_new.update(|d| {
-                                            if let Some(record) = d.as_mut() {
-                                                record.fields.insert(field_key_clone2.clone(), val);
-                                            }
-                                        });
+                                        data_new
+                                            .update(|d| {
+                                                if let Some(record) = d.as_mut() {
+                                                    record.fields.insert(field_key_clone2.clone(), val);
+                                                }
+                                            });
                                     }
                                 />
                             }
@@ -295,7 +302,8 @@ pub fn Ref_el_edit() -> impl IntoView {
                     <span class="error">"🗑️ "{t!(i18n, all.del)}</span>
                 </button>
                 <button disabled=move || !can_save() on:click=move |_| save.with_value(|a| a("update"))>
-                    "💾 "{t!(i18n, edit.save)}
+                    "💾 "
+                    {t!(i18n, edit.save)}
                 </button>
             </div>
         </Show>
@@ -367,20 +375,32 @@ pub fn Ref_edit() -> impl IntoView {
                     {t!(i18n, ref_main.operations)}
                 </button>
                 <button class:active=move || active_tab.get() == Some(Tab::Element) on:click=move |_| active_tab.set(Some(Tab::Element))>
-                    "✚"{t!(i18n, all.element)}
+                    "✚"
+                    {t!(i18n, all.element)}
                 </button>
             </nav>
 
-            <div on:click=move |_| active_tab.set(None) class="title-group sp_close">"🔧 " <span>{move || remove_refer_ext(&selected.get().refer.unwrap())}</span></div>
+            <div on:click=move |_| active_tab.set(None) class="title-group sp_close">
+                "🔧 "
+                <span>{move || remove_refer_ext(&selected.get().refer.unwrap())}</span>
+            </div>
         </div>
 
         {move || match active_tab.get() {
-            None => view! { 
-                <div class="gr center">
-                    <p class="warn pre-line">{t!(i18n, edit.warning)}</p>
-                    <button role="button" class="error" on:click=move |_| del_ref(selected.get_untracked().refer.unwrap())>"🗑️ "{t!(i18n, all.del)}" "{t!(i18n,all.reference)}</button>
-                </div>
-             }.into_any(),
+            None => {
+                view! {
+                    <div class="gr center">
+                        <p class="warn pre-line">{t!(i18n, edit.warning)}</p>
+                        <button role="button" class="error" on:click=move |_| del_ref(selected.get_untracked().refer.unwrap())>
+                            "🗑️ "
+                            {t!(i18n, all.del)}
+                            " "
+                            {t!(i18n,all.reference)}
+                        </button>
+                    </div>
+                }
+                    .into_any()
+            }
             Some(Tab::Fields) => view! { <FieldsCrud /> }.into_any(),
             Some(Tab::Oper) => view! { <OperCrud /> }.into_any(),
             Some(Tab::Element) => view! { <ElementCrud /> }.into_any(),
@@ -395,51 +415,115 @@ pub fn FieldsCrud() -> impl IntoView {
     let selected = use_context::<RwSignal<Selected>>().expect("selected not found");
     let stat = use_context::<RwSignal<StatisticsState>>().expect("stat not found");
 
-    let (info_list, set_info_list) = signal(Vec::<(String, String)>::new());
-    let (fields_list, set_fields_list) = signal(Vec::<(String, String)>::new());
-
-    // Инициализация через эффект
-    Effect::new(move |_| {
-        if let Some(meta) = meta.get() {
-            set_info_list.set(meta.info.clone());
-            //set_fields_list.set(meta.fields.clone());
-        }
-    });
+    let info_list = RwSignal::new(meta.get_untracked().map(|m| m.info.clone()).unwrap_or_default());
+    let fields_list = RwSignal::new(meta.get_untracked().map(|m| m.fields.clone()).unwrap_or_default());
 
     let save_info = move |_| {
         let pb = full_pb(stat.get_untracked().db_path, selected.get_untracked().refer.unwrap());
         let new_info = info_list.get_untracked();
 
         spawn_local(async move {
-            let _ = invoke("update_meta_field", &tauri_args! { "pb": pb, "key": "info", "value": new_info }).await;
+            let _ = invoke(
+                "update_meta_field",
+                &tauri_args! { "pb": pb, "key": "info", "value": new_info },
+            )
+            .await;
         });
     };
 
-    /*let save_fields = move |_| {
+    let save_fields = move |_| {
         let pb = full_pb(stat.get_untracked().db_path, selected.get_untracked().refer.unwrap());
         let new_fields = fields_list.get_untracked();
 
         spawn_local(async move {
-            let _ = invoke("update_meta_field", &tauri_args! { "pb": pb, "key": "fields", "value": new_fields }).await;
+            let _ = invoke(
+                "update_meta_field",
+                &tauri_args! { "pb": pb, "key": "fields", "value": new_fields },
+            )
+            .await;
         });
-    };*/
-
+    };
+    Effect::new(move |_| {
+        log::info!("fields_list: {:#?}", fields_list.get());
+        //log::info!("selected {:?}", selected.get());
+        //log::info!("ref_el data: {:#?}", data.get());
+        //log::info!("sett: {:#?}", settings.get());
+    });
     view! {
+        // edit info(name & desc)
         <div class="gr center">
             <div class="grid1a">
-                {move || info_list.get().iter().enumerate().map(|(idx, (label, value))| {
-                    view! {
-                        <label>{label.clone()}</label>
-                        <input type="text" prop:value={value.clone()} on:input=move |ev| {
-                            set_info_list.update(|list| list[idx].1 = event_target_value(&ev));
-                        } />
-                    }
-                }).collect::<Vec<_>>()}
+                {move || {
+                    info_list
+                        .get()
+                        .iter()
+                        .enumerate()
+                        .map(|(idx, (label, value))| {
+                            view! {
+                                <label>{label.clone()}</label>
+                                <input
+                                    type="text"
+                                    prop:value=value.clone()
+                                    on:input=move |ev| {
+                                        info_list.update(|list| list[idx].1 = event_target_value(&ev));
+                                    }
+                                />
+                            }
+                        })
+                        .collect_view()
+                }}
             </div>
-            <button class="m04" on:click=save_info>{t!(i18n, edit.save)}</button>
+            <button class="m04" on:click=save_info>
+                {t!(i18n, edit.save)}
+            </button>
         </div>
-
-
+        // edit exist fields
+        <div class="gr center">
+            <div class="grid2">
+                {move || {
+                    meta.get()
+                        .unwrap()
+                        .names
+                        .into_iter()
+                        .map(|field_key| {
+                            let field_def = &fields_list.get()[&field_key];
+                            let fkey = field_key.clone();
+                            let fkey0 = field_key.clone();
+                            view! {
+                                <input
+                                    type="text"
+                                    prop:value=field_def.name.clone()
+                                    on:input=move |ev| {
+                                        fields_list
+                                            .update(|list| {
+                                                if let Some(field_def) = list.get_mut(&field_key) {
+                                                    field_def.name = event_target_value(&ev);
+                                                }
+                                            });
+                                    }
+                                />
+                                <button on:click=move |_| {
+                                    fields_list.update(|list| {
+                                        if let Some(field_def) = list.get_mut(&fkey.clone()) {
+                                            field_def.ftype = match field_def.ftype.as_str() {
+                                                "text" => "number".to_string(),
+                                                "number" => "text".to_string(),
+                                                _ => "text".to_string(),
+                                            };
+                                        }
+                                    });
+                                }>
+                                    {move || if fields_list.get()[&fkey0].ftype == "text" { "text 📝" } else { "number 🔢" }}
+                                </button>
+                            }
+                        })
+                        .collect_view()
+                }}
+            </div>
+            <button class="m04" on:click=save_fields>
+                {t!(i18n, edit.save)}
+            </button>
+        </div>
     }
 }
 
