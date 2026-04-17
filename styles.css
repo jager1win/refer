@@ -34,7 +34,7 @@ button:not(.navb){padding:0.4rem;max-height: 3rem;};
 .err_send{display: inline-block; width: 100%; min-height:1rem;color:#AD6400;text-align: center;}
 .required {color: red; margin-left: 0.25rem;}
 .w1{width: 1rem!important;}
-input[type=text],input[type=number]{height: 2rem;margin-bottom:0;}
+input[type=text],input[type=number]{height: 2.4rem;margin-bottom:0;}
 .ml1, [data-tooltip]{margin-left: 1rem;}
 input.csv_deli{width: 2rem!important;padding: 0.4rem!important;}
 .gr{border:1px solid oklch(55.1% 0.027 264.364 / 0.3);border-radius: 0.4rem;padding:0.6rem;margin:0.6rem}

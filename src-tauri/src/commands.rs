@@ -21,11 +21,11 @@ pub struct CreateForm {
 }
 
 #[tauri::command]
-pub async fn get_app_info() -> Result<Vec<(String,String)>, String> {
+pub async fn get_app_info() -> Result<Vec<(String, String)>, String> {
     let result = vec![
-    ("Version".to_string(), env!("CARGO_PKG_VERSION").to_string()),
-    ("License".to_string(), env!("CARGO_PKG_LICENSE").to_string()),
-    ("Githab".to_string(), env!("CARGO_PKG_REPOSITORY").to_string()),
+        ("Version".to_string(), env!("CARGO_PKG_VERSION").to_string()),
+        ("License".to_string(), env!("CARGO_PKG_LICENSE").to_string()),
+        ("Githab".to_string(), env!("CARGO_PKG_REPOSITORY").to_string()),
     ];
     Ok(result)
 }
@@ -337,8 +337,8 @@ pub async fn search_items(
         match sql::search_items(conn, meta, &query).map_err(|e| e.to_string()) {
             Ok(h) => Ok(h),
             Err(e) => {
-                warn!("{}", e);
-                Err(e)
+                error!("Error: {}", e);
+                Err(format!("Error: {}", e))
             }
         }
     })
@@ -396,10 +396,10 @@ pub async fn add_field(
     pb: PathBuf, display_name: String, field_type: String, state: State<'_, Mutex<DbState>>,
 ) -> Result<(), String> {
     let mut db = state.lock().map_err(|e| e.to_string())?;
-    
+
     db.with_conn(pb, |conn, meta| {
         let next_index = meta.as_ref().map(|m| m.fields.len() + 1).unwrap_or(1);
-        
+
         match sql::add_field(conn, next_index, Some(&display_name), &field_type) {
             Ok(field_name) => {
                 info!("Field added: {}", field_name);
@@ -407,6 +407,26 @@ pub async fn add_field(
             }
             Err(e) => {
                 error!("Failed to add field: {}", e);
+                Err(e.to_string())
+            }
+        }
+    })
+}
+
+#[tauri::command]
+pub async fn del_field(
+    pb: PathBuf, index: String, state: State<'_, Mutex<DbState>>,
+) -> Result<(), String> {
+    let mut db = state.lock().map_err(|e| e.to_string())?;
+
+    db.with_conn(pb, |conn, _meta| {
+        match  conn.execute(&format!("ALTER TABLE data DROP COLUMN \"{}\"", index), []) {
+            Ok(field_name) => {
+                info!("Field deleted: {}", field_name);
+                Ok(())
+            }
+            Err(e) => {
+                error!("Failed to delete field: {}", e);
                 Err(e.to_string())
             }
         }
