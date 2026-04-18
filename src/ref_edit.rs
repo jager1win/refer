@@ -12,163 +12,6 @@ enum Tab {
     Oper,
 }
 
-/*#[component]
-pub fn Ref_el_edit() -> impl IntoView {
-    let i18n = use_i18n();
-    let stat = use_context::<RwSignal<StatisticsState>>().expect("stat not found");
-    let meta = use_context::<RwSignal<Option<TableMeta>>>().expect("meta not found");
-    let selected = use_context::<RwSignal<Selected>>().expect("selected not found");
-    let data = RwSignal::new(None::<DataRecord>);
-    let data_new = RwSignal::new(None::<DataRecord>);
-    let now = use_context::<RwSignal<String>>().expect("now not found");
-    let edit_el = use_context::<RwSignal<bool>>().expect("edit_el not found");
-    let sorted_keys = RwSignal::new(Vec::<(String, String, String, String)>::new());
-
-    // get el
-    spawn_local(async move {
-        let pb = full_pb(stat.get_untracked().db_path, selected.get_untracked().refer.unwrap());
-        match invoke(
-            "get_el",
-            &tauri_args!("pb": pb, "id": Some(selected.get_untracked().id)),
-        )
-        .await
-        {
-            Ok(js) => {
-                let s = from_value::<DataRecord>(js).unwrap();
-                data.set(Some(s.clone()));
-
-                let for_keys: Vec<(String, String, String, String)> = transform_fields2(
-                    &meta.get_untracked().unwrap().field_names,
-                    &meta.get_untracked().unwrap().field_types,
-                    &data.get_untracked().unwrap().fields,
-                );
-                sorted_keys.set(for_keys);
-
-                data_new.set(Some(s))
-            }
-            Err(js) => {
-                let error_msg = from_value::<String>(js).unwrap_or_else(|_| "Unknown error".into());
-                now.set(format!("{} {}", "Error:", &error_msg));
-            }
-        };
-    });
-
-    // name = "update" | "delete"
-    let save = StoredValue::new_local(move |name: &str| {
-        let action = name.to_string();
-        let pb = full_pb(stat.get_untracked().db_path, selected.get_untracked().refer.unwrap());
-        spawn_local(async move {
-            match invoke(
-                "apply_el_action",
-                &tauri_args!(
-                    "pb": pb,
-                    "action" : action.clone(),
-                    "dr": data_new.get_untracked().unwrap(),
-                ),
-            )
-            .await
-            {
-                Ok(_s) => {
-                    now.set(format!("{}: {}", &action, tu_string!(i18n, edit.saved)));
-                    match action.as_str() {
-                        "delete" => selected.update(|c| c.id = None),
-                        "update" => edit_el.set(false),
-                        &_ => todo!(),
-                    };
-                    //selected.update(|c| c.refer = None);
-                }
-                Err(js) => {
-                    let error_msg = from_value::<String>(js).unwrap_or_else(|_| "Error".into());
-                    now.set(format!("{}: {:?}", &action, error_msg));
-                }
-            }
-        });
-    });
-
-    let is_valid = Memo::new(move |_| {
-        data_new.with(|maybe_record| {
-            let record = match maybe_record {
-                Some(r) => r,
-                None => return false,
-            };
-
-            sorted_keys.get_untracked().into_iter().all(|(fi, _, ftype, _)| {
-                if ftype == "number" {
-                    let val = record.fields.get(&fi).cloned().unwrap_or_default();
-                    // Разрешаем пустое поле или корректное число
-                    val.is_empty() || val.parse::<f64>().is_ok()
-                } else {
-                    true // Текст валиден всегда
-                }
-            })
-        })
-    });
-
-    let is_changed = Memo::new(move |_| data_new.get().unwrap().fields != data.get_untracked().unwrap().fields);
-
-    let can_save = move || is_valid.get() && is_changed.get();
-
-    Effect::new(move |_| {
-        //log::info!("selected: {:#?}", selected.get());
-        //log::debug!("orig {:?}", data.get());
-        //log::debug!("curr {:?}", data_new.get());
-        //log::debug!("is_changed {:?}",is_changed.get());
-    });
-    view! {
-        <Show when=move || data_new.read().is_some() fallback=|| view! { <progress /> }>
-            <div class="header-row gr">
-                <button on:click=move |_| edit_el.set(false)>"←"</button>
-                <h5 class="m0 title-group">
-                    "🔧 ID " {selected.get_untracked().id.unwrap()} " | " {format!("{:?}", selected.get_untracked().refer.unwrap())}
-                </h5>
-            </div>
-            <div class="grid1a gr a-start">
-                {move || {
-                    let keys = sorted_keys.get();
-                    keys.into_iter()
-                        .map(|(fi, name, ftype, val)| {
-                            let fi0 = fi.clone();
-                            let fi1 = fi.clone();
-                            let fi2 = fi.clone();
-                            view! {
-                                <label class="field-col">{name}<small>{ftype.clone()}</small></label>
-                                <input
-                                    type=ftype
-                                    class:modified=move || {
-                                        val != data_new.read().as_ref().and_then(|d| d.fields.get(&fi0)).cloned().unwrap_or_default()
-                                    }
-                                    prop:value=move || {
-                                        data_new.read().as_ref().and_then(|d| d.fields.get(&fi1)).cloned().unwrap_or_default()
-                                    }
-                                    on:input=move |ev| {
-                                        let val = event_target_value(&ev);
-                                        data_new
-                                            .update(|d| {
-                                                if let Some(record) = d.as_mut() {
-                                                    record.fields.insert(fi2.clone(), val);
-                                                }
-                                            });
-                                    }
-                                />
-                            }
-                        })
-                        .collect_view()
-                }}
-            </div>
-            <div class="gr bfc flex_wrap3 m04">
-                <button on:click=move |_| save.with_value(|a| a("delete"))>
-                    <span class="error">"🗑️ "{t!(i18n, all.del)}</span>
-                </button>
-
-                <button disabled=move || !can_save() on:click=move |_| save.with_value(|a| a("update"))>
-                    "💾 "
-                    {t!(i18n, edit.save)}
-                </button>
-            </div>
-        </Show>
-    }
-}*/
-
 #[component]
 pub fn Ref_el_edit() -> impl IntoView {
     let i18n = use_i18n();
@@ -416,40 +259,40 @@ pub fn FieldsCrud() -> impl IntoView {
     let stat = use_context::<RwSignal<StatisticsState>>().expect("stat not found");
     let now = use_context::<RwSignal<String>>().expect("now not found");
 
-    let info_list = RwSignal::new(meta.get_untracked().map(|m| m.info.clone()).unwrap_or_default());
-    let fields_list = RwSignal::new(meta.get_untracked().map(|m| m.fields.clone()).unwrap_or_default());
+    let info_list = RwSignal::new(Vec::<(String, String)>::new());
+    let fields_list = RwSignal::new(HashMap::<String, FieldDef>::new());
+    let new_fields = RwSignal::new(Vec::<(String, String)>::new());
 
-    let save_info = move |_| {
-        let pb = full_pb(stat.get_untracked().db_path, selected.get_untracked().refer.unwrap());
-        let new_info = info_list.get_untracked();
+    let original_info = RwSignal::new(Vec::<(String, String)>::new());
+    let original_fields = RwSignal::new(HashMap::<String, FieldDef>::new());
 
+    let get_meta = move || {
         spawn_local(async move {
-            match invoke(
-                "update_meta_field",
-                &tauri_args! { "pb": pb, "key": "info", "value": new_info },
-            )
-            .await{
-                Ok(_s) => {
-                    now.set(tu_string!(i18n, edit.saved).to_string());
+            let pb = full_pb(stat.get_untracked().db_path, selected.get_untracked().refer.unwrap());
+            match invoke("get_meta", &tauri_args!("pb": pb)).await {
+                Ok(js) => {
+                    let s = from_value::<TableMeta>(js).unwrap();
+                    meta.set(Some(s))
                 }
                 Err(js) => {
-                    let error_msg = from_value::<String>(js).unwrap_or_else(|_| "Error".into());
-                    now.set(format!("Error: {:?}", error_msg));
+                    let error_msg = from_value::<String>(js).unwrap_or_else(|_| "Unknown error".into());
+                    now.set(format!("Error: {}", error_msg));
                 }
             };
         });
     };
 
-    let save_fields = move |_| {
+    let upd_info = move |_| {
         let pb = full_pb(stat.get_untracked().db_path, selected.get_untracked().refer.unwrap());
-        let new_fields = fields_list.get_untracked();
+        let new_info = info_list.get_untracked();
 
         spawn_local(async move {
             match invoke(
-                "update_meta_field",
-                &tauri_args! { "pb": pb, "key": "fields", "value": new_fields },
+                "update_meta_entity",
+                &tauri_args! { "pb": pb, "key": "info", "value": new_info },
             )
-            .await{
+            .await
+            {
                 Ok(_s) => {
                     now.set(tu_string!(i18n, edit.saved).to_string());
                 }
@@ -459,17 +302,37 @@ pub fn FieldsCrud() -> impl IntoView {
                 }
             };
         });
+        get_meta();
+    };
+
+    let upd_fields = move |_| {
+        let pb = full_pb(stat.get_untracked().db_path, selected.get_untracked().refer.unwrap());
+        let updated_fields = fields_list.get_untracked();
+
+        spawn_local(async move {
+            match invoke(
+                "update_meta_entity",
+                &tauri_args! { "pb": pb, "key": "fields", "value": updated_fields },
+            )
+            .await
+            {
+                Ok(_s) => {
+                    now.set(tu_string!(i18n, edit.saved).to_string());
+                }
+                Err(js) => {
+                    let error_msg = from_value::<String>(js).unwrap_or_else(|_| "Error".into());
+                    now.set(format!("Error: {:?}", error_msg));
+                }
+            };
+        });
+        get_meta();
     };
 
     let del_field = move |f: String| {
         let pb = full_pb(stat.get_untracked().db_path, selected.get_untracked().refer.unwrap());
 
         spawn_local(async move {
-            match invoke(
-                "del_field",
-                &tauri_args! { "pb": pb, "index": f},
-            )
-            .await{
+            match invoke("del_field", &tauri_args! { "pb": pb, "index": f}).await {
                 Ok(_s) => {
                     now.set(tu_string!(i18n, edit.saved).to_string());
                 }
@@ -479,17 +342,64 @@ pub fn FieldsCrud() -> impl IntoView {
                 }
             };
         });
+        get_meta();
     };
 
+    let add_new_field = move |_| {
+        new_fields.update(move |f| {
+            f.push(("Field".to_string(), "text".to_string()));
+        });
+    };
+
+    let toggle_type = move |idx: usize| {
+        new_fields.update(|f| {
+            if let Some(field) = f.get_mut(idx) {
+                field.1 = if field.1 == "text" {
+                    "number".to_string()
+                } else {
+                    "text".to_string()
+                };
+            }
+        });
+    };
+
+    let save_new_fields = move |_| {
+        let pb = full_pb(stat.get_untracked().db_path, selected.get_untracked().refer.unwrap());
+        let new_f: Vec<(String, String)> = new_fields.get_untracked();
+
+        spawn_local(async move {
+            match invoke("add_fields", &tauri_args! { "pb": pb, "fields": new_f }).await {
+                Ok(_s) => {
+                    now.set(tu_string!(i18n, edit.saved).to_string());
+                    new_fields.set(Vec::<(String, String)>::new());
+                }
+                Err(js) => {
+                    let error_msg = from_value::<String>(js).unwrap_or_else(|_| "Error".into());
+                    now.set(format!("Error: {:?}", error_msg));
+                }
+            };
+        });
+
+        get_meta();
+    };
+
+    let info_modified = Memo::new(move |_| info_list.get() != original_info.get());
+    let fields_modified = Memo::new(move |_| fields_list.get() != original_fields.get());
+    let new_fields_modified = Memo::new(move |_| !new_fields.get().is_empty());
+
     Effect::new(move |_| {
-        log::info!("fields_list: {:#?}", fields_list.get());
-        //log::info!("selected {:?}", selected.get());
-        //log::info!("ref_el data: {:#?}", data.get());
-        //log::info!("sett: {:#?}", settings.get());
+        log::info!("new_fields: {:#?}", new_fields.get());
+        log::info!("meta {:?}", meta.get());
+        if let Some(m) = meta.get() {
+            info_list.set(m.info.clone());
+            fields_list.set(m.fields.clone());
+            original_info.set(m.info.clone());
+            original_fields.set(m.fields.clone());
+        }
     });
     view! {
         // edit info(name & desc)
-        <div class="gr center">
+        <div class="gr grid41">
             <div class="grid1a">
                 {move || {
                     info_list
@@ -511,31 +421,34 @@ pub fn FieldsCrud() -> impl IntoView {
                         .collect_view()
                 }}
             </div>
-            <button class="m04" on:click=save_info>
+            <button class=move || if info_modified.get() { "modified" } else { "" } on:click=upd_info>
                 {t!(i18n, edit.save)}
             </button>
         </div>
         // edit exist fields
-        <div class="gr center">
-            <div class="grid">
-                {move || {
-                    meta.get()
-                        .unwrap()
-                        .names
-                        .into_iter()
-                        .map(|field_key| {
-                            let field_def = &fields_list.get()[&field_key];
-                            let fkey = field_key.clone();
-                            let fkey0 = field_key.clone();
-                            let fkey1 = field_key.clone();
-                            view! {
-                                <div class="gridline">
+        <Show when=move || !fields_list.get().is_empty() fallback=|| view! { <div>""</div> }>
+            <div class="gr grid41">
+                <div class="grid3">
+                    {move || {
+                        meta.get()
+                            .unwrap()
+                            .names
+                            .into_iter()
+                            .map(|field_key| {
+                                let field_def = &fields_list.get()[&field_key];
+                                let fkey = field_key.clone();
+                                let fkey0 = field_key.clone();
+                                let fkey1 = field_key.clone();
+                                view! {
                                     <button
                                         class=""
                                         on:click=move |_| {
-                                            fields_list.update(|list| { list.remove(&fkey1); });
+                                            fields_list
+                                                .update(|list| {
+                                                    list.remove(&fkey1);
+                                                });
                                             meta.update(|m| {
-                                                if let Some( meta_data) = m {
+                                                if let Some(meta_data) = m {
                                                     meta_data.fields.remove(&fkey1);
                                                     meta_data.names.retain(|n| n != &fkey1);
                                                 }
@@ -545,6 +458,7 @@ pub fn FieldsCrud() -> impl IntoView {
                                     >
                                         "🗑️"
                                     </button>
+
                                     <input
                                         type="text"
                                         prop:value=field_def.name.clone()
@@ -557,6 +471,7 @@ pub fn FieldsCrud() -> impl IntoView {
                                                 });
                                         }
                                     />
+
                                     <button on:click=move |_| {
                                         fields_list
                                             .update(|list| {
@@ -568,16 +483,60 @@ pub fn FieldsCrud() -> impl IntoView {
                                                     };
                                                 }
                                             });
-                                    }>{move || if fields_list.get()[&fkey0].ftype == "text" { "text 📝" } else { "number 🔢" }}</button>
-                                </div>
-                            }
-                        })
-                        .collect_view()
-                }}
+                                    }>
+                                        {move || { if fields_list.get()[&fkey0].ftype == "text" { "text 📝" } else { "number 🔢" } }}
+                                    </button>
+                                }
+                            })
+                            .collect_view()
+                    }}
+                </div>
+                <button class=move || if fields_modified.get() { "modified" } else { "" } on:click=upd_fields>
+                    {t!(i18n, edit.save)}
+                </button>
             </div>
-            <button class="m04" on:click=save_fields>
-                {t!(i18n, edit.save)}
-            </button>
+        </Show>
+
+        // add fields
+        <div class="gr grid41">
+            <div class="grid">
+                <div class="grid2">
+                    <For
+                        each=move || new_fields.get().into_iter().enumerate()
+                        key=|(idx, _)| *idx
+                        children=move |(idx, (val, kind))| {
+                            view! {
+                                <input
+                                    type="text"
+                                    placeholder=format!("Field {}", idx + 1)
+                                    prop:value=val
+                                    on:input=move |ev| {
+                                        let new_val = event_target_value(&ev);
+                                        new_fields
+                                            .update(|f| {
+                                                if let Some(field) = f.get_mut(idx) {
+                                                    field.0 = new_val;
+                                                }
+                                            });
+                                    }
+                                />
+                                <button on:click=move |_| toggle_type(
+                                    idx,
+                                )>{move || new_fields.get().get(idx).map(|(_, k)| k.clone()).unwrap_or_default()}</button>
+                            }
+                        }
+                    />
+                </div>
+            </div>
+            <div class="grid">
+                <button on:click=add_new_field>{t!(i18n, edit.add_field)}</button>
+
+                <button on:click=move |_| new_fields.set(Vec::<(String, String)>::new())>{t!(i18n, all.clear)}</button>
+
+                <button class=move || if new_fields_modified.get() { "modified" } else { "" } on:click=save_new_fields>
+                    {t!(i18n, edit.save)}
+                </button>
+            </div>
         </div>
     }
 }

@@ -16,10 +16,10 @@ pub struct DataRecord {
 // Метаданные таблицы из таблицы meta
 #[derive(Default, Clone, Debug, Deserialize, Serialize)]
 pub struct TableMeta {
-    pub info: Vec<(String, String)>,          // name, desc
+    pub info: Vec<(String, String)>, // name, desc
     pub fields: HashMap<String, FieldDef>,
-    pub operations: Vec<Operation>,           // вычисляемые поля
-    pub search_config: Vec<String>,           // настройки поиска
+    pub operations: Vec<Operation>, // вычисляемые поля
+    pub search_config: Vec<String>, // настройки поиска
     pub count_data: u32,
     pub names: Vec<String>,
 }
@@ -135,11 +135,11 @@ impl DbState {
         };
 
         let mut stmt = conn.prepare("PRAGMA table_info('data')")?;
-        let names: Vec<String> = stmt.query_map([], |row| row.get::<_, String>(1))?
-            .filter_map(|res| res.ok()) 
-            .skip(1)                    // пропускаем первую строку (id)
+        let names: Vec<String> = stmt
+            .query_map([], |row| row.get::<_, String>(1))?
+            .filter_map(|res| res.ok())
+            .skip(1) // пропускаем первую строку (id)
             .collect();
-
 
         let count_data: u32 = conn.query_row(&format!("SELECT COUNT(*) FROM \"{}\"", "data"), [], |r| r.get(0))?;
 
@@ -265,7 +265,7 @@ pub fn search_items(conn: &Connection, meta: &TableMeta, query: &str) -> Result<
     Ok(result)
 }
 
-pub fn update_meta_field<T: Serialize>(conn: &Connection, key: &str, value: &T) -> Result<()> {
+pub fn update_meta_entity<T: Serialize>(conn: &Connection, key: &str, value: &T) -> Result<()> {
     let json_value = serde_json::to_string(value).map_err(|e| rusqlite::Error::ToSqlConversionFailure(Box::new(e)))?;
 
     conn.execute(
@@ -393,7 +393,9 @@ fn row_to_record(row: &Row) -> rusqlite::Result<DataRecord> {
 }*/
 
 /// Добавление поля в существующую базу // Новая версия
-pub fn add_field(conn: &Connection, field_index: usize, display_name: Option<&str>, field_type: &str) -> Result<String> {
+pub fn add_field(
+    conn: &Connection, field_index: usize, display_name: Option<&str>, field_type: &str,
+) -> Result<String> {
     let field_name = format!("f_{}", field_index);
     let sql = format!("ALTER TABLE data ADD COLUMN {} TEXT", field_name);
     conn.execute(&sql, [])?;
@@ -401,10 +403,13 @@ pub fn add_field(conn: &Connection, field_index: usize, display_name: Option<&st
     let fields_json: String = conn.query_row("SELECT value FROM meta WHERE key = 'fields'", [], |row| row.get(0))?;
     let mut fields: HashMap<String, FieldDef> = serde_json::from_str(&fields_json).unwrap_or_default();
 
-    fields.insert(field_name.clone(), FieldDef {
-        name: display_name.unwrap_or(&format!("#{}", field_index)).to_string(),
-        ftype: field_type.to_string(),
-    });
+    fields.insert(
+        field_name.clone(),
+        FieldDef {
+            name: display_name.unwrap_or(&format!("#{}", field_index)).to_string(),
+            ftype: field_type.to_string(),
+        },
+    );
 
     conn.execute(
         "UPDATE meta SET value = ?1 WHERE key = 'fields'",
@@ -498,7 +503,8 @@ pub fn create_empty_database(path: &PathBuf) -> Result<(), String> {
     let info = serde_json::to_string(&vec![
         ("name".to_string(), "".to_string()),
         ("desc".to_string(), "".to_string()),
-    ]).unwrap();
+    ])
+    .unwrap();
 
     // Базовая meta для пустой базы
     let now = chrono::Local::now().to_rfc3339();
@@ -720,7 +726,10 @@ Green Light,545000000000000,1.0,0.000000000000001";
 
     let info: Vec<(String, String)> = vec![
         ("name".to_string(), "Oscillator".to_string()),
-        ("desc".to_string(), "Wave value at time t - use Time Hint for reference".to_string()),
+        (
+            "desc".to_string(),
+            "Wave value at time t - use Time Hint for reference".to_string(),
+        ),
     ];
 
     conn.execute(
@@ -758,7 +767,10 @@ Circle/Sphere";
 
     let info: Vec<(String, String)> = vec![
         ("name".to_string(), "Geometry".to_string()),
-        ("desc".to_string(), "Circle and sphere measurements - enter your radius".to_string()),
+        (
+            "desc".to_string(),
+            "Circle and sphere measurements - enter your radius".to_string(),
+        ),
     ];
 
     conn.execute(

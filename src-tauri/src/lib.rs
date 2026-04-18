@@ -18,14 +18,29 @@ pub const APP_EXT: &str = "refer";
 
 /// Демо-справочники: [(путь, Имя, Описание); 6]
 pub const DEMO_REFERENCES: [(&str, &str, &str); 6] = [
-    ("example/shrinkflation.refer", "Shrinkflation", "Compare prices per unit weight/volume"),
+    (
+        "example/shrinkflation.refer",
+        "Shrinkflation",
+        "Compare prices per unit weight/volume",
+    ),
     ("example/dilution.refer", "Dilution", "Calculate solution mixing ratios"),
-    ("example/ballistics.refer", "Ballistics", "Ballistic trajectory calculator for rifle calibers"),
+    (
+        "example/ballistics.refer",
+        "Ballistics",
+        "Ballistic trajectory calculator for rifle calibers",
+    ),
     ("example/deposit.refer", "Deposit", "Calculate compound interest growth"),
-    ("example/geometry.refer", "Geometry", "Circle and sphere measurements - enter your radius"),
-    ("example/oscillator.refer", "Oscillator", "Wave value at time t - use Time Hint for reference"),
+    (
+        "example/geometry.refer",
+        "Geometry",
+        "Circle and sphere measurements - enter your radius",
+    ),
+    (
+        "example/oscillator.refer",
+        "Oscillator",
+        "Wave value at time t - use Time Hint for reference",
+    ),
 ];
-
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SettingsStore {
@@ -33,7 +48,7 @@ pub struct SettingsStore {
     pub language: String,
     pub color: String,
     log: String,
-    pub qa: Vec<QuickAccess>
+    pub qa: Vec<QuickAccess>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -50,7 +65,7 @@ impl Default for SettingsStore {
             language: "en".to_string(),
             color: "blue".to_string(),
             log: "false".to_string(),
-            qa: Vec::new()
+            qa: Vec::new(),
         }
     }
 }
@@ -63,7 +78,7 @@ pub struct StatisticsState {
     pub log_path: PathBuf,     // файл логов куда пишет tracing
     pub db_path_ok: String,    // Пустое если еще не проверяли, "Ok" если всё хорошо, иначе сообщение об ошибке
     pub demo_refs: [(&'static str, &'static str, &'static str); 6],
-    pub initialized: bool,     // Флаг, что инициализация уже выполнена
+    pub initialized: bool, // Флаг, что инициализация уже выполнена
 }
 
 // Храним WorkerGuard, чтобы логи не терялись при выходе
@@ -93,10 +108,10 @@ pub fn run() {
             create_example,
             get_meta,
             search_items,
-            update_meta_field,
+            update_meta_entity,
             get_el,
             apply_el_action,
-            add_field,
+            add_fields,
             del_field,
         ])
         .run(tauri::generate_context!())

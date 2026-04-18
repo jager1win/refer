@@ -9,7 +9,7 @@ use std::path::{Component, Path, PathBuf};
 use std::sync::Mutex;
 use tauri::{Manager, State};
 use tauri_plugin_dialog::DialogExt;
-use tracing::{debug, error, info, warn};
+use tracing::{debug, error, info};
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct CreateForm {
@@ -374,12 +374,12 @@ pub async fn apply_el_action(
 }
 
 #[tauri::command]
-pub async fn update_meta_field(
+pub async fn update_meta_entity(
     pb: PathBuf, key: &str, value: serde_json::Value, state: State<'_, Mutex<DbState>>,
 ) -> Result<(), String> {
     let mut db = state.lock().map_err(|e| e.to_string())?;
 
-    db.with_conn(pb, |conn, _meta| match sql::update_meta_field(conn, key, &value) {
+    db.with_conn(pb, |conn, _meta| match sql::update_meta_entity(conn, key, &value) {
         Ok(()) => {
             info!("Meta field saved: {}", key);
             Ok(())
@@ -392,35 +392,51 @@ pub async fn update_meta_field(
 }
 
 #[tauri::command]
-pub async fn add_field(
-    pb: PathBuf, display_name: String, field_type: String, state: State<'_, Mutex<DbState>>,
-) -> Result<(), String> {
-    let mut db = state.lock().map_err(|e| e.to_string())?;
-
-    db.with_conn(pb, |conn, meta| {
-        let next_index = meta.as_ref().map(|m| m.fields.len() + 1).unwrap_or(1);
-
-        match sql::add_field(conn, next_index, Some(&display_name), &field_type) {
-            Ok(field_name) => {
-                info!("Field added: {}", field_name);
-                Ok(())
-            }
-            Err(e) => {
-                error!("Failed to add field: {}", e);
-                Err(e.to_string())
-            }
-        }
-    })
-}
-
-#[tauri::command]
-pub async fn del_field(
-    pb: PathBuf, index: String, state: State<'_, Mutex<DbState>>,
+pub async fn add_fields(
+    pb: PathBuf,
+    fields: Vec<(String, String)>, // (name, ftype)
+    state: State<'_, Mutex<DbState>>,
 ) -> Result<(), String> {
     let mut db = state.lock().map_err(|e| e.to_string())?;
 
     db.with_conn(pb, |conn, _meta| {
-        match  conn.execute(&format!("ALTER TABLE data DROP COLUMN \"{}\"", index), []) {
+        // Находим максимальный индекс из существующих f_*
+        // Получаем реальные колонки из таблицы data
+        let mut stmt = conn.prepare("PRAGMA table_info(data)").map_err(|e| e.to_string())?;
+        let columns = stmt
+            .query_map([], |row| row.get::<_, String>(1))
+            .map_err(|e| e.to_string())?;
+
+        let max_index = columns
+            .filter_map(|col| col.ok()?.strip_prefix("f_").and_then(|num| num.parse::<usize>().ok()))
+            .max()
+            .unwrap_or(0);
+
+        let mut next_index = max_index + 1;
+
+        for (name, ftype) in fields {
+            match sql::add_field(conn, next_index, Some(&name), &ftype) {
+                Ok(_field_name) => {
+                    info!("Field added");
+                    next_index += 1;
+                }
+                Err(e) => {
+                    error!("Failed to add field: {}", e);
+                    return Err(e.to_string());
+                }
+            }
+        }
+
+        Ok(())
+    })
+}
+
+#[tauri::command]
+pub async fn del_field(pb: PathBuf, index: String, state: State<'_, Mutex<DbState>>) -> Result<(), String> {
+    let mut db = state.lock().map_err(|e| e.to_string())?;
+
+    db.with_conn(pb, |conn, _meta| {
+        match conn.execute(&format!("ALTER TABLE data DROP COLUMN \"{}\"", index), []) {
             Ok(field_name) => {
                 info!("Field deleted: {}", field_name);
                 Ok(())

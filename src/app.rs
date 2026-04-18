@@ -98,7 +98,7 @@ pub struct TableMeta {
     pub names: Vec<String>,
 }
 
-#[derive(Default, Clone, Debug, Deserialize, Serialize)]
+#[derive(Default, Clone, Debug, Deserialize, Serialize, PartialEq)]
 pub struct FieldDef {
     pub name: String,
     pub ftype: String,
