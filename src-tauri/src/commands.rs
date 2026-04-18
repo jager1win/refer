@@ -280,12 +280,11 @@ fn build_and_create_refer_path(root: &Path, p: &Path, example: bool) -> Result<P
                     "absolute/prefix component not allowed",
                 ));
             }
-            Component::Normal(os) => {
+            Component::Normal(os)
                 // Доп. проверка: запретить пустые имена или недопустимые байты
-                if os.is_empty() {
+                if os.is_empty() => {
                     return Err(io::Error::new(io::ErrorKind::InvalidInput, "empty path component"));
                 }
-            }
             _ => {}
         }
     }
@@ -351,6 +350,21 @@ pub async fn get_el(pb: PathBuf, id: u32, state: State<'_, Mutex<DbState>>) -> R
         Ok(el) => Ok(el),
         Err(e) => {
             error!("Failed to get element: {}", e);
+            Err(e.to_string())
+        }
+    })
+}
+
+#[tauri::command]
+pub async fn add_element(pb: PathBuf, fields: std::collections::HashMap<String,String> , state: State<'_, Mutex<DbState>>) -> Result<u32, String> {
+    let mut db = state.lock().map_err(|e| e.to_string())?;
+    db.with_conn(pb, |conn, _meta| match sql::add_element(conn, fields) {
+        Ok(el) => {
+            info!("Element added with id: {}", el);
+            Ok(el)
+        },
+        Err(e) => {
+            error!("Failed to add element: {}", e);
             Err(e.to_string())
         }
     })

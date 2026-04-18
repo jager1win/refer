@@ -181,51 +181,6 @@ impl DbState {
     }
 }
 
-/*pub fn search_items(conn: &Connection, meta: &TableMeta, query: &str) -> Result<Vec<DataRecord>, String> {
-    // 1. Формируем список полей для поиска
-    let search_fields = if meta.search_config.is_empty() {
-        meta.field_types
-            .iter()
-            .filter(|(_, ftype)| matches!(ftype, FieldType::Text))
-            .map(|(field, _)| field.clone())
-            .collect::<Vec<String>>()
-    } else {
-        meta.search_config.clone()
-    };
-    //println!("sf: {:?}",search_fields);
-
-    if search_fields.is_empty() {
-        return Err("No search fields defined.".to_string());
-    }
-
-    // 2. Строим SQL
-    let conditions: Vec<String> = search_fields.iter().map(|f| format!("LOWER({}) LIKE ?1", f)).collect();
-
-    let where_clause = if conditions.is_empty() {
-        String::from("")
-    } else {
-        format!("WHERE {}", conditions.join(" OR "))
-    };
-
-    let sql = format!("SELECT * FROM data {} ORDER BY id ASC LIMIT 10", where_clause);
-
-    let query_lower = query.to_lowercase();
-    let query_pattern = format!("%{}%", query_lower);
-
-    // 3. Выполняем запрос
-    let mut stmt = conn.prepare(&sql).map_err(|e| e.to_string())?;
-
-    let records = stmt
-        .query_map([query_pattern], |row| {
-            row_to_record(row)
-        })
-        .map_err(|e| e.to_string())?
-        .collect::<Result<Vec<_>, _>>()
-        .map_err(|e| e.to_string())?;
-
-    Ok(records)
-}*/
-
 pub fn search_items(conn: &Connection, meta: &TableMeta, query: &str) -> Result<Vec<DataRecord>, String> {
     // 1. Собираем поля для поиска
     let search_fields = if meta.search_config.is_empty() {
@@ -350,48 +305,6 @@ fn row_to_record(row: &Row) -> rusqlite::Result<DataRecord> {
     })
 }
 
-// Добавление поля в существующую базу
-/*pub fn add_field(
-    conn: &Connection, field_index: usize, display_name: Option<&str>, field_type: &str,
-) -> Result<String> {
-    let field_name = format!("f_{}", field_index);
-
-    // Добавляем колонку в data
-    let sql = format!("ALTER TABLE data ADD COLUMN {} TEXT", field_name);
-    conn.execute(&sql, [])?;
-
-    // Обновляем field_names в meta
-    let names_json: String =
-        conn.query_row("SELECT value FROM meta WHERE key = 'field_names'", [], |row| row.get(0))?;
-
-    let mut names: serde_json::Value = serde_json::from_str(&names_json).unwrap_or(json!({}));
-    if let Some(obj) = names.as_object_mut() {
-        let name = display_name.unwrap_or(&format!("#{}", field_index)).to_string();
-        obj.insert(field_name.clone(), json!(name));
-    }
-
-    conn.execute(
-        "UPDATE meta SET value = ?1 WHERE key = 'field_names'",
-        params![names.to_string()],
-    )?;
-
-    // Обновляем field_types в meta
-    let types_json: String =
-        conn.query_row("SELECT value FROM meta WHERE key = 'field_types'", [], |row| row.get(0))?;
-
-    let mut types: serde_json::Value = serde_json::from_str(&types_json).unwrap_or(json!({}));
-    if let Some(obj) = types.as_object_mut() {
-        obj.insert(field_name.clone(), json!(field_type));
-    }
-
-    conn.execute(
-        "UPDATE meta SET value = ?1 WHERE key = 'field_types'",
-        params![types.to_string()],
-    )?;
-
-    Ok(field_name)
-}*/
-
 /// Добавление поля в существующую базу // Новая версия
 pub fn add_field(
     conn: &Connection, field_index: usize, display_name: Option<&str>, field_type: &str,
@@ -475,6 +388,27 @@ pub fn add_operation(
     .map_err(|e| e.to_string())?;
 
     Ok(())
+}
+
+pub fn add_element(conn: &Connection, fields: HashMap<String, String>) -> Result<u32, String> {
+    if fields.is_empty() {
+        return Err("No fields provided".to_string());
+    }
+    
+    // Создаём пустую запись
+    conn.execute("INSERT INTO data DEFAULT VALUES", [])
+        .map_err(|e| e.to_string())?;
+    
+    let record_id = conn.last_insert_rowid();
+    
+    // Обновляем каждое поле
+    for (col, value) in fields {
+        let sql = format!("UPDATE data SET \"{}\" = ?1 WHERE id = ?2", col);
+        conn.execute(&sql, params![value, record_id])
+            .map_err(|e| e.to_string())?;
+    }
+    
+    Ok(record_id as u32)
 }
 
 // Создание пустой базы
