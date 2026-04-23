@@ -25,7 +25,7 @@
     "cancel": "Cancel",
     "save": "Save",
     "saved": "Saved",
-    "add_field": "Add field",
+    "add": "Add",
     "warning": "⚠ Attention!\n- Don't add items if not all fields have been created yet\n- There are 2 field types - 'text' and 'number', you can change them if you wish\n- Operations can only be performed on the 'number' type"
   },
   "create": {

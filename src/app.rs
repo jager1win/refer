@@ -76,16 +76,7 @@ pub struct Selected {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct DataRecord {
     pub id: u32,
-    pub fields: HashMap<String, String>, // f_0, f_1 и т.д.
-}
-
-impl DataRecord {
-    pub fn new() -> Self {
-        Self {
-            id: 0,
-            fields: HashMap::new(),
-        }
-    }
+    pub fields: HashMap<String, String>,
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
@@ -108,9 +99,9 @@ pub struct FieldDef {
 pub struct Operation {
     pub id: u32,
     pub name: String,
-    pub description: String,
-    pub expression: String, // "f_6 * 17 / f_20"
-    pub precision: u32,
+    pub desc: String,
+    pub expr: String, // "f_6 * 17 / f_20"
+    pub prec: u32,
 }
 
 #[component]

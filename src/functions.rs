@@ -82,37 +82,24 @@ pub fn full_pb(main: PathBuf, rel: PathBuf) -> PathBuf {
     p.to_path_buf()
 }
 
-pub fn sort_f_keys_v(keys: Vec<String>) -> Vec<String> {
-    let mut sorted = keys;
-    sorted.sort_by(|a, b| {
-        let num_a = a[2..].parse::<i32>().unwrap_or(0);
-        let num_b = b[2..].parse::<i32>().unwrap_or(0);
-        num_a.cmp(&num_b)
-    });
-    sorted
-}
-
-pub fn f2name_v(v: &Vec<String>, names: &HashMap<String, String>) -> Vec<String> {
-    let mut res: Vec<String> = Vec::new();
-    for f in v {
-        if names.contains_key(f) {
-            res.push(names[f].clone());
-        }
-    }
-    res
-}
-
 // Получить заголовок элемента для списка/заголовка
 pub fn get_item_title(record: &DataRecord, meta: &TableMeta) -> String {
-    if !meta.search_config.is_empty() {
+    let fields_text = if !meta.search_config.is_empty() {
         meta.search_config
             .iter()
             .filter_map(|field| record.fields.get(field))
+            .filter(|v| !v.is_empty())
             .cloned()
             .collect::<Vec<_>>()
-            .join(" | ")
+            .join(" • ")
     } else {
-        format!("ref: {}", record.id)
+        String::new()
+    };
+
+    if fields_text.is_empty() {
+        format!("#{}", record.id)
+    } else {
+        format!("{} • #{}", fields_text, record.id)
     }
 }
 
@@ -123,7 +110,7 @@ pub fn RunOper(oper: Operation, vars: HashMap<String, f64>) -> impl IntoView {
     let (inner, set_inner) = signal(vars.clone());
 
     // Парсинг формулы
-    let formula = oper.expression.clone();
+    let formula = oper.expr.clone();
     let expr_result = Memo::new(move |_| exmex::parse::<f64>(&formula));
 
     let var_names = Memo::new(move |_| match expr_result.get() {
@@ -184,14 +171,18 @@ pub fn RunOper(oper: Operation, vars: HashMap<String, f64>) -> impl IntoView {
                 {oper.name}" : "
                 <span>
                     {move || match calculation.get() {
-                        Ok(val) => view! { <span class="success">{format!("{:.*}", oper.precision as usize, val)}</span> }.into_any(),
+                        Ok(val) => view! { <span class="success">{format!("{:.*}", oper.prec as usize, val)}</span> }.into_any(),
                         Err(e) => view! { <span class="error">{e}</span> }.into_any(),
                     }}
                 </span>"  " <Prec op_id=oper.id />
                 {move || {
                     if !filtered().is_empty() {
                         // Кнопка очистки только если есть поля
-                        view! { <button class="ml1 sm_b" on:click=clear_inputs>"🧹"</button> }
+                        view! {
+                            <button class="ml1 sm_b" on:click=clear_inputs>
+                                "🧹"
+                            </button>
+                        }
                             .into_any()
                     } else {
                         let _: () = view! { <></> };
@@ -230,151 +221,8 @@ pub fn RunOper(oper: Operation, vars: HashMap<String, f64>) -> impl IntoView {
                 />
             </div>
 
-            <small>{oper.description}</small>
-            <small>{oper.expression}</small>
-        </div>
-    }
-}
-
-#[component]
-pub fn DynamicCalc(
-    #[prop(default = "a * (beta + 10) / Variable ".to_string())] oper: String,
-    #[prop(default = HashMap::<String, f64>::new())] vars: HashMap<String, f64>,
-) -> impl IntoView {
-    use exmex::Express;
-    let (formula, set_formula) = signal(oper);
-    let (inputs, set_inputs) = signal(vars.clone());
-
-    // Парсинг формулы
-    let expr_result = Memo::new(move |_| exmex::parse::<f64>(&formula.get()));
-
-    fn display_name(raw: &str) -> String {
-        raw.trim_matches(|c| c == '{' || c == '}').to_string()
-    }
-
-    // Список переменных (убираем скобки {} для красивого вывода в списке)
-    let var_names = Memo::new(move |_| {
-        match expr_result.get() {
-            Ok(e) => e
-                .var_names()
-                .iter()
-                .map(|n| display_name(n)) // " {x} " -> " x "
-                .collect::<Vec<_>>(),
-            Err(_) => vec![],
-        }
-    });
-
-    // Расчет со скобками {}
-    let calculation = Memo::new(move |_| {
-        match expr_result.get() {
-            Ok(e) => {
-                let current_inputs = inputs.get();
-                let mut vals = Vec::new();
-
-                for raw_name in e.var_names() {
-                    // Извлекаем "чистое" имя, чтобы найти его в нашем словаре инпутов
-                    let clean = display_name(raw_name);
-                    if let Some(val) = current_inputs.get(&clean) {
-                        vals.push(*val);
-                    } else {
-                        return Err(format!("Введите значение для {}", clean));
-                    }
-                }
-
-                e.eval(&vals)
-                    .map(|v| format!("{:.4}", v))
-                    .map_err(|e| format!("Ошибка: {:?}", e))
-            }
-            Err(e) => Err(format!("Формула: {}", e)),
-        }
-    });
-
-    // Функция очистки
-    let clear_all = move |_| {
-        //set_formula.set(String::new());
-        set_inputs.update(|map| map.clear());
-    };
-
-    let filtered = move || {
-        let names = var_names.get();
-        let inputs = vars.clone();
-        names
-            .into_iter()
-            .filter(|n| !inputs.contains_key(n))
-            .collect::<Vec<String>>()
-    };
-
-    view! {
-        <div class="oper gr grid center">
-            <section>
-                <label>"Формула"</label>
-                <input
-                    type="text"
-                    prop:value=move || formula.get()
-                    on:input=move |ev| set_formula.set(event_target_value(&ev))
-                    attr:data-error=move || expr_result.get().is_err()
-                />
-                <button on:click=clear_all>"Очистить всё"</button>
-            </section>
-
-            // Панель операторов
-            <section>
-                {get_standard_operators()
-                    .into_iter()
-                    .map(|op| {
-                        view! {
-                            <button on:click=move |_| {
-                                set_formula
-                                    .update(|f| {
-                                        if !f.is_empty() && !f.ends_with(' ') {
-                                            f.push(' ');
-                                        }
-                                        f.push_str(op);
-                                        f.push(' ');
-                                    });
-                            }>{op}</button>
-                        }
-                    })
-                    .collect_view()}
-            </section>
-
-            // Динамические инпуты для переменных
-            {
-                log::debug!("{:?}",var_names.get_untracked());
-                log::debug!("{:?}",inputs.get_untracked());
-            }
-            <section>
-                <For
-                    each=move || filtered()
-                    key=|name| name.clone()
-                    children=move |name| {
-                        let n_label = name.clone();
-                        let n_input = name.clone();
-                        view! {
-                            <div>
-                                <label>{n_label}</label>
-                                <input
-                                    type="number"
-                                    on:input=move |ev| {
-                                        let val = event_target_value(&ev).parse::<f64>().unwrap_or(0.0);
-                                        set_inputs
-                                            .update(|map| {
-                                                map.insert(n_input.clone(), val);
-                                            });
-                                    }
-                                    prop:value=move || inputs.get().get(&name).cloned().unwrap_or(0.0)
-                                />
-                            </div>
-                        }
-                    }
-                />
-            </section>
-            <footer>
-                {move || match calculation.get() {
-                    Ok(res) => view! { <div data-status="ok">"Результат: " {res}</div> }.into_any(),
-                    Err(err) => view! { <div data-status="error">{err}</div> }.into_any(),
-                }}
-            </footer>
+            <small>{oper.desc}</small>
+            <small>{oper.expr}</small>
         </div>
     }
 }
@@ -392,7 +240,7 @@ pub fn Prec(op_id: u32) -> impl IntoView {
             .iter()
             .find(|o| o.id == op_id)
             .unwrap()
-            .precision
+            .prec
     };
 
     let on_input = move |ev: web_sys::Event| {
@@ -402,14 +250,14 @@ pub fn Prec(op_id: u32) -> impl IntoView {
         meta.update(|meta_opt| {
             let meta = meta_opt.as_mut().unwrap();
             let operation = meta.operations.iter_mut().find(|o| o.id == op_id).unwrap();
-            operation.precision = new_val;
+            operation.prec = new_val;
         });
 
         let for_send = meta.get_untracked().unwrap().operations;
 
         spawn_local(async move {
             let _ = invoke(
-                "update_meta_field",
+                "update_meta_entity",
                 &tauri_args! {
                     "pb": pb,
                     "key": "operations",
@@ -429,7 +277,8 @@ pub fn Prec(op_id: u32) -> impl IntoView {
 
 pub fn get_standard_operators() -> Vec<&'static str> {
     vec![
-        "(", ")", "+", "-", "*", "/", "^", "%", // Арифметика
+        "(", ")", "{", "}", // интерфейс
+        "+", "-", "*", "/", "^", "%", // Арифметика
         "sin", "cos", "tan", "asin", "acos", // Тригонометрия
         "atan", "atan2", "sinh", "cosh", "tanh", "exp", "ln", "log10", "log2",
         "sqrt", // Логарифмы и корни
@@ -437,41 +286,20 @@ pub fn get_standard_operators() -> Vec<&'static str> {
     ]
 }
 
-/*pub fn transform_fields(
-    field_names: &HashMap<String, String>, field_types: &HashMap<String, String>, fields: &HashMap<String, String>,
-) -> Result<HashMap<String, f64>, String> {
-    // partition рулит
-    let (successes, errors): (Vec<_>, Vec<_>) = fields
-        .iter()
-        // only number
-        .filter(|(k, _)| field_types.get(*k).map(|s| s.as_ref()) == Some("number"))
-        .map(|(k, v)| {
-            let name = field_names.get(k).cloned().unwrap_or_else(|| k.clone());
-            v.parse::<f64>().map(|val| (name.clone(), val)).map_err(|_| name)
-        })
-        .partition(Result::is_ok);
-
-    if !errors.is_empty() {
-        let err_names: Vec<String> = errors.into_iter().map(Result::unwrap_err).collect();
-        return Err(format!("Invalid number format in fields: {}", err_names.join(", ")));
-    }
-
-    Ok(successes.into_iter().map(Result::unwrap).collect())
-}*/
-
 pub fn transform_fields(
-    fields_def: &HashMap<String, FieldDef>,
-    data_fields: &HashMap<String, String>,
+    fields_def: &HashMap<String, FieldDef>, data_fields: &HashMap<String, String>,
 ) -> Result<HashMap<String, f64>, String> {
     // Создаём HashMap для быстрого поиска по ключу
-    let field_types_map: HashMap<_, _> = fields_def.iter()
+    let field_types_map: HashMap<_, _> = fields_def
+        .iter()
         .map(|(k, def)| (k.clone(), def.ftype.as_str()))
         .collect();
-    
-    let field_names_map: HashMap<_, _> = fields_def.iter()
+
+    let field_names_map: HashMap<_, _> = fields_def
+        .iter()
         .map(|(k, def)| (k.clone(), def.name.as_str()))
         .collect();
-    
+
     let (successes, errors): (Vec<_>, Vec<_>) = data_fields
         .iter()
         // только числовые поля
@@ -481,11 +309,11 @@ pub fn transform_fields(
             v.parse::<f64>().map(|val| (name.clone(), val)).map_err(|_| name)
         })
         .partition(Result::is_ok);
-    
+
     if !errors.is_empty() {
         let err_names: Vec<String> = errors.into_iter().map(Result::unwrap_err).collect();
         return Err(format!("Invalid number format in fields: {}", err_names.join(", ")));
     }
-    
+
     Ok(successes.into_iter().map(Result::unwrap).collect())
 }

@@ -1,6 +1,6 @@
 use crate::{app::*, functions::*, i18n::*, tauri_args};
+use leptos::either::Either;
 use leptos::prelude::*;
-use leptos::svg::view;
 use leptos::task::spawn_local;
 use serde_wasm_bindgen::from_value;
 use std::collections::HashMap;
@@ -103,7 +103,7 @@ pub fn Ref_el_edit() -> impl IntoView {
             <div class="header-row gr">
                 <button on:click=move |_| edit_el.set(false)>"←"</button>
                 <h5 class="m0 title-group">
-                    "🔧 ID " {selected.get_untracked().id.unwrap()} " | " {format!("{:?}", selected.get_untracked().refer.unwrap())}
+                    "🔧 #" {selected.get_untracked().id.unwrap()} " | " {format!("{:?}", selected.get_untracked().refer.unwrap())}
                 </h5>
             </div>
             <div class="grid2 gr a-start">
@@ -176,13 +176,13 @@ pub fn Ref_edit() -> impl IntoView {
         field_types:
         добавить поля
     2 группа Oper
-        operations: [
-            Operation {
-                name: "Energy (J)",
-                description: "Kinetic energy in Joules",
-                expression: "f_1 * f_2 * f_2 / 2000",
-                precision: 2,
-            },
+        pub struct Operation {
+            pub id: u32,
+            pub name: String,
+            pub description: String,
+            pub expression: String, // "f_6 * 17 / f_20"
+            pub precision: u32,
+        }
     3 группа Element
         добавить элемент */
 
@@ -211,29 +211,36 @@ pub fn Ref_edit() -> impl IntoView {
         <div class="header-row gr">
             <button on:click=move |_| edit_ref.set(false)>"←"</button>
 
-            <nav class="gap04">
-                <button class:active=move || active_tab.get() == Some(Tab::Fields) on:click=move |_| active_tab.set(Some(Tab::Fields))>
-                    {t!(i18n, ref_main.columns)}
-                </button>
-                <button class:active=move || active_tab.get() == Some(Tab::Oper) on:click=move |_| active_tab.set(Some(Tab::Oper))>
-                    {t!(i18n, ref_main.operations)}
-                </button>
-                <button class:active=move || active_tab.get() == Some(Tab::Element) on:click=move |_| active_tab.set(Some(Tab::Element))>
-                    "✚ "
-                    {t!(i18n, all.element)}
-                </button>
-            </nav>
-
-            <div on:click=move |_| active_tab.set(None) class="title-group sp_close">
+            <button><span on:click=move |_| active_tab.set(None) class="title-group">
                 "🔧 "
-                <span>{move || remove_refer_ext(&selected.get().refer.unwrap())}</span>
-            </div>
+                <span>{selected.get_untracked().refer.unwrap().display().to_string()}</span>
+            </span></button>
         </div>
 
         {move || match active_tab.get() {
             None => {
                 view! {
                     <div class="gr center">
+                        <nav class="gridline gap04">
+                            <button
+                                class:active=move || active_tab.get() == Some(Tab::Fields)
+                                on:click=move |_| active_tab.set(Some(Tab::Fields))
+                            >
+                                {t!(i18n, ref_main.columns)}
+                            </button>
+                            <button
+                                class:active=move || active_tab.get() == Some(Tab::Oper)
+                                on:click=move |_| active_tab.set(Some(Tab::Oper))
+                            >
+                                {t!(i18n, ref_main.operations)}
+                            </button>
+                            <button
+                                class:active=move || active_tab.get() == Some(Tab::Element)
+                                on:click=move |_| active_tab.set(Some(Tab::Element))
+                            >
+                                {t!(i18n, all.element)}
+                            </button>
+                        </nav>
                         <p class="warn pre-line">{t!(i18n, edit.warning)}</p>
                         <button role="button" class="error" on:click=move |_| del_ref(selected.get_untracked().refer.unwrap())>
                             "🗑️ "
@@ -296,6 +303,7 @@ pub fn FieldsCrud() -> impl IntoView {
             {
                 Ok(_s) => {
                     now.set(tu_string!(i18n, edit.saved).to_string());
+                    get_meta();
                 }
                 Err(js) => {
                     let error_msg = from_value::<String>(js).unwrap_or_else(|_| "Error".into());
@@ -303,7 +311,6 @@ pub fn FieldsCrud() -> impl IntoView {
                 }
             };
         });
-        get_meta();
     };
 
     let upd_fields = move |_| {
@@ -319,6 +326,7 @@ pub fn FieldsCrud() -> impl IntoView {
             {
                 Ok(_s) => {
                     now.set(tu_string!(i18n, edit.saved).to_string());
+                    get_meta();
                 }
                 Err(js) => {
                     let error_msg = from_value::<String>(js).unwrap_or_else(|_| "Error".into());
@@ -326,7 +334,6 @@ pub fn FieldsCrud() -> impl IntoView {
                 }
             };
         });
-        get_meta();
     };
 
     let del_field = move |f: String| {
@@ -336,6 +343,7 @@ pub fn FieldsCrud() -> impl IntoView {
             match invoke("del_field", &tauri_args! { "pb": pb, "index": f}).await {
                 Ok(_s) => {
                     now.set(tu_string!(i18n, edit.saved).to_string());
+                    get_meta();
                 }
                 Err(js) => {
                     let error_msg = from_value::<String>(js).unwrap_or_else(|_| "Error".into());
@@ -343,7 +351,6 @@ pub fn FieldsCrud() -> impl IntoView {
                 }
             };
         });
-        get_meta();
     };
 
     let add_new_field = move |_| {
@@ -372,7 +379,8 @@ pub fn FieldsCrud() -> impl IntoView {
             match invoke("add_fields", &tauri_args! { "pb": pb, "fields": new_f }).await {
                 Ok(_s) => {
                     now.set(tu_string!(i18n, edit.saved).to_string());
-                    new_fields.set(Vec::<(String, String)>::new());
+                    get_meta();
+                    //new_fields.set(Vec::<(String, String)>::new());
                 }
                 Err(js) => {
                     let error_msg = from_value::<String>(js).unwrap_or_else(|_| "Error".into());
@@ -380,8 +388,6 @@ pub fn FieldsCrud() -> impl IntoView {
                 }
             };
         });
-
-        get_meta();
     };
 
     let info_modified = Memo::new(move |_| info_list.get() != original_info.get());
@@ -399,7 +405,7 @@ pub fn FieldsCrud() -> impl IntoView {
         }
     });
     view! {
-        // edit info(name & desc)
+        // edit info(name & desc) // class="bf"
         <div class="gr grid41">
             <div class="grid1a">
                 {move || {
@@ -423,13 +429,14 @@ pub fn FieldsCrud() -> impl IntoView {
                 }}
             </div>
             <button class=move || if info_modified.get() { "modified" } else { "" } on:click=upd_info>
+                "💾 "
                 {t!(i18n, edit.save)}
             </button>
         </div>
         // edit exist fields
         <Show when=move || !fields_list.get().is_empty() fallback=|| view! { <div>""</div> }>
-            <div class="gr grid41">
-                <div class="grid3">
+            <div class="gr center">
+                <div class="grida1a">
                     {move || {
                         meta.get()
                             .unwrap()
@@ -438,7 +445,6 @@ pub fn FieldsCrud() -> impl IntoView {
                             .map(|field_key| {
                                 let field_def = &fields_list.get()[&field_key];
                                 let fkey = field_key.clone();
-                                let fkey0 = field_key.clone();
                                 let fkey1 = field_key.clone();
                                 view! {
                                     <button
@@ -484,68 +490,61 @@ pub fn FieldsCrud() -> impl IntoView {
                                                     };
                                                 }
                                             });
-                                    }>
-                                        {move || { if fields_list.get()[&fkey0].ftype == "text" { "text 📝" } else { "number 🔢" } }}
-                                    </button>
+                                    }>{field_def.ftype.clone()}</button>
                                 }
                             })
                             .collect_view()
                     }}
                 </div>
-                <button class=move || if fields_modified.get() { "modified" } else { "" } on:click=upd_fields>
+
+                <button class=move || if fields_modified.get() { "m04 bf modified" } else { "m04 bf" } on:click=upd_fields>
+                    "💾 "
                     {t!(i18n, edit.save)}
                 </button>
             </div>
         </Show>
 
         // add fields
-        <div class="gr grid41">
-            <div class="grid">
-                <div class="grid2">
-                    <For
-                        each=move || new_fields.get().into_iter().enumerate()
-                        key=|(idx, _)| *idx
-                        children=move |(idx, (val, kind))| {
-                            view! {
-                                <input
-                                    type="text"
-                                    placeholder=format!("Field {}", idx + 1)
-                                    prop:value=val
-                                    on:input=move |ev| {
-                                        let new_val = event_target_value(&ev);
-                                        new_fields
-                                            .update(|f| {
-                                                if let Some(field) = f.get_mut(idx) {
-                                                    field.0 = new_val;
-                                                }
-                                            });
-                                    }
-                                />
-                                <button on:click=move |_| toggle_type(
-                                    idx,
-                                )>{move || new_fields.get().get(idx).map(|(_, k)| k.clone()).unwrap_or_default()}</button>
-                            }
+        <div class="gr">
+            <div class="grid2">
+                <For
+                    each=move || new_fields.get().into_iter().enumerate()
+                    key=|(idx, _)| *idx
+                    children=move |(idx, (val, _kind))| {
+                        view! {
+                            <input
+                                type="text"
+                                placeholder=format!("Field {}", idx + 1)
+                                prop:value=val
+                                on:input=move |ev| {
+                                    let new_val = event_target_value(&ev);
+                                    new_fields
+                                        .update(|f| {
+                                            if let Some(field) = f.get_mut(idx) {
+                                                field.0 = new_val;
+                                            }
+                                        });
+                                }
+                            />
+                            <button on:click=move |_| toggle_type(
+                                idx,
+                            )>{move || new_fields.get().get(idx).map(|(_, k)| k.clone()).unwrap_or_default()}</button>
                         }
-                    />
-                </div>
+                    }
+                />
             </div>
-            <div class="grid">
-                <button on:click=add_new_field>{t!(i18n, edit.add_field)}</button>
+            <div class="gridline m04">
+                <button on:click=add_new_field>"✚ "{t!(i18n, edit.add)}</button>
 
-                <button on:click=move |_| new_fields.set(Vec::<(String, String)>::new())>{t!(i18n, all.clear)}</button>
+                <button on:click=move |_| new_fields.set(Vec::<(String, String)>::new())>"🧹 "{t!(i18n, all.clear)}</button>
 
                 <button class=move || if new_fields_modified.get() { "modified" } else { "" } on:click=save_new_fields>
+                    "💾 "
                     {t!(i18n, edit.save)}
                 </button>
             </div>
         </div>
     }
-}
-
-#[component]
-pub fn OperCrud() -> impl IntoView {
-    let meta = use_context::<RwSignal<Option<TableMeta>>>().expect("meta not found");
-    view! { <>"Oper"</> }
 }
 
 #[component]
@@ -581,7 +580,7 @@ pub fn ElementCrud() -> impl IntoView {
     };
 
     Effect::new(move |_| {
-        log::info!("edit_ref {:?}", edit_ref.get());
+        //log::info!("edit_ref {:?}", edit_ref.get());
     });
     view! {
         {move || match add_mode.get() {
@@ -641,6 +640,512 @@ pub fn ElementCrud() -> impl IntoView {
     }
 }
 
+#[derive(Clone, Copy, PartialEq)]
+enum Scene {
+    List,
+    Edit(usize), // Индекс в массиве для редактирования
+    Create,      // Отдельный режим для новой записи
+}
+
+#[component]
+pub fn OperCrud() -> impl IntoView {
+    let i18n = use_i18n();
+    let meta = use_context::<RwSignal<Option<TableMeta>>>().expect("meta not found");
+    let selected = use_context::<RwSignal<Selected>>().expect("selected not found");
+    let stat = use_context::<RwSignal<StatisticsState>>().expect("stat not found");
+    let now = use_context::<RwSignal<String>>().expect("now not found");
+    let scene = RwSignal::new(Scene::List);
+
+    // Тот самый массив данных  meta.get().unwrap().operations
+    /*let opers = RwSignal::new(vec![
+        Operation {
+            id: 1,
+            name: "Покупка".into(),
+        },
+        Operation {
+            id: 2,
+            name: "Зарплата".into(),
+        },
+    ]);*/
+
+    let get_meta = move || {
+        spawn_local(async move {
+            let pb = full_pb(stat.get_untracked().db_path, selected.get_untracked().refer.unwrap());
+            match invoke("get_meta", &tauri_args!("pb": pb)).await {
+                Ok(js) => {
+                    let s = from_value::<TableMeta>(js).unwrap();
+                    meta.set(Some(s))
+                }
+                Err(js) => {
+                    let error_msg = from_value::<String>(js).unwrap_or_else(|_| "Unknown error".into());
+                    now.set(format!("Error: {}", error_msg));
+                }
+            };
+        });
+    };
+
+    let del_oper = move |id: u32| {
+        let pb = full_pb(stat.get_untracked().db_path, selected.get_untracked().refer.unwrap());
+        let new_oper_list = meta
+            .get_untracked()
+            .unwrap()
+            .operations
+            .into_iter()
+            .filter(|f| f.id != id)
+            .collect::<Vec<Operation>>();
+
+        spawn_local(async move {
+            match invoke(
+                "update_meta_entity",
+                &tauri_args! { "pb": pb, "key": "operations", "value": new_oper_list },
+            )
+            .await
+            {
+                Ok(_s) => {
+                    now.set(tu_string!(i18n, edit.saved).to_string());
+                    get_meta();
+                }
+                Err(js) => {
+                    let error_msg = from_value::<String>(js).unwrap_or_else(|_| "Error".into());
+                    now.set(format!("Error: {:?}", error_msg));
+                }
+            };
+        });
+    };
+
+    view! {
+        <div class="gr center">
+            {move || match scene.get() {
+                Scene::List => {
+                    Either::Left(
+                        view! {
+                            <div class="grida1a">
+                                <For
+                                    each=move || meta.get().unwrap().operations.into_iter().enumerate()
+                                    key=|(idx, op)| (*idx, op.id)
+                                    children=move |(idx, op)| {
+                                        view! {
+                                            <button on:click=move |_| del_oper(op.id)>"🗑️"</button>
+                                            <span class="grid gap02">
+                                                {op.name}" " {(!op.desc.is_empty()).then(|| format!("({})", op.desc))}
+                                                <small>{op.expr}</small>
+                                            </span>
+                                            <button on:click=move |_| scene.set(Scene::Edit(idx))>"✏️"</button>
+                                        }
+                                    }
+                                />
+                            </div>
+                            <hr />
+                            <button on:click=move |_| scene.set(Scene::Create)>"+ "</button>
+                        },
+                    )
+                }
+                Scene::Edit(idx) => {
+                    Either::Right(
+                        view! {
+                            <EditOper
+                                // Берем конкретную операцию по индексу
+                                initial_data=Some(meta.get().unwrap().operations[idx].clone())
+                                on_done=Callback::new(move |_| {
+                                    scene.set(Scene::List);
+                                    get_meta();
+                                })
+                            />
+                        },
+                    )
+                }
+                Scene::Create => {
+                    Either::Right(
+                        view! {
+                            <EditOper
+                                initial_data=None
+                                on_done=Callback::new(move |_| {
+                                    scene.set(Scene::List);
+                                    get_meta();
+                                })
+                            />
+                        },
+                    )
+                }
+            }}
+        </div>
+    }
+}
+
+#[component]
+pub fn EditOper(initial_data: Option<Operation>, #[prop(into)] on_done: Callback<()>) -> impl IntoView {
+    use exmex::Express;
+    let i18n = use_i18n();
+    let meta = use_context::<RwSignal<Option<TableMeta>>>().expect("meta not found");
+    let op = RwSignal::new(initial_data.clone().unwrap_or(Operation {
+        id: 0,
+        name: "New Operation".into(),
+        desc: "Description".into(),
+        expr: "({Путь}/{道}) + {이} + Αρχη * {كل} / {것}".into(), // Путь — это источник всех вещей. Лао-цзы
+        prec: 2,
+    }));
+
+    let vars = meta
+        .get_untracked()
+        .unwrap()
+        .fields
+        .into_iter()
+        .filter(|f| f.1.ftype == "number")
+        .map(|f| {
+            let random_f64 = js_sys::Math::random();
+            let val = (random_f64 * 91.0).floor() + 20.0;
+            let final_val = val / 10.0;
+            (f.1.name, final_val)
+        })
+        .collect::<HashMap<String, f64>>();
+    let (inputs, set_inputs) = signal(vars.clone());
+
+    // Парсинг формулы
+    let expr_result = Memo::new(move |_| exmex::parse::<f64>(&op.get().expr));
+
+    fn display_name(raw: &str) -> String {
+        raw.trim_matches(|c| c == '{' || c == '}').to_string()
+    }
+
+    // Список переменных (убираем скобки {} для красивого вывода в списке)
+    let var_names = Memo::new(move |_| {
+        match expr_result.get() {
+            Ok(e) => e
+                .var_names()
+                .iter()
+                .map(|n| display_name(n)) // " {x} " -> " x "
+                .collect::<Vec<_>>(),
+            Err(_) => vec![],
+        }
+    });
+
+    // Расчет со скобками {}
+    let calculation = Memo::new(move |_| {
+        match expr_result.get() {
+            Ok(e) => {
+                let current_inputs = inputs.get();
+                let mut vals = Vec::new();
+
+                for raw_name in e.var_names() {
+                    // Извлекаем "чистое" имя, чтобы найти его в нашем словаре инпутов
+                    let clean = display_name(raw_name);
+                    if let Some(val) = current_inputs.get(&clean) {
+                        vals.push(*val);
+                    } else {
+                        return Err(format!("Введите значение для {}", clean));
+                    }
+                }
+
+                e.eval(&vals)
+                    .map(|v| format!("{:.4}", v))
+                    .map_err(|e| format!("Ошибка: {:?}", e))
+            }
+            Err(e) => Err(format!("Формула: {}", e)),
+        }
+    });
+
+    // Функция очистки
+    /*let clear_all = move |_| {
+        //set_formula.set(String::new());
+        //set_inputs.update(|map| map.clear());
+    };*/
+
+    let filtered = move || {
+        let names = var_names.get();
+        let inputs = vars.clone();
+        names
+            .into_iter()
+            .filter(|n| !inputs.contains_key(n))
+            .collect::<Vec<String>>()
+    };
+
+    let save = move |_| {
+        let op = op.get_untracked();
+        on_done.run(());
+    };
+
+    Effect::new(move |_| {
+        //log::info!("new_fields: {:#?}", new_fields.get());
+        //og::info!("meta {:?}", meta.get());
+        log::debug!("var_names:{:?}", var_names.get());
+        log::debug!("inputs:{:?}", inputs.get());
+        log::debug!("op:{:?}", op.get());
+    });
+
+    view! {
+        <div class="oper grid center">
+            <section>
+                <label>
+                    "Expression"
+                    <input
+                        type="text"
+                        prop:value=move || op.get().expr
+                        on:input=move |ev| op.update(|o| o.expr = event_target_value(&ev))
+                        attr:data-error=move || expr_result.get().is_err()
+                    />
+                </label>
+            </section>
+
+            // блок числовых полей со случайными значениями
+            <section>
+                <p>
+                    "Variables should consist only of latin or greek letters, numbers, and underscores.
+                    They need to fit the regular expression r\"[a-zA-Zα-ωΑ-Ω_]+[a-zA-Zα-ωΑ-Ω_0-9]*\", if they are not between curly brackets."
+                </p>
+
+                {move || {
+                    inputs
+                        .get()
+                        .into_iter()
+                        .map(|inp| {
+                            let inp_name = inp.clone().0;
+                            let inpclon = inp.clone();
+                            view! {
+                                <button on:click=move |_| {
+                                    op.update(|f| {
+                                        if !f.expr.is_empty() && !f.expr.ends_with(' ') {
+                                            f.expr.push(' ');
+                                        }
+                                        f.expr.push_str(&inp_name);
+                                        f.expr.push(' ');
+                                    });
+                                }>{inpclon.0}"("{inpclon.1}")"</button>
+                            }
+                        })
+                        .collect_view()
+                }}
+            </section>
+
+            // блок операторов
+            <section>
+                {get_standard_operators()
+                    .into_iter()
+                    .map(|ops| {
+                        view! {
+                            <button on:click=move |_| {
+                                op.update(|f| {
+                                    if !f.expr.is_empty() && !f.expr.ends_with(' ') {
+                                        f.expr.push(' ');
+                                    }
+                                    f.expr.push_str(ops);
+                                    f.expr.push(' ');
+                                });
+                            }>{ops}</button>
+                        }
+                    })
+                    .collect_view()}
+            </section>
+
+            // результат и ошибки
+            <section>
+                {move || match calculation.get() {
+                    Ok(res) => view! { <div data-status="ok">" = " {res}</div> }.into_any(),
+                    Err(err) => view! { <div data-status="error">{err}</div> }.into_any(),
+                }}
+            </section>
+
+            // Динамические инпуты для переменных
+            <section class="grid3">
+                <For
+                    each=move || filtered()
+                    key=|name| name.clone()
+                    children=move |name| {
+                        let n_label = name.clone();
+                        let n_input = name.clone();
+                        view! {
+                            <div>
+                                <label>{n_label}</label>
+                                <input
+                                    type="number"
+                                    on:input=move |ev| {
+                                        let val = event_target_value(&ev).parse::<f64>().unwrap_or(0.0);
+                                        set_inputs
+                                            .update(|map| {
+                                                map.insert(n_input.clone(), val);
+                                            });
+                                    }
+                                    prop:value=move || inputs.get().get(&name).cloned().unwrap_or(0.0)
+                                />
+                            </div>
+                        }
+                    }
+                />
+            </section>
+            <section class="actions">
+                <h3>{if initial_data.is_some() { "Правка" } else { "Новая" }}</h3>
+                <button on:click=save>"upd"</button>
+                <button on:click=move |_| on_done.run(())>"Отмена"</button>
+            </section>
+        </div>
+    }
+}
+
+/*#[component]
+fn EditOper(initial_data: Option<Operation>, on_save: Callback<Operation>, on_cancel: Callback<()>) -> impl IntoView {
+    let meta = use_context::<RwSignal<Option<TableMeta>>>().expect("meta not found");
+    let num_fields = Memo::new(move |_| {
+        meta.get()
+            .unwrap()
+            .fields
+            .iter()
+            .filter(|(_, def)| def.ftype == "number")
+            .map(|(_, def)| {
+                let random_f64 = js_sys::Math::random();
+                let val = (random_f64 * 91.0).floor() + 20.0;
+                let final_val = val / 10.0;
+                (def.name.clone(), final_val)
+            })
+            .collect::<HashMap<String, f64>>()
+    });
+
+
+    // Внутреннее состояние полей ввода
+    let name = RwSignal::new(initial_data.as_ref().map(|o| o.name.clone()).unwrap_or_default());
+
+    let save = move |_| {
+        let op = Operation {
+            id: 0,
+            name: name.get(),
+            description: "".to_string(),
+            expression: "".to_string(),
+            precision: 2,
+        };
+        on_save.run(op);
+    };
+
+    Effect::new(move |_| {
+        //log::info!("new_fields: {:#?}", new_fields.get());
+        log::info!("memo num_fields: {:?}", num_fields.get());
+    });
+
+    view! {
+        <div class="edit-screen">
+            <input type="text" prop:value=name on:input:target=move |ev| name.set(ev.target().value()) />
+            <button on:click=save>"Сохранить"</button>
+            <button on:click=move |_| on_cancel.run(())>"Отмена"</button>
+        </div>
+    }
+}*/
+
+/*
+#[component]
+pub fn OperCrud() -> impl IntoView {
+    let i18n = use_i18n();
+    let meta = use_context::<RwSignal<Option<TableMeta>>>().expect("meta not found");
+    let selected = use_context::<RwSignal<Selected>>().expect("selected not found");
+    let stat = use_context::<RwSignal<StatisticsState>>().expect("stat not found");
+    let now = use_context::<RwSignal<String>>().expect("now not found");
+    let num_fields = RwSignal::new(HashMap::<String, f64>::new());
+
+    if let Some(m) = meta.get_untracked() {
+        let n: HashMap<String, f64> = m
+            .fields
+            .into_iter()
+            .filter(|f| f.1.ftype == "number")
+            .map(|f| {
+                let random_f64 = js_sys::Math::random();
+                let val = (random_f64 * 91.0).floor() + 20.0;
+                let final_val = val / 10.0;
+                (f.1.name, final_val)
+            })
+            .collect::<HashMap<String, f64>>();
+        num_fields.set(n);
+    }
+
+    let get_meta = move || {
+        spawn_local(async move {
+            let pb = full_pb(stat.get_untracked().db_path, selected.get_untracked().refer.unwrap());
+            match invoke("get_meta", &tauri_args!("pb": pb)).await {
+                Ok(js) => {
+                    let s = from_value::<TableMeta>(js).unwrap();
+                    meta.set(Some(s))
+                }
+                Err(js) => {
+                    let error_msg = from_value::<String>(js).unwrap_or_else(|_| "Unknown error".into());
+                    now.set(format!("Error: {}", error_msg));
+                }
+            };
+        });
+    };
+
+    let del_oper = move |id: u32| {
+        let pb = full_pb(stat.get_untracked().db_path, selected.get_untracked().refer.unwrap());
+        let new_oper_list = meta
+            .get_untracked()
+            .unwrap()
+            .operations
+            .into_iter()
+            .filter(|f| f.id != id)
+            .collect::<Vec<Operation>>();
+
+        spawn_local(async move {
+            match invoke(
+                "update_meta_entity",
+                &tauri_args! { "pb": pb, "key": "operations", "value": new_oper_list },
+            )
+            .await
+            {
+                Ok(_s) => {
+                    now.set(tu_string!(i18n, edit.saved).to_string());
+                    get_meta();
+                }
+                Err(js) => {
+                    let error_msg = from_value::<String>(js).unwrap_or_else(|_| "Error".into());
+                    now.set(format!("Error: {:?}", error_msg));
+                }
+            };
+        });
+    };
+
+    Effect::new(move |_| {
+        //log::info!("new_fields: {:#?}", new_fields.get());
+        log::info!("meta {:?}", meta.get());
+    });
+
+    /*
+
+    1 блок - Если есть операции - выводим список удаление и редактирование.
+    2 блок - Всегда показываем без условий добавление операций.
+
+    */
+    view! {
+        // список имеющихся
+        {move || match meta.get_untracked().unwrap().operations.is_empty() {
+            true => view! { <div></div> }.into_any(),
+            false => {
+                view! {
+                    <div class="gr grida1a">
+                        {move || {
+                            meta.get()
+                                .unwrap()
+                                .operations
+                                .into_iter()
+                                .map(|k| {
+                                    view! {
+                                        <button on:click=move |_| del_oper(k.id)>"🗑️"</button>
+                                        <span class="grid gap02">
+                                            {k.name}" " {(!k.description.is_empty()).then(|| format!("({})", k.description))}
+                                            <small>{k.expression}</small>
+                                        </span>
+                                        <button>"✏️"</button>
+                                    }
+                                })
+                                .collect_view()
+                                .into_any()
+                        }}
+                    </div>
+                }
+                    .into_any()
+            }
+        }}
+        {}
+        // добавление
+        <div class="gr">
+            <EditOper vars=num_fields.get_untracked() />
+        </div>
+    }
+}*/
+
 /*
 
         <button on:click=move |_| { edit_ref.set(false) }>"💾 "{t!(i18n, edit.save)}</button>
@@ -648,28 +1153,26 @@ pub fn ElementCrud() -> impl IntoView {
 
 */
 /*
-    let save_search_config = move |field: String| {
-        let Some(mut meta_data) = meta.get_untracked() else {
-            return;
-        };
+    let upd_info = move |_| {
         let pb = full_pb(stat.get_untracked().db_path, selected.get_untracked().refer.unwrap());
-        if let Some(pos) = meta_data.search_config.iter().position(|f| f == &field) {
-            meta_data.search_config.remove(pos);
-        } else {
-            meta_data.search_config.push(field);
-        }
-        meta.set(Some(meta_data.clone()));
+        let new_info = info_list.get_untracked();
 
         spawn_local(async move {
-            let _ = invoke(
-                "update_meta_field",
-                &tauri_args! {
-                    "pb": pb,
-                    "key": "search_config",
-                    "value": meta_data.search_config
-                },
+            match invoke(
+                "update_meta_entity",
+                &tauri_args! { "pb": pb, "key": "info", "value": new_info },
             )
-            .await;
+            .await
+            {
+                Ok(_s) => {
+                    now.set(tu_string!(i18n, edit.saved).to_string());
+                }
+                Err(js) => {
+                    let error_msg = from_value::<String>(js).unwrap_or_else(|_| "Error".into());
+                    now.set(format!("Error: {:?}", error_msg));
+                }
+            };
         });
+        get_meta();
     };
 */

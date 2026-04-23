@@ -5,9 +5,9 @@ use serde_wasm_bindgen::from_value;
 use std::path::PathBuf;
 
 #[derive(Debug, Clone)] // -1,0,1
-struct RefState {
-    meta: i8,
-    data: i8,
+pub struct RefState {
+    pub meta: i8,
+    pub data: i8,
 }
 
 #[component]
@@ -86,15 +86,20 @@ pub fn Ref_main() -> impl IntoView {
         meta.set(Some(meta_data.clone()));
 
         spawn_local(async move {
-            let _ = invoke(
-                "update_meta_field",
-                &tauri_args! {
-                    "pb": pb,
-                    "key": "search_config",
-                    "value": meta_data.search_config
-                },
+            match invoke(
+                "update_meta_entity",
+                &tauri_args!("pb": pb,"key": "search_config","value": meta_data.search_config),
             )
-            .await;
+            .await
+            {
+                Ok(_s) => {
+                    now.set(format!("{:?}", tu_string!(i18n, edit.saved)));
+                }
+                Err(js) => {
+                    let error_msg = from_value::<String>(js).unwrap_or_else(|_| "Unknown error".into());
+                    now.set(format!("Error: {:?}", error_msg));
+                }
+            }
         });
     };
 
@@ -288,8 +293,9 @@ pub fn Ref_main() -> impl IntoView {
                                             let meta = table_meta.clone();
                                             let names = sorted_search.clone();
                                             view! {
-                                                <div class="search_results" style=format!("--cols: {}", col_count)>
+                                                <div class="search_results" style=format!("--cols: {}", col_count + 1)>
                                                     <div class="row">
+                                                        <small>ID</small>
                                                         {{ names.into_iter().map(|n| view! { <small>{n}</small> }).collect_view() }}
                                                     </div>
                                                     <For
@@ -303,6 +309,7 @@ pub fn Ref_main() -> impl IntoView {
                                                                     class="row"
                                                                     on:click=move |_| selected.update(|c| c.id = Some(rec.id))
                                                                 >
+                                                                    <div>{format!("#{}", rec.id)}</div>
                                                                     {search_fields_info
                                                                         .iter()
                                                                         .filter_map(|k| rec.fields.get(k))
@@ -346,7 +353,6 @@ pub fn Ref_main() -> impl IntoView {
                                                             .iter()
                                                             .map(|field_key| {
                                                                 let field_def = table_meta.fields.get(field_key).unwrap();
-
                                                                 view! {
                                                                     <li>
                                                                         <span>{field_def.name.clone()}</span>
@@ -380,13 +386,12 @@ pub fn Ref_main() -> impl IntoView {
                                                     oper.into_iter()
                                                         .map(|k| {
                                                             view! {
-                                                                <div class="grid">
+                                                                <div class="grid gap02">
                                                                     <span class="gridline">
                                                                         {k.name}" "
-                                                                        {(!k.description.is_empty())
-                                                                            .then(|| format!("({})", k.description))}
+                                                                        {(!k.desc.is_empty()).then(|| format!(" • {}", k.desc))}
                                                                     </span>
-                                                                    <small>{k.expression}</small>
+                                                                    <small>{k.expr}</small>
                                                                 </div>
                                                             }
                                                         })

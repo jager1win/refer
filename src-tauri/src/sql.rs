@@ -18,8 +18,8 @@ pub struct DataRecord {
 pub struct TableMeta {
     pub info: Vec<(String, String)>, // name, desc
     pub fields: HashMap<String, FieldDef>,
-    pub operations: Vec<Operation>, // вычисляемые поля
-    pub search_config: Vec<String>, // настройки поиска
+    pub operations: Vec<Operation>,
+    pub search_config: Vec<String>,
     pub count_data: u32,
     pub names: Vec<String>,
 }
@@ -34,9 +34,9 @@ pub struct FieldDef {
 pub struct Operation {
     pub id: u32,
     pub name: String,
-    pub description: String,
-    pub expression: String, // "f_6 * 17 / f_20"
-    pub precision: u32,
+    pub desc: String,
+    pub expr: String,
+    pub prec: u32,
 }
 
 // Основная структура для работы с базой
@@ -355,7 +355,7 @@ pub fn add_field(
 }*/
 // Добавление операции
 pub fn add_operation(
-    conn: &Connection, name: &str, expression: &str, description: &str, precision: u32,
+    conn: &Connection, name: &str, expr: &str, desc: &str, prec: u32,
 ) -> Result<(), String> {
     let ops_json: String = conn
         .query_row("SELECT value FROM meta WHERE key = 'operations'", [], |row| row.get(0))
@@ -375,9 +375,9 @@ pub fn add_operation(
         arr.push(json!({
             "id": new_id,
             "name": name,
-            "expression": expression,
-            "description": description,
-            "precision": precision,
+            "expr": expr,
+            "desc": desc,
+            "prec": prec,
         }));
     }
 
