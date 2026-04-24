@@ -1,4 +1,4 @@
-use crate::{app::*, functions::*, i18n::*, tauri_args};
+use crate::{app::*, i18n::*, state::State, tauri_args};
 use leptos::either::Either;
 use leptos::prelude::*;
 use leptos::task::spawn_local;
@@ -16,20 +16,17 @@ enum Tab {
 #[component]
 pub fn Ref_el_edit() -> impl IntoView {
     let i18n = use_i18n();
-    let stat = use_context::<RwSignal<StatisticsState>>().expect("stat not found");
-    let meta = use_context::<RwSignal<Option<TableMeta>>>().expect("meta not found");
-    let selected = use_context::<RwSignal<Selected>>().expect("selected not found");
+    let st = use_context::<State>().expect("State missing");
     let data = RwSignal::new(None::<DataRecord>);
     let data_new = RwSignal::new(None::<DataRecord>);
-    let now = use_context::<RwSignal<String>>().expect("now not found");
     let edit_el = use_context::<RwSignal<bool>>().expect("edit_el not found");
 
     // get el
     spawn_local(async move {
-        let pb = full_pb(stat.get_untracked().db_path, selected.get_untracked().refer.unwrap());
+        let pb = st.get_full_pb(st.selected.get_untracked().refer.unwrap());
         match invoke(
             "get_el",
-            &tauri_args!("pb": pb, "id": Some(selected.get_untracked().id)),
+            &tauri_args!("pb": pb, "id": Some(st.selected.get_untracked().id)),
         )
         .await
         {
@@ -40,14 +37,14 @@ pub fn Ref_el_edit() -> impl IntoView {
             }
             Err(js) => {
                 let error_msg = from_value::<String>(js).unwrap_or_else(|_| "Unknown error".into());
-                now.set(format!("{} {}", "Error:", &error_msg));
+                st.now.set(format!("{} {}", "Error:", &error_msg));
             }
         };
     });
 
     let save = StoredValue::new_local(move |name: &str| {
         let action = name.to_string();
-        let pb = full_pb(stat.get_untracked().db_path, selected.get_untracked().refer.unwrap());
+        let pb = st.get_full_pb(st.selected.get_untracked().refer.unwrap());
         spawn_local(async move {
             match invoke(
                 "apply_el_action",
@@ -60,16 +57,16 @@ pub fn Ref_el_edit() -> impl IntoView {
             .await
             {
                 Ok(_s) => {
-                    now.set(format!("{}: {}", &action, tu_string!(i18n, edit.saved)));
+                    st.now.set(format!("{}: {}", &action, tu_string!(i18n, edit.saved)));
                     match action.as_str() {
-                        "delete" => selected.update(|c| c.id = None),
+                        "delete" => st.selected.update(|c| c.id = None),
                         "update" => edit_el.set(false),
                         &_ => todo!(),
                     };
                 }
                 Err(js) => {
                     let error_msg = from_value::<String>(js).unwrap_or_else(|_| "Error".into());
-                    now.set(format!("{}: {:?}", &action, error_msg));
+                    st.now.set(format!("{}: {:?}", &action, error_msg));
                 }
             }
         });
@@ -81,7 +78,7 @@ pub fn Ref_el_edit() -> impl IntoView {
                 Some(r) => r,
                 None => return false,
             };
-            let meta_fields = &meta.get_untracked().unwrap().fields;
+            let meta_fields = &st.meta.get_untracked().unwrap().fields;
 
             meta_fields.iter().all(|(field_key, field_def)| {
                 if field_def.ftype == "number" {
@@ -103,12 +100,12 @@ pub fn Ref_el_edit() -> impl IntoView {
             <div class="header-row gr">
                 <button on:click=move |_| edit_el.set(false)>"←"</button>
                 <h5 class="m0 title-group">
-                    "🔧 #" {selected.get_untracked().id.unwrap()} " | " {format!("{:?}", selected.get_untracked().refer.unwrap())}
+                    "🔧 #" {st.selected.get_untracked().id.unwrap()} " | " {format!("{:?}", st.selected.get_untracked().refer.unwrap())}
                 </h5>
             </div>
             <div class="grid2 gr a-start">
                 {move || {
-                    let meta_fields = meta.get().unwrap().fields.clone();
+                    let meta_fields = st.meta.get().unwrap().fields.clone();
                     let data_new_val = data_new.get().unwrap();
                     meta_fields
                         .iter()
@@ -157,12 +154,8 @@ pub fn Ref_el_edit() -> impl IntoView {
 #[component]
 pub fn Ref_edit() -> impl IntoView {
     let i18n = use_i18n();
-    //let meta = use_context::<RwSignal<Option<TableMeta>>>().expect("meta not found");
-    let selected = use_context::<RwSignal<Selected>>().expect("selected not found");
-    let edit_ref = use_context::<RwSignal<bool>>().expect("edit not found");
-    let now = use_context::<RwSignal<String>>().expect("now not found");
-    let stat = use_context::<RwSignal<StatisticsState>>().expect("stat not found");
-    let active_tab = RwSignal::new(None::<Tab>);
+    let st = use_context::<State>().expect("State missing");
+    let current_tab = RwSignal::new(None::<Tab>);
 
     /*
         - CRUD элемента - только добавление одного нового
@@ -190,14 +183,15 @@ pub fn Ref_edit() -> impl IntoView {
         spawn_local(async move {
             match invoke("del_ref", &tauri_args!("val" : name.clone())).await {
                 Ok(_s) => {
-                    now.set(format!("{}: {:?}", tu_string!(i18n, edit.ok_del_ref), &name));
-                    selected.update(|c| c.refer = None);
-                    edit_ref.set(false);
-                    upd_stat(stat, now);
+                    st.now
+                        .set(format!("{}: {:?}", tu_string!(i18n, edit.ok_del_ref), &name));
+                    st.selected.update(|c| c.refer = None);
+                    st.edit_ref.set(false);
+                    st.upd_stat();
                 }
                 Err(js) => {
                     let error_msg = from_value::<String>(js).unwrap_or_else(|_| "Unknown error".into());
-                    now.set(format!(
+                    st.now.set(format!(
                         "{}: {:?} - {}",
                         tu_string!(i18n, edit.er_del_ref),
                         &name,
@@ -209,40 +203,42 @@ pub fn Ref_edit() -> impl IntoView {
     };
     view! {
         <div class="header-row gr">
-            <button on:click=move |_| edit_ref.set(false)>"←"</button>
+            <button on:click=move |_| st.edit_ref.set(false)>"←"</button>
 
-            <button><span on:click=move |_| active_tab.set(None) class="title-group">
-                "🔧 "
-                <span>{selected.get_untracked().refer.unwrap().display().to_string()}</span>
-            </span></button>
+            <button>
+                <span on:click=move |_| current_tab.set(None) class="title-group">
+                    "🔧 "
+                    <span>{st.selected.get_untracked().refer.unwrap().display().to_string()}</span>
+                </span>
+            </button>
         </div>
 
-        {move || match active_tab.get() {
+        {move || match current_tab.get() {
             None => {
                 view! {
                     <div class="gr center">
                         <nav class="gridline gap04">
                             <button
-                                class:active=move || active_tab.get() == Some(Tab::Fields)
-                                on:click=move |_| active_tab.set(Some(Tab::Fields))
+                                class:active=move || current_tab.get() == Some(Tab::Fields)
+                                on:click=move |_| current_tab.set(Some(Tab::Fields))
                             >
                                 {t!(i18n, ref_main.columns)}
                             </button>
                             <button
-                                class:active=move || active_tab.get() == Some(Tab::Oper)
-                                on:click=move |_| active_tab.set(Some(Tab::Oper))
+                                class:active=move || current_tab.get() == Some(Tab::Oper)
+                                on:click=move |_| current_tab.set(Some(Tab::Oper))
                             >
                                 {t!(i18n, ref_main.operations)}
                             </button>
                             <button
-                                class:active=move || active_tab.get() == Some(Tab::Element)
-                                on:click=move |_| active_tab.set(Some(Tab::Element))
+                                class:active=move || current_tab.get() == Some(Tab::Element)
+                                on:click=move |_| current_tab.set(Some(Tab::Element))
                             >
                                 {t!(i18n, all.element)}
                             </button>
                         </nav>
                         <p class="warn pre-line">{t!(i18n, edit.warning)}</p>
-                        <button role="button" class="error" on:click=move |_| del_ref(selected.get_untracked().refer.unwrap())>
+                        <button role="button" class="error" on:click=move |_| del_ref(st.selected.get_untracked().refer.unwrap())>
                             "🗑️ "
                             {t!(i18n, all.del)}
                             " "
@@ -262,10 +258,7 @@ pub fn Ref_edit() -> impl IntoView {
 #[component]
 pub fn FieldsCrud() -> impl IntoView {
     let i18n = use_i18n();
-    let meta = use_context::<RwSignal<Option<TableMeta>>>().expect("meta not found");
-    let selected = use_context::<RwSignal<Selected>>().expect("selected not found");
-    let stat = use_context::<RwSignal<StatisticsState>>().expect("stat not found");
-    let now = use_context::<RwSignal<String>>().expect("now not found");
+    let st = use_context::<State>().expect("State missing");
 
     let info_list = RwSignal::new(Vec::<(String, String)>::new());
     let fields_list = RwSignal::new(HashMap::<String, FieldDef>::new());
@@ -274,7 +267,7 @@ pub fn FieldsCrud() -> impl IntoView {
     let original_info = RwSignal::new(Vec::<(String, String)>::new());
     let original_fields = RwSignal::new(HashMap::<String, FieldDef>::new());
 
-    let get_meta = move || {
+    /*let get_meta = move || {
         spawn_local(async move {
             let pb = full_pb(stat.get_untracked().db_path, selected.get_untracked().refer.unwrap());
             match invoke("get_meta", &tauri_args!("pb": pb)).await {
@@ -288,10 +281,10 @@ pub fn FieldsCrud() -> impl IntoView {
                 }
             };
         });
-    };
+    };*/
 
     let upd_info = move |_| {
-        let pb = full_pb(stat.get_untracked().db_path, selected.get_untracked().refer.unwrap());
+        let pb = st.get_full_pb(st.selected.get_untracked().refer.unwrap());
         let new_info = info_list.get_untracked();
 
         spawn_local(async move {
@@ -302,19 +295,19 @@ pub fn FieldsCrud() -> impl IntoView {
             .await
             {
                 Ok(_s) => {
-                    now.set(tu_string!(i18n, edit.saved).to_string());
-                    get_meta();
+                    st.now.set(tu_string!(i18n, edit.saved).to_string());
+                    st.load_meta()
                 }
                 Err(js) => {
                     let error_msg = from_value::<String>(js).unwrap_or_else(|_| "Error".into());
-                    now.set(format!("Error: {:?}", error_msg));
+                    st.now.set(format!("Error: {:?}", error_msg));
                 }
             };
         });
     };
 
     let upd_fields = move |_| {
-        let pb = full_pb(stat.get_untracked().db_path, selected.get_untracked().refer.unwrap());
+        let pb = st.get_full_pb(st.selected.get_untracked().refer.unwrap());
         let updated_fields = fields_list.get_untracked();
 
         spawn_local(async move {
@@ -325,29 +318,29 @@ pub fn FieldsCrud() -> impl IntoView {
             .await
             {
                 Ok(_s) => {
-                    now.set(tu_string!(i18n, edit.saved).to_string());
-                    get_meta();
+                    st.now.set(tu_string!(i18n, edit.saved).to_string());
+                    st.load_meta()
                 }
                 Err(js) => {
                     let error_msg = from_value::<String>(js).unwrap_or_else(|_| "Error".into());
-                    now.set(format!("Error: {:?}", error_msg));
+                    st.now.set(format!("Error: {:?}", error_msg));
                 }
             };
         });
     };
 
     let del_field = move |f: String| {
-        let pb = full_pb(stat.get_untracked().db_path, selected.get_untracked().refer.unwrap());
+        let pb = st.get_full_pb(st.selected.get_untracked().refer.unwrap());
 
         spawn_local(async move {
             match invoke("del_field", &tauri_args! { "pb": pb, "index": f}).await {
                 Ok(_s) => {
-                    now.set(tu_string!(i18n, edit.saved).to_string());
-                    get_meta();
+                    st.now.set(tu_string!(i18n, edit.saved).to_string());
+                    st.load_meta()
                 }
                 Err(js) => {
                     let error_msg = from_value::<String>(js).unwrap_or_else(|_| "Error".into());
-                    now.set(format!("Error: {:?}", error_msg));
+                    st.now.set(format!("Error: {:?}", error_msg));
                 }
             };
         });
@@ -372,19 +365,19 @@ pub fn FieldsCrud() -> impl IntoView {
     };
 
     let save_new_fields = move |_| {
-        let pb = full_pb(stat.get_untracked().db_path, selected.get_untracked().refer.unwrap());
+        let pb = st.get_full_pb(st.selected.get_untracked().refer.unwrap());
         let new_f: Vec<(String, String)> = new_fields.get_untracked();
 
         spawn_local(async move {
             match invoke("add_fields", &tauri_args! { "pb": pb, "fields": new_f }).await {
                 Ok(_s) => {
-                    now.set(tu_string!(i18n, edit.saved).to_string());
-                    get_meta();
+                    st.now.set(tu_string!(i18n, edit.saved).to_string());
+                    st.load_meta()
                     //new_fields.set(Vec::<(String, String)>::new());
                 }
                 Err(js) => {
                     let error_msg = from_value::<String>(js).unwrap_or_else(|_| "Error".into());
-                    now.set(format!("Error: {:?}", error_msg));
+                    st.now.set(format!("Error: {:?}", error_msg));
                 }
             };
         });
@@ -396,8 +389,8 @@ pub fn FieldsCrud() -> impl IntoView {
 
     Effect::new(move |_| {
         //log::info!("new_fields: {:#?}", new_fields.get());
-        //og::info!("meta {:?}", meta.get());
-        if let Some(m) = meta.get() {
+        //log::info!("meta {:?}", st.meta.get().unwrap());
+        if let Some(m) = st.meta.get() {
             info_list.set(m.info.clone());
             fields_list.set(m.fields.clone());
             original_info.set(m.info.clone());
@@ -438,7 +431,8 @@ pub fn FieldsCrud() -> impl IntoView {
             <div class="gr center">
                 <div class="grida1a">
                     {move || {
-                        meta.get()
+                        st.meta
+                            .get()
                             .unwrap()
                             .names
                             .into_iter()
@@ -454,12 +448,13 @@ pub fn FieldsCrud() -> impl IntoView {
                                                 .update(|list| {
                                                     list.remove(&fkey1);
                                                 });
-                                            meta.update(|m| {
-                                                if let Some(meta_data) = m {
-                                                    meta_data.fields.remove(&fkey1);
-                                                    meta_data.names.retain(|n| n != &fkey1);
-                                                }
-                                            });
+                                            st.meta
+                                                .update(|m| {
+                                                    if let Some(meta_data) = m {
+                                                        meta_data.fields.remove(&fkey1);
+                                                        meta_data.names.retain(|n| n != &fkey1);
+                                                    }
+                                                });
                                             del_field(fkey1.clone());
                                         }
                                     >
@@ -550,17 +545,13 @@ pub fn FieldsCrud() -> impl IntoView {
 #[component]
 pub fn ElementCrud() -> impl IntoView {
     let i18n = use_i18n();
-    let stat = use_context::<RwSignal<StatisticsState>>().expect("stat not found");
-    let meta = use_context::<RwSignal<Option<TableMeta>>>().expect("meta not found");
-    let now = use_context::<RwSignal<String>>().expect("now not found");
-    let selected = use_context::<RwSignal<Selected>>().expect("selected not found");
-    let edit_ref = use_context::<RwSignal<bool>>().expect("edit_el not found");
+    let st = use_context::<State>().expect("State missing");
     let add_mode = RwSignal::new(true);
     let saved_id = RwSignal::new(None::<u32>);
     let form_data: RwSignal<HashMap<String, String>> = RwSignal::new(HashMap::<String, String>::new());
 
     let save_new = move |_| {
-        let pb = full_pb(stat.get_untracked().db_path, selected.get_untracked().refer.unwrap());
+        let pb = st.get_full_pb(st.selected.get_untracked().refer.unwrap());
         let data = form_data.get_untracked();
 
         spawn_local(async move {
@@ -573,7 +564,7 @@ pub fn ElementCrud() -> impl IntoView {
                 }
                 Err(js) => {
                     let error_msg = from_value::<String>(js).unwrap_or_else(|_| "Error".into());
-                    now.set(format!("Error: {:?}", error_msg));
+                    st.now.set(format!("Error: {:?}", error_msg));
                 }
             }
         });
@@ -588,10 +579,10 @@ pub fn ElementCrud() -> impl IntoView {
                 view! {
                     <div class="gr grid center">
                         <button on:click=move |_| {
-                            edit_ref.set(false);
-                            selected.update(|s| s.id = saved_id.get_untracked())
+                            st.edit_ref.set(false);
+                            st.selected.update(|s| s.id = saved_id.get_untracked())
                         }>"→ "{t!(i18n, all.element)}</button>
-                        <button on:click=move |_| edit_ref.set(false)>"→ "{t!(i18n, all.reference)}</button>
+                        <button on:click=move |_| st.edit_ref.set(false)>"→ "{t!(i18n, all.reference)}</button>
                         <button on:click=move |_| add_mode.set(true)>"+ "{t!(i18n, all.element)}</button>
                     </div>
                 }
@@ -601,12 +592,13 @@ pub fn ElementCrud() -> impl IntoView {
                 view! {
                     <div class="grid2 gr a-start">
                         {move || {
-                            meta.get()
+                            st.meta
+                                .get()
                                 .unwrap()
                                 .names
                                 .iter()
                                 .map(|field_key| {
-                                    let binding = meta.get().unwrap();
+                                    let binding = st.meta.get().unwrap();
                                     let field_def = binding.fields.get(field_key).unwrap();
                                     let field_key = field_key.clone();
                                     let value = form_data.get().get(&field_key).cloned().unwrap_or_default();
@@ -650,25 +642,10 @@ enum Scene {
 #[component]
 pub fn OperCrud() -> impl IntoView {
     let i18n = use_i18n();
-    let meta = use_context::<RwSignal<Option<TableMeta>>>().expect("meta not found");
-    let selected = use_context::<RwSignal<Selected>>().expect("selected not found");
-    let stat = use_context::<RwSignal<StatisticsState>>().expect("stat not found");
-    let now = use_context::<RwSignal<String>>().expect("now not found");
+    let st = use_context::<State>().expect("State missing");
     let scene = RwSignal::new(Scene::List);
 
-    // Тот самый массив данных  meta.get().unwrap().operations
-    /*let opers = RwSignal::new(vec![
-        Operation {
-            id: 1,
-            name: "Покупка".into(),
-        },
-        Operation {
-            id: 2,
-            name: "Зарплата".into(),
-        },
-    ]);*/
-
-    let get_meta = move || {
+    /*let get_meta = move || {
         spawn_local(async move {
             let pb = full_pb(stat.get_untracked().db_path, selected.get_untracked().refer.unwrap());
             match invoke("get_meta", &tauri_args!("pb": pb)).await {
@@ -682,11 +659,12 @@ pub fn OperCrud() -> impl IntoView {
                 }
             };
         });
-    };
+    };*/
 
     let del_oper = move |id: u32| {
-        let pb = full_pb(stat.get_untracked().db_path, selected.get_untracked().refer.unwrap());
-        let new_oper_list = meta
+        let pb = st.get_full_pb(st.selected.get_untracked().refer.unwrap());
+        let new_oper_list = st
+            .meta
             .get_untracked()
             .unwrap()
             .operations
@@ -702,12 +680,12 @@ pub fn OperCrud() -> impl IntoView {
             .await
             {
                 Ok(_s) => {
-                    now.set(tu_string!(i18n, edit.saved).to_string());
-                    get_meta();
+                    st.now.set(tu_string!(i18n, edit.saved).to_string());
+                    st.load_meta();
                 }
                 Err(js) => {
                     let error_msg = from_value::<String>(js).unwrap_or_else(|_| "Error".into());
-                    now.set(format!("Error: {:?}", error_msg));
+                    st.now.set(format!("Error: {:?}", error_msg));
                 }
             };
         });
@@ -721,7 +699,7 @@ pub fn OperCrud() -> impl IntoView {
                         view! {
                             <div class="grida1a">
                                 <For
-                                    each=move || meta.get().unwrap().operations.into_iter().enumerate()
+                                    each=move || st.meta.get().unwrap().operations.into_iter().enumerate()
                                     key=|(idx, op)| (*idx, op.id)
                                     children=move |(idx, op)| {
                                         view! {
@@ -745,10 +723,10 @@ pub fn OperCrud() -> impl IntoView {
                         view! {
                             <EditOper
                                 // Берем конкретную операцию по индексу
-                                initial_data=Some(meta.get().unwrap().operations[idx].clone())
+                                initial_data=Some(st.meta.get().unwrap().operations[idx].clone())
                                 on_done=Callback::new(move |_| {
                                     scene.set(Scene::List);
-                                    get_meta();
+                                    st.load_meta();
                                 })
                             />
                         },
@@ -761,7 +739,7 @@ pub fn OperCrud() -> impl IntoView {
                                 initial_data=None
                                 on_done=Callback::new(move |_| {
                                     scene.set(Scene::List);
-                                    get_meta();
+                                    st.load_meta();
                                 })
                             />
                         },
@@ -776,7 +754,7 @@ pub fn OperCrud() -> impl IntoView {
 pub fn EditOper(initial_data: Option<Operation>, #[prop(into)] on_done: Callback<()>) -> impl IntoView {
     use exmex::Express;
     let i18n = use_i18n();
-    let meta = use_context::<RwSignal<Option<TableMeta>>>().expect("meta not found");
+    let st = use_context::<State>().expect("State missing");
     let op = RwSignal::new(initial_data.clone().unwrap_or(Operation {
         id: 0,
         name: "New Operation".into(),
@@ -785,7 +763,8 @@ pub fn EditOper(initial_data: Option<Operation>, #[prop(into)] on_done: Callback
         prec: 2,
     }));
 
-    let vars = meta
+    let vars = st
+        .meta
         .get_untracked()
         .unwrap()
         .fields
@@ -980,9 +959,19 @@ pub fn EditOper(initial_data: Option<Operation>, #[prop(into)] on_done: Callback
     }
 }
 
+pub fn get_standard_operators() -> Vec<&'static str> {
+    vec![
+        "(", ")", "{", "}", // скобки
+        "+", "-", "*", "/", "^", "%", // Арифметика
+        "sin", "cos", "tan", "asin", "acos", // Тригонометрия
+        "atan", "atan2", "sinh", "cosh", "tanh", "exp", "ln", "log10", "log2",
+        "sqrt", // Логарифмы и корни
+        "abs", "signum", "floor", "ceil", "round", "PI", "TAU", "E", // Константы
+    ]
+}
+
 /*#[component]
 fn EditOper(initial_data: Option<Operation>, on_save: Callback<Operation>, on_cancel: Callback<()>) -> impl IntoView {
-    let meta = use_context::<RwSignal<Option<TableMeta>>>().expect("meta not found");
     let num_fields = Memo::new(move |_| {
         meta.get()
             .unwrap()
@@ -1031,10 +1020,7 @@ fn EditOper(initial_data: Option<Operation>, on_save: Callback<Operation>, on_ca
 #[component]
 pub fn OperCrud() -> impl IntoView {
     let i18n = use_i18n();
-    let meta = use_context::<RwSignal<Option<TableMeta>>>().expect("meta not found");
-    let selected = use_context::<RwSignal<Selected>>().expect("selected not found");
     let stat = use_context::<RwSignal<StatisticsState>>().expect("stat not found");
-    let now = use_context::<RwSignal<String>>().expect("now not found");
     let num_fields = RwSignal::new(HashMap::<String, f64>::new());
 
     if let Some(m) = meta.get_untracked() {

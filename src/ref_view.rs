@@ -1,7 +1,8 @@
-use crate::{app::*, functions::*, i18n::*, ref_edit::*, tauri_args};
+use crate::{app::*, i18n::*, ref_edit::*, state::State, tauri_args};
 use leptos::prelude::*;
 use leptos::task::spawn_local;
 use serde_wasm_bindgen::from_value;
+use std::collections::HashMap;
 use std::path::PathBuf;
 
 #[derive(Debug, Clone)] // -1,0,1
@@ -13,34 +14,29 @@ pub struct RefState {
 #[component]
 pub fn Ref_main() -> impl IntoView {
     let i18n = use_i18n();
-    let selected = use_context::<RwSignal<Selected>>().expect("selected not found");
-    let edit_ref = use_context::<RwSignal<bool>>().expect("reference not found");
-    let stat = use_context::<RwSignal<StatisticsState>>().expect("stat not found");
-    let now = use_context::<RwSignal<String>>().expect("now not found");
-    let pb = full_pb(stat.get_untracked().db_path, selected.get_untracked().refer.unwrap());
+    let st = use_context::<State>().expect("State missing");
     let query_string = RwSignal::new("".to_string());
-    let meta = use_context::<RwSignal<Option<TableMeta>>>().expect("meta not found");
     let data = RwSignal::new(None::<Vec<DataRecord>>);
     let ref_state = RwSignal::new(RefState { meta: 0, data: 0 });
     let search_run = RwSignal::new(false);
 
     // get meta
     spawn_local(async move {
-        let pb = full_pb(stat.get_untracked().db_path, selected.get_untracked().refer.unwrap());
+        let pb = st.get_full_pb(st.selected.get_untracked().refer.unwrap());
         match invoke("get_meta", &tauri_args!("pb": pb)).await {
             Ok(js) => {
                 let s = from_value::<TableMeta>(js).unwrap();
-                ref_state.update(|st| {
-                    st.meta = 1;
+                ref_state.update(|rst| {
+                    rst.meta = 1;
                 });
-                meta.set(Some(s))
+                st.meta.set(Some(s))
             }
             Err(js) => {
                 let error_msg = from_value::<String>(js).unwrap_or_else(|_| "Unknown error".into());
-                ref_state.update(|st| {
-                    st.meta = -1;
+                ref_state.update(|rst| {
+                    rst.meta = -1;
                 });
-                now.set(format!("{} {}", "", &error_msg));
+                st.now.set(format!("{} {}", "", &error_msg));
             }
         };
     });
@@ -63,7 +59,7 @@ pub fn Ref_main() -> impl IntoView {
                 }
                 Err(js) => {
                     let error_msg = from_value::<String>(js).unwrap_or_else(|_| "Unknown error".into());
-                    now.set(format!("{} {}", "", error_msg));
+                    st.now.set(format!("{} {}", "", error_msg));
                     ref_state.update(|st| {
                         st.data = -1;
                     });
@@ -74,16 +70,16 @@ pub fn Ref_main() -> impl IntoView {
     };
 
     let save_search_config = move |field: String| {
-        let Some(mut meta_data) = meta.get_untracked() else {
+        let Some(mut meta_data) = st.meta.get_untracked() else {
             return;
         };
-        let pb = full_pb(stat.get_untracked().db_path, selected.get_untracked().refer.unwrap());
+        let pb = st.get_full_pb(st.selected.get_untracked().refer.unwrap());
         if let Some(pos) = meta_data.search_config.iter().position(|f| f == &field) {
             meta_data.search_config.remove(pos);
         } else {
             meta_data.search_config.push(field);
         }
-        meta.set(Some(meta_data.clone()));
+        st.meta.set(Some(meta_data.clone()));
 
         spawn_local(async move {
             match invoke(
@@ -93,11 +89,11 @@ pub fn Ref_main() -> impl IntoView {
             .await
             {
                 Ok(_s) => {
-                    now.set(format!("{:?}", tu_string!(i18n, edit.saved)));
+                    st.now.set(format!("{:?}", tu_string!(i18n, edit.saved)));
                 }
                 Err(js) => {
                     let error_msg = from_value::<String>(js).unwrap_or_else(|_| "Unknown error".into());
-                    now.set(format!("Error: {:?}", error_msg));
+                    st.now.set(format!("Error: {:?}", error_msg));
                 }
             }
         });
@@ -107,14 +103,15 @@ pub fn Ref_main() -> impl IntoView {
         spawn_local(async move {
             match invoke("del_ref", &tauri_args!("val" : name.clone())).await {
                 Ok(_s) => {
-                    now.set(format!("{}: {:?}", tu_string!(i18n, edit.ok_del_ref), &name));
-                    selected.update(|c| c.refer = None);
-                    edit_ref.set(false);
-                    upd_stat(stat, now);
+                    st.now
+                        .set(format!("{}: {:?}", tu_string!(i18n, edit.ok_del_ref), &name));
+                    st.selected.update(|c| c.refer = None);
+                    st.edit_ref.set(false);
+                    st.upd_stat();
                 }
                 Err(js) => {
                     let error_msg = from_value::<String>(js).unwrap_or_else(|_| "Unknown error".into());
-                    now.set(format!(
+                    st.now.set(format!(
                         "{}: {:?} - {}",
                         tu_string!(i18n, edit.er_del_ref),
                         &name,
@@ -127,20 +124,20 @@ pub fn Ref_main() -> impl IntoView {
 
     // first run
     Effect::new(move |_| {
-        selected.track();
+        st.selected.track();
 
-        if meta.get().is_none() {
+        if st.meta.get().is_none() {
             return;
         }
 
-        let meta_data = meta.get().unwrap();
+        let meta_data = st.meta.get().unwrap();
         if meta_data.search_config.is_empty() || meta_data.count_data == 0 {
             data.set(None);
             ref_state.update(|st| st.data = if meta_data.count_data == 0 { -1 } else { 0 });
             return;
         }
 
-        let pbclon = full_pb(stat.get_untracked().db_path, selected.get_untracked().refer.unwrap());
+        let pbclon = st.get_full_pb(st.selected.get_untracked().refer.unwrap());
         let current_query = query_string.get_untracked();
 
         // Если query_string пустой — первый вход, показываем первые 10
@@ -151,14 +148,14 @@ pub fn Ref_main() -> impl IntoView {
     // debounce for search. run if upd query_string || meta
     Effect::new(move |_| {
         let _ = query_string.get();
-        let Some(_) = meta.get() else {
+        let Some(_) = st.meta.get() else {
             return;
         };
-        if meta.get().unwrap().count_data == 0 {
+        if st.meta.get().unwrap().count_data == 0 {
             return;
         };
 
-        let pbclon = pb.clone();
+        let pb = st.get_full_pb(st.selected.get_untracked().refer.unwrap());
         let current_query = query_string.get_untracked();
 
         set_timeout(
@@ -166,7 +163,7 @@ pub fn Ref_main() -> impl IntoView {
                 if query_string.get_untracked() == current_query {
                     // Откладываем тяжёлую работу
                     request_animation_frame(move || {
-                        search_items(pbclon, current_query);
+                        search_items(pb, current_query);
                     });
                 }
             },
@@ -183,7 +180,7 @@ pub fn Ref_main() -> impl IntoView {
     });
 
     view! {
-        <Show when=move || { selected.get().id.is_none() } fallback=|| view! { <Ref_el /> }>
+        <Show when=move || { st.selected.get().id.is_none() } fallback=|| view! { <Ref_el /> }>
             <div class="ref">
                 {move || {
                     match ref_state.get().meta {
@@ -192,7 +189,7 @@ pub fn Ref_main() -> impl IntoView {
                                 <div class="gr">
                                     <h5 class="error">"🚫"</h5>
                                     <p class="err_send">
-                                        <button on:click=move |_| del_ref(selected.get().refer.unwrap())>{t!(i18n, all.del)}</button>
+                                        <button on:click=move |_| del_ref(st.selected.get().refer.unwrap())>{t!(i18n, all.del)}</button>
                                     </p>
                                 </div>
                             }
@@ -200,7 +197,7 @@ pub fn Ref_main() -> impl IntoView {
                         }
                         0 => view! { <span class="gr" aria-busy="true"></span> }.into_any(),
                         1 => {
-                            let table_meta = meta.get().unwrap();
+                            let table_meta = st.meta.get().unwrap();
                             let sorted_search: Vec<String> = table_meta
                                 .names
                                 .iter()
@@ -210,10 +207,10 @@ pub fn Ref_main() -> impl IntoView {
                                 .collect();
                             view! {
                                 <div class="header-row gr">
-                                    <button on:click=move |_| selected.update(|c| c.refer = None)>"←"</button>
+                                    <button on:click=move |_| st.selected.update(|c| c.refer = None)>"←"</button>
 
                                     <div class="title-group">
-                                        <span>{move || remove_refer_ext(&selected.get().refer.unwrap())}</span>
+                                        <span>{move || st.remove_refer_ext(&st.selected.get().refer.unwrap())}</span>
                                         // name & desc
                                         <p class="info-show m0">
                                             {match table_meta.info[0].1.is_empty() && table_meta.info[1].1.is_empty() {
@@ -233,7 +230,7 @@ pub fn Ref_main() -> impl IntoView {
                                         </p>
                                     </div>
 
-                                    <button on:click=move |_| edit_ref.set(true)>"🔧"</button>
+                                    <button on:click=move |_| st.edit_ref.set(true)>"🔧"</button>
                                 </div>
 
                                 // input. add "hidden" if empty search_config or count < 11
@@ -307,7 +304,7 @@ pub fn Ref_main() -> impl IntoView {
                                                             view! {
                                                                 <button
                                                                     class="row"
-                                                                    on:click=move |_| selected.update(|c| c.id = Some(rec.id))
+                                                                    on:click=move |_| st.selected.update(|c| c.id = Some(rec.id))
                                                                 >
                                                                     <div>{format!("#{}", rec.id)}</div>
                                                                     {search_fields_info
@@ -416,42 +413,39 @@ pub fn Ref_main() -> impl IntoView {
 #[component]
 pub fn Ref_el() -> impl IntoView {
     let i18n = use_i18n();
-    let selected = use_context::<RwSignal<Selected>>().expect("selected not found");
-    let settings = use_context::<RwSignal<AppSettings>>().expect("settings not found");
-    let stat = use_context::<RwSignal<StatisticsState>>().expect("stat not found");
-    let meta = use_context::<RwSignal<Option<TableMeta>>>().expect("meta not found");
-    let now = use_context::<RwSignal<String>>().expect("now not found");
+    let st = use_context::<State>().expect("State missing");
     let edit_el = RwSignal::new(false);
     let data = RwSignal::new(None::<DataRecord>);
     let ref_state = RwSignal::new(RefState { meta: 1, data: 0 });
 
     let in_qa = move || {
-        let (refer, element) = (selected.get().refer.clone().unwrap(), selected.get().id.unwrap());
-        settings.with(|s| s.qa.iter().any(|item| item.path == refer && item.id == element))
+        let (refer, element) = (st.selected.get().refer.clone().unwrap(), st.selected.get().id.unwrap());
+        st.settings
+            .with(|s| s.qa.iter().any(|item| item.path == refer && item.id == element))
     };
 
     // get el
     let get_el = move || {
         spawn_local(async move {
-            let pb = full_pb(stat.get_untracked().db_path, selected.get_untracked().refer.unwrap());
+            let pb = st.get_full_pb(st.selected.get_untracked().refer.unwrap());
             match invoke(
                 "get_el",
-                &tauri_args!("pb": pb, "id": Some(selected.get_untracked().id)),
+                &tauri_args!("pb": pb, "id": Some(st.selected.get_untracked().id)),
             )
             .await
             {
                 Ok(js) => {
                     let s = from_value::<DataRecord>(js).unwrap();
                     data.set(Some(s));
-                    ref_state.update(|st| {
-                        st.data = 1;
+                    ref_state.update(|rst| {
+                        rst.data = 1;
                     });
                 }
                 Err(js) => {
                     let error_msg = from_value::<String>(js).unwrap_or_else(|_| "Unknown error".into());
-                    now.set(format!("{} {}", "Error:", &error_msg));
-                    ref_state.update(|st| {
-                        st.data = -1;
+                    st.now.set(format!("{} {}", "Error:", &error_msg));
+                    ref_state.update(|rst| {
+                        rst.data = -1;
                     });
                 }
             };
@@ -460,44 +454,44 @@ pub fn Ref_el() -> impl IntoView {
     get_el();
 
     let toggle_qa = move |title| {
-        let (refer, element) = (selected.get().refer.clone().unwrap(), selected.get().id.unwrap());
+        let (refer, element) = (st.selected.get().refer.clone().unwrap(), st.selected.get().id.unwrap());
 
-        settings.update(|s| {
+        st.settings.update(|s| {
             if let Some(pos) = s.qa.iter().position(|item| item.path == refer && item.id == element) {
                 s.qa.remove(pos);
-                now.set(format!("- {}", tu_string!(i18n, all.qa)));
+                st.now.set(format!("- {}", tu_string!(i18n, all.qa)));
             } else {
                 s.qa.push(QuickAccess {
                     path: refer,
                     id: element,
                     name: title,
                 });
-                now.set(format!("+ {}", tu_string!(i18n, all.qa)));
+                st.now.set(format!("+ {}", tu_string!(i18n, all.qa)));
             }
         });
 
         spawn_local(async move {
-            let _ = invoke("set_settings", &tauri_args!("new": settings.get_untracked())).await;
+            let _ = invoke("set_settings", &tauri_args!("new": st.settings.get_untracked())).await;
         });
     };
 
     let remove_qa = move || {
-        let remove = selected.get_untracked();
-        settings.update(|s| {
+        let remove = st.selected.get_untracked();
+        st.settings.update(|s| {
             if let Some(pos) =
                 s.qa.iter()
                     .position(|item| &item.path == remove.refer.as_ref().unwrap() && item.id == remove.id.unwrap())
             {
                 s.qa.remove(pos);
-                now.set(format!("- {}", tu_string!(i18n, all.qa)));
-                selected.update(|c| {
+                st.now.set(format!("- {}", tu_string!(i18n, all.qa)));
+                st.selected.update(|c| {
                     c.refer = None;
                     c.id = None;
                 });
             }
         });
         spawn_local(async move {
-            let _ = invoke("set_settings", &tauri_args!("new": settings.get_untracked())).await;
+            let _ = invoke("set_settings", &tauri_args!("new": st.settings.get_untracked())).await;
         });
     };
 
@@ -542,11 +536,11 @@ pub fn Ref_el() -> impl IntoView {
                     }
                     0 => view! { <span class="gr" aria-busy="true"></span> }.into_any(),
                     1 => {
-                        let title = get_item_title(&data.get_untracked().unwrap(), &meta.get_untracked().unwrap());
+                        let title = get_item_title(&data.get_untracked().unwrap(), &st.meta.get_untracked().unwrap());
                         view! {
                             <div class="ref">
                                 <div class="header-row gr">
-                                    <button on:click=move |_| selected.update(|c| c.id = None)>"←"</button>
+                                    <button on:click=move |_| st.selected.update(|c| c.id = None)>"←"</button>
 
                                     <div class="title-group">
                                         <div>
@@ -556,7 +550,7 @@ pub fn Ref_el() -> impl IntoView {
                                                 on:click=move |_| toggle_qa(
                                                     format!(
                                                         "{} | {}",
-                                                        remove_refer_ext(&selected.get_untracked().refer.unwrap()),
+                                                        st.remove_refer_ext(&st.selected.get_untracked().refer.unwrap()),
                                                         title.clone(),
                                                     ),
                                                 )
@@ -564,7 +558,7 @@ pub fn Ref_el() -> impl IntoView {
                                                 {move || if in_qa() { "📍" } else { "📌" }}
                                             </button>
                                         </div>
-                                        <small>{move || remove_refer_ext(&selected.get().refer.unwrap())}</small>
+                                        <small>{move || st.remove_refer_ext(&st.selected.get().refer.unwrap())}</small>
                                     </div>
 
                                     <button on:click=move |_| edit_el.set(true)>"🔧"</button>
@@ -574,7 +568,7 @@ pub fn Ref_el() -> impl IntoView {
                                     <div class="grid2 gr">
                                         {move || {
                                             let d = data.get().unwrap();
-                                            let m = meta.get().unwrap();
+                                            let m = st.meta.get().unwrap();
                                             let mut items: Vec<_> = d.fields.iter().collect();
                                             items.sort_by_key(|(k, _)| *k);
                                             items
@@ -597,7 +591,7 @@ pub fn Ref_el() -> impl IntoView {
                                 </Show>
 
                                 <Show
-                                    when=move || !meta.get().unwrap().operations.is_empty()
+                                    when=move || !st.meta.get().unwrap().operations.is_empty()
                                     fallback=|| {
                                         view! {
                                             <div class="gr">
@@ -607,10 +601,11 @@ pub fn Ref_el() -> impl IntoView {
                                     }
                                 >
                                     {move || {
-                                        match transform_fields(&meta.get().unwrap().fields, &data.get().unwrap().fields) {
+                                        match transform_fields(&st.meta.get().unwrap().fields, &data.get().unwrap().fields) {
                                             Err(e) => view! { <p>{e}</p> }.into_any(),
                                             Ok(vars) => {
-                                                meta.get()
+                                                st.meta
+                                                    .get()
                                                     .unwrap()
                                                     .operations
                                                     .iter()
@@ -630,6 +625,230 @@ pub fn Ref_el() -> impl IntoView {
             }}
         </Show>
     }
+}
+
+#[component]
+pub fn RunOper(oper: Operation, vars: HashMap<String, f64>) -> impl IntoView {
+    use exmex::Express;
+    let orig = RwSignal::new(vars.clone());
+    let (inner, set_inner) = signal(vars.clone());
+
+    // Парсинг формулы
+    let formula = oper.expr.clone();
+    let expr_result = Memo::new(move |_| exmex::parse::<f64>(&formula));
+
+    let var_names = Memo::new(move |_| match expr_result.get() {
+        Ok(e) => e.var_names().iter().map(|n| n.to_string()).collect::<Vec<_>>(),
+        Err(_) => vec![],
+    });
+
+    let calculation = Memo::new(move |_| match expr_result.get() {
+        Ok(e) => {
+            let current_inputs = inner.get();
+            let mut vals = Vec::new();
+
+            for raw_name in e.var_names() {
+                if let Some(val) = current_inputs.get(&raw_name.to_string()) {
+                    vals.push(*val);
+                } else {
+                    return Err(raw_name.to_string());
+                }
+            }
+
+            match e.eval(&vals) {
+                Ok(result) => {
+                    if result.is_infinite() {
+                        Err("∞".to_string())
+                    } else if result.is_nan() {
+                        Err("?".to_string())
+                    } else {
+                        Ok(result)
+                    }
+                }
+                Err(e) => Err(format!("{:?}", e)),
+            }
+        }
+        Err(e) => Err(format!("{}", e)),
+    });
+
+    let filtered = move || {
+        let names = var_names.get();
+        let inner = orig.get();
+        names
+            .into_iter()
+            .filter(|n| !inner.contains_key(n))
+            .collect::<Vec<String>>()
+    };
+
+    let clear_inputs = move |_| {
+        let filtered_names = filtered();
+        set_inner.update(|map| {
+            for name in filtered_names {
+                map.remove(&name);
+            }
+        });
+    };
+
+    view! {
+        <div class="oper gr grid center gap04">
+            <strong class="center">
+                {oper.name}" : "
+                <span>
+                    {move || match calculation.get() {
+                        Ok(val) => view! { <span class="success">{format!("{:.*}", oper.prec as usize, val)}</span> }.into_any(),
+                        Err(e) => view! { <span class="error">{e}</span> }.into_any(),
+                    }}
+                </span>"  " <Prec op_id=oper.id />
+                {move || {
+                    if !filtered().is_empty() {
+                        // Кнопка очистки только если есть поля
+                        view! {
+                            <button class="ml1 sm_b" on:click=clear_inputs>
+                                "🧹"
+                            </button>
+                        }
+                            .into_any()
+                    } else {
+                        let _: () = view! { <></> };
+                        ().into_any()
+                    }
+                }}
+            </strong>
+
+            // Динамические инпуты для неопределенных переменных
+            <div class="flex_wrap3">
+                <For
+                    each=move || filtered()
+                    key=|name| name.clone()
+                    children=move |name| {
+                        let n_label = name.clone();
+                        let n_input = name.clone();
+                        view! {
+                            <div>
+                                <label>{n_label}</label>
+                                <input
+                                    type="number"
+                                    placeholder="0.0"
+                                    step="any"
+                                    on:input=move |ev| {
+                                        let val = event_target_value(&ev).parse::<f64>().unwrap_or(0.0);
+                                        set_inner
+                                            .update(|map| {
+                                                map.insert(n_input.clone(), val);
+                                            });
+                                    }
+                                />
+                            // prop:value=move || inner.get().get(&name).cloned().unwrap_or(0.0)
+                            </div>
+                        }
+                    }
+                />
+            </div>
+
+            <small>{oper.desc}</small>
+            <small>{oper.expr}</small>
+        </div>
+    }
+}
+
+#[component]
+pub fn Prec(op_id: u32) -> impl IntoView {
+    let st = use_context::<State>().expect("State missing");
+
+    let precision = move || {
+        st.meta
+            .get()
+            .unwrap()
+            .operations
+            .iter()
+            .find(|o| o.id == op_id)
+            .unwrap()
+            .prec
+    };
+
+    let on_input = move |ev: web_sys::Event| {
+        let new_val = event_target_value(&ev).parse().unwrap_or(2);
+        let pb = st.get_full_pb(st.selected.get_untracked().refer.unwrap());
+
+        st.meta.update(|meta_opt| {
+            let meta = meta_opt.as_mut().unwrap();
+            let operation = meta.operations.iter_mut().find(|o| o.id == op_id).unwrap();
+            operation.prec = new_val;
+        });
+
+        let for_send = st.meta.get_untracked().unwrap().operations;
+
+        spawn_local(async move {
+            let _ = invoke(
+                "update_meta_entity",
+                &tauri_args! {
+                    "pb": pb,
+                    "key": "operations",
+                    "value": for_send
+                },
+            )
+            .await;
+        });
+    };
+
+    view! {
+        <select class="precision" on:change=on_input prop:value=precision>
+            {(0..18).map(|n| view! { <option value=n>{n}</option> }).collect_view()}
+        </select>
+    }
+}
+
+// Получить заголовок элемента для списка/заголовка
+pub fn get_item_title(record: &DataRecord, meta: &TableMeta) -> String {
+    let fields_text = if !meta.search_config.is_empty() {
+        meta.search_config
+            .iter()
+            .filter_map(|field| record.fields.get(field))
+            .filter(|v| !v.is_empty())
+            .cloned()
+            .collect::<Vec<_>>()
+            .join(" • ")
+    } else {
+        String::new()
+    };
+
+    if fields_text.is_empty() {
+        format!("#{}", record.id)
+    } else {
+        format!("{} • #{}", fields_text, record.id)
+    }
+}
+
+pub fn transform_fields(
+    fields_def: &HashMap<String, FieldDef>, data_fields: &HashMap<String, String>,
+) -> Result<HashMap<String, f64>, String> {
+    // Создаём HashMap для быстрого поиска по ключу
+    let field_types_map: HashMap<_, _> = fields_def
+        .iter()
+        .map(|(k, def)| (k.clone(), def.ftype.as_str()))
+        .collect();
+
+    let field_names_map: HashMap<_, _> = fields_def
+        .iter()
+        .map(|(k, def)| (k.clone(), def.name.as_str()))
+        .collect();
+
+    let (successes, errors): (Vec<_>, Vec<_>) = data_fields
+        .iter()
+        // только числовые поля
+        .filter(|(k, _)| field_types_map.get(*k).copied() == Some("number"))
+        .map(|(k, v)| {
+            let name = field_names_map.get(k).cloned().unwrap_or(k.as_str()).to_string();
+            v.parse::<f64>().map(|val| (name.clone(), val)).map_err(|_| name)
+        })
+        .partition(Result::is_ok);
+
+    if !errors.is_empty() {
+        let err_names: Vec<String> = errors.into_iter().map(Result::unwrap_err).collect();
+        return Err(format!("Invalid number format in fields: {}", err_names.join(", ")));
+    }
+
+    Ok(successes.into_iter().map(Result::unwrap).collect())
 }
 
 /*

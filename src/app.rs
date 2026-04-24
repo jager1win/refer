@@ -1,4 +1,4 @@
-use crate::{functions::*, i18n::*, ref_edit::*, ref_view::*};
+use crate::{i18n::*, ref_edit::*, ref_view::*, state::*};
 use leptos::prelude::*;
 use leptos::task::spawn_local;
 use serde::{Deserialize, Serialize};
@@ -100,7 +100,7 @@ pub struct Operation {
     pub id: u32,
     pub name: String,
     pub desc: String,
-    pub expr: String, // "f_6 * 17 / f_20"
+    pub expr: String,
     pub prec: u32,
 }
 
@@ -109,17 +109,25 @@ pub fn App() -> impl IntoView {
     let settings: RwSignal<AppSettings> = RwSignal::new(AppSettings::default());
     let stat: RwSignal<StatisticsState> = RwSignal::new(StatisticsState::default());
     let selected: RwSignal<Selected> = RwSignal::new(Selected::default());
+    let meta: RwSignal<Option<TableMeta>> = RwSignal::new(None::<TableMeta>);
     let edit_ref: RwSignal<bool> = RwSignal::new(false);
     let active_tab: RwSignal<i32> = RwSignal::new(1);
     let now: RwSignal<String> = RwSignal::new(String::from(""));
+
     let er_pat = ["fail", "error", "warning", "invalid", "unknown"];
 
-    provide_context(settings);
-    provide_context(stat);
-    provide_context(selected);
-    provide_context(edit_ref);
-    provide_context(now);
     provide_context(active_tab);
+
+    let st = State {
+        stat,
+        selected,
+        meta,
+        now,
+        edit_ref,
+        settings,
+    };
+    provide_context(st);
+
     leptos_meta::provide_meta_context();
 
     // set settings from file
@@ -136,10 +144,10 @@ pub fn App() -> impl IntoView {
         };
     });
 
-    upd_stat(stat, now);
+    st.upd_stat();
 
     let clean = move || {
-        selected.update(|cur| {
+        st.selected.update(|cur| {
             cur.refer = None;
             cur.id = None;
         });
@@ -185,7 +193,7 @@ pub fn App() -> impl IntoView {
                     class="navb"
                     class:active=move || active_tab.get() == 1
                     on:click=move |_| {
-                        upd_stat(stat, now);
+                        st.upd_stat();
                         clean();
                         active_tab.set(1);
                     }
@@ -196,7 +204,7 @@ pub fn App() -> impl IntoView {
                     class="navb"
                     class:active=move || active_tab.get() == 2
                     on:click=move |_| {
-                        upd_stat(stat, now);
+                        st.upd_stat();
                         clean();
                         if active_tab.get() == 2 {
                             active_tab.set(1);
@@ -241,16 +249,12 @@ pub fn App() -> impl IntoView {
 
 #[component]
 fn ReferencesContainer() -> impl IntoView {
-    let selected = use_context::<RwSignal<Selected>>().expect("selected not found");
-    let edit_ref = use_context::<RwSignal<bool>>().expect("edit not found");
-
-    let meta: RwSignal<Option<TableMeta>> = RwSignal::new(None::<TableMeta>);
-    provide_context(meta);
+    let st = use_context::<State>().expect("State missing");
 
     view! {
         <div class="references-container">
-            <Show when=move || selected.get().refer.is_some() fallback=|| view! { <Refs /> }>
-                <Show when=move || !edit_ref.get() fallback=|| view! { <Ref_edit /> }>
+            <Show when=move || st.selected.get().refer.is_some() fallback=|| view! { <Refs /> }>
+                <Show when=move || !st.edit_ref.get() fallback=|| view! { <Ref_edit /> }>
                     <Ref_main />
                 </Show>
             </Show>
@@ -262,14 +266,13 @@ fn ReferencesContainer() -> impl IntoView {
 fn Settings() -> impl IntoView {
     let i18n = use_i18n();
     let all: &[Locale] = Locale::get_all();
-    let settings = use_context::<RwSignal<AppSettings>>().expect("settings not found");
+    let st = use_context::<State>().expect("State missing");
     let colors = [
         "orange", "lime", "green", "cyan", "blue", "indigo", "purple", "fuchsia", "pink", "rose", "slate", "zinc",
         "taupe", "mauve", "mist", "olive",
     ];
     /* Possible color choices: orange, lime, green, cyan, blue, indigo, purple, fuchsia, pink, rose, slate, zinc, taupe, mauve, mist, olive*/
     let info = RwSignal::new(Vec::<(String, String)>::new());
-    let now = use_context::<RwSignal<String>>().expect("now not found");
 
     spawn_local(async move {
         match invoke("get_app_info", &JsValue::NULL).await {
@@ -280,48 +283,48 @@ fn Settings() -> impl IntoView {
             Err(js) => {
                 let error_msg = from_value::<String>(js).unwrap_or_else(|_| "Unknown error".into());
                 let v = format!("Failed get app info: {}", error_msg);
-                now.set(v);
+                st.now.set(v);
             }
         };
     });
 
     let toggle_theme = move |_| {
-        settings.update(|current| {
+        st.settings.update(|current| {
             if current.theme == "light" {
                 current.theme = "dark".to_string();
             } else {
                 current.theme = "light".to_string();
             }
             spawn_local(async move {
-                let _ = invoke("set_settings", &tauri_args!("new": settings.get_untracked())).await;
+                let _ = invoke("set_settings", &tauri_args!("new": st.settings.get_untracked())).await;
             });
         });
     };
 
     let toggle_log = move |_| {
-        settings.update(|current| {
+        st.settings.update(|current| {
             if current.log == "false" {
                 current.log = "true".to_string();
             } else {
                 current.log = "false".to_string();
             }
             spawn_local(async move {
-                let _ = invoke("set_settings", &tauri_args!("new": settings.get_untracked())).await;
+                let _ = invoke("set_settings", &tauri_args!("new": st.settings.get_untracked())).await;
             });
         });
     };
 
     let set_color = move |color: &str| {
-        settings.update(|current| {
+        st.settings.update(|current| {
             current.color = color.to_string();
             spawn_local(async move {
-                let _ = invoke("set_settings", &tauri_args!("new": settings.get_untracked())).await;
+                let _ = invoke("set_settings", &tauri_args!("new": st.settings.get_untracked())).await;
             });
         });
     };
 
     Effect::new(move |_| {
-        let lang_code = settings.get().language;
+        let lang_code = st.settings.get().language;
         if let Some(&loc) = all
             .iter()
             .find(|l| l.to_string() == lang_code)
@@ -333,8 +336,8 @@ fn Settings() -> impl IntoView {
     });
 
     Effect::new(move |_| {
-        let theme_value = settings.get().theme;
-        let color_value = settings.get().color;
+        let theme_value = st.settings.get().theme;
+        let color_value = st.settings.get().color;
         let document = window().document().unwrap();
         let html_element = document.document_element().unwrap();
         html_element.set_attribute("data-theme", &theme_value).unwrap();
@@ -354,7 +357,7 @@ fn Settings() -> impl IntoView {
                         .iter()
                         .map(move |&loc| {
                             let code = loc.as_str();
-                            let is_active = move || settings.get().language == loc.to_string();
+                            let is_active = move || st.settings.get().language == loc.to_string();
                             view! {
                                 <button
                                     class=move || { if is_active() { "locale-btn active".to_string() } else { "locale-btn".to_string() } }
@@ -362,11 +365,11 @@ fn Settings() -> impl IntoView {
                                         if !is_active() {
                                             spawn_local(async move {
                                                 i18n.set_locale(loc);
-                                                settings
+                                                st.settings
                                                     .update(|current| {
                                                         current.language = loc.as_str().to_string();
                                                     });
-                                                let _ = invoke("set_settings", &tauri_args!("new": settings.get_untracked())).await;
+                                                let _ = invoke("set_settings", &tauri_args!("new": st.settings.get_untracked())).await;
                                             });
                                         }
                                     }
@@ -388,7 +391,7 @@ fn Settings() -> impl IntoView {
                             view! {
                                 <button
                                     class=move || {
-                                        if settings.get().color == color { format!("{} active", color) } else { color.to_string() }
+                                        if st.settings.get().color == color { format!("{} active", color) } else { color.to_string() }
                                     }
                                     on:click=move |_| set_color(color)
                                 />
@@ -404,7 +407,7 @@ fn Settings() -> impl IntoView {
                 </div>
                 <div>
                     <button on:click=toggle_theme class="theme-switcher">
-                        {move || match settings.get().theme.as_str() {
+                        {move || match st.settings.get().theme.as_str() {
                             "light" => "🌙",
                             "dark" => "🌞",
                             _ => "🌞",
@@ -419,7 +422,7 @@ fn Settings() -> impl IntoView {
                 </div>
                 <div>
                     <button on:click=toggle_log class="theme-switcher">
-                        {move || match settings.get().log.as_str() {
+                        {move || match st.settings.get().log.as_str() {
                             "false" => t!(i18n, settings.show).into_any(),
                             "true" => t!(i18n, settings.hide).into_any(),
                             _ => "".into_any(),
@@ -445,17 +448,14 @@ fn Settings() -> impl IntoView {
 #[component]
 fn Refs() -> impl IntoView {
     let i18n = use_i18n();
-    let stat = use_context::<RwSignal<StatisticsState>>().expect("stat not found");
-    let settings = use_context::<RwSignal<AppSettings>>().expect("settings not found");
-    let selected = use_context::<RwSignal<Selected>>().expect("selected not found");
-    let now = use_context::<RwSignal<String>>().expect("now not found");
+    let st = use_context::<State>().expect("State missing");
     let patterns = ["fail", "error"];
 
     let remove_qa = move |path, id| {
-        settings.update(|s| {
+        st.settings.update(|s| {
             if let Some(pos) = s.qa.iter().position(|item| item.path == path && item.id == id) {
                 s.qa.remove(pos);
-                now.set(format!("- {}", tu_string!(i18n, all.qa)));
+                st.now.set(format!("- {}", tu_string!(i18n, all.qa)));
             }
         });
     };
@@ -468,13 +468,13 @@ fn Refs() -> impl IntoView {
                 </summary>
                 <div class="grid2">
                     <For
-                        each=move || stat.get().db_list.clone()
+                        each=move || st.stat.get().db_list.clone()
                         key=|item| item.clone()
                         children=move |item: PathBuf| {
                             view! {
                                 <button on:click=move |_| {
-                                    selected.update(|c| c.refer = Some(item.clone()))
-                                }>{remove_refer_ext(&item)}</button>
+                                    st.selected.update(|c| c.refer = Some(item.clone()))
+                                }>{st.remove_refer_ext(&item)}</button>
                             }
                         }
                     />
@@ -487,7 +487,7 @@ fn Refs() -> impl IntoView {
                 </summary>
                 <div class="grid">
                     <For
-                        each=move || settings.get().qa
+                        each=move || st.settings.get().qa
                         key=|item| (item.id, item.path.clone())
                         children=move |item: QuickAccess| {
                             let clone = item.clone();
@@ -500,7 +500,7 @@ fn Refs() -> impl IntoView {
                                     <button
                                         class="ml1"
                                         on:click=move |_| {
-                                            selected
+                                            st.selected
                                                 .update(|c| {
                                                     c.id = Some(clone1.id);
                                                     c.refer = Some(clone1.path.clone());
@@ -519,17 +519,17 @@ fn Refs() -> impl IntoView {
 
         <div class="grid1a stat_table gr info">
             <b>{t!(i18n, refs.st_path)}": "</b>
-            <span>{move || stat.get().db_path.display().to_string()}</span>
+            <span>{move || st.stat.get().db_path.display().to_string()}</span>
             <b>{t!(i18n, refs.st_access)}": "</b>
             <span class:error=move || {
-                patterns.iter().any(|p| stat.get().db_path_ok.to_lowercase().contains(p))
-            }>{move || stat.get().db_path_ok}</span>
+                patterns.iter().any(|p| st.stat.get().db_path_ok.to_lowercase().contains(p))
+            }>{move || st.stat.get().db_path_ok}</span>
             <b>{t!(i18n, refs.st_count)}": "</b>
-            <span>{move || stat.get().db_list.len()}</span>
+            <span>{move || st.stat.get().db_list.len()}</span>
             <b>{t!(i18n, refs.st_size)}": "</b>
-            <span>{move || read_size(stat.get().db_path_size)}</span>
+            <span>{move || read_size(st.stat.get().db_path_size)}</span>
             <b>{t!(i18n, refs.st_log)}": "</b>
-            <span>{move || stat.get().log_path}</span>
+            <span>{move || st.stat.get().log_path}</span>
         </div>
     }
 }
@@ -538,10 +538,8 @@ fn Refs() -> impl IntoView {
 fn Create() -> impl IntoView {
     use leptos::ev::SubmitEvent;
     let i18n = use_i18n();
-    let stat = use_context::<RwSignal<StatisticsState>>().expect("stat not found");
-    let now = use_context::<RwSignal<String>>().expect("now not found");
+    let st = use_context::<State>().expect("State missing");
     let active_tab = use_context::<RwSignal<i32>>().expect("active_tab not found");
-    let selected = use_context::<RwSignal<Selected>>().expect("selected not found");
     let err_form: RwSignal<String> = RwSignal::new("".to_string());
     let is_loading = RwSignal::new(false);
     // mode: "empty" | "sheet" | "sqlite"
@@ -595,7 +593,7 @@ fn Create() -> impl IntoView {
             let _ = form_data.db_name.set_extension("refer");
         }
 
-        if stat.get().db_list.contains(&form_data.db_name) {
+        if st.stat.get().db_list.contains(&form_data.db_name) {
             err_form.set(format!("🖉 !exist {}", t_string!(i18n, create.fname)));
             return;
         }
@@ -605,12 +603,12 @@ fn Create() -> impl IntoView {
         } else {
             "create_from_file"
         };
-        now.set("⏳".to_string());
+        st.now.set("⏳".to_string());
         is_loading.set(true);
         spawn_local(async move {
             match invoke(command_name, &tauri_args!("val": form_data)).await {
                 Ok(_s) => {
-                    now.set(format!(
+                    st.now.set(format!(
                         "{}: {}",
                         tu_string!(i18n, create.ok_create),
                         form_data.db_name.to_string_lossy()
@@ -619,13 +617,13 @@ fn Create() -> impl IntoView {
                         f.reset();
                     }
                     is_loading.set(false);
-                    selected.update(|c| c.refer = Some(form_data.db_name));
+                    st.selected.update(|c| c.refer = Some(form_data.db_name));
                     active_tab.set(1);
                 }
                 Err(js) => {
                     is_loading.set(false);
                     let error_msg = from_value::<String>(js).unwrap_or_else(|_| "Unknown error".into());
-                    now.set(format!(
+                    st.now.set(format!(
                         "{}: {} - {}",
                         tu_string!(i18n, create.er_create),
                         form_data.db_name.to_string_lossy(),
@@ -645,14 +643,15 @@ fn Create() -> impl IntoView {
         spawn_local(async move {
             match invoke("create_example", &tauri_args!("val": form_data)).await {
                 Ok(_js) => {
-                    now.set(format!("{}: {:?}", tu_string!(i18n, create.ok_create), &name));
-                    upd_stat(stat, now);
-                    selected.update(|c| c.refer = Some(name));
+                    st.now
+                        .set(format!("{}: {:?}", tu_string!(i18n, create.ok_create), &name));
+                    st.upd_stat();
+                    st.selected.update(|c| c.refer = Some(name));
                     active_tab.set(1);
                 }
                 Err(js) => {
                     let error_msg = from_value::<String>(js).unwrap_or_else(|_| "Unknown error".into());
-                    now.set(format!(
+                    st.now.set(format!(
                         "{}: {:?} - {}",
                         tu_string!(i18n, create.er_create),
                         &name,
@@ -672,12 +671,12 @@ fn Create() -> impl IntoView {
     });
     view! {
         <Show
-            when=move || stat.get().db_path_ok == "Ok"
+            when=move || st.stat.get().db_path_ok == "Ok"
             fallback=move || {
                 view! {
                     <p>{tu!(i18n, create.main_error)}":"</p>
-                    <span>{move || stat.get().db_path.display().to_string()}</span>
-                    <span class="error">{move || stat.get().db_path_ok}</span>
+                    <span>{move || st.stat.get().db_path.display().to_string()}</span>
+                    <span class="error">{move || st.stat.get().db_path_ok}</span>
                 }
             }
         >
@@ -775,7 +774,8 @@ fn Create() -> impl IntoView {
                 <h5>{t!(i18n, create.example)}</h5>
                 <p class="center">{t!(i18n, create.example_replace)}</p>
                 <div class="test_create gridl">
-                    {stat
+                    {st
+                        .stat
                         .get_untracked()
                         .demo_refs
                         .into_iter()
@@ -831,4 +831,51 @@ fn LogViewer() -> impl IntoView {
             </div>
         </div>
     }
+}
+
+pub fn read_size(bytes: u64) -> String {
+    const KB: f64 = 1024.0;
+    let b = bytes as f64;
+    if b < KB * 10.0 {
+        // показывать в байтах до ~10 KiB как целое
+        format!("{} B", bytes)
+    } else if b < KB * KB {
+        // KiB с 1 знаком
+        format!("{:.1} KiB", b / KB)
+    } else {
+        // MiB с 1 знаком (и дальше можно дополнять GiB и т.д.)
+        format!("{:.1} MiB", b / (KB * KB))
+    }
+}
+
+pub fn validate_relative_refer_path(p: &std::path::Path) -> Result<(), ()> {
+    let s = p.to_string_lossy();
+
+    // не должен начинаться или заканчиваться на '/'
+    if s.starts_with('/') || s.ends_with('/') {
+        return Err(());
+    }
+    // запрещаем ':' и обратный слеш
+    if s.contains(':') || s.contains('\\') || s.contains("//") {
+        return Err(());
+    }
+
+    // каждый компонент не пустой, не "..", без управляющих символов и длина 1..=255
+    for comp in s.split('/') {
+        if comp.is_empty() {
+            return Err(());
+        }
+        if comp == ".." {
+            return Err(());
+        }
+        if comp.chars().any(|c| c.is_control()) {
+            return Err(());
+        }
+        let len = comp.chars().count();
+        if len == 0 || len > 255 {
+            return Err(());
+        }
+    }
+
+    Ok(())
 }
