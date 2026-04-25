@@ -388,7 +388,7 @@ pub fn Ref_main() -> impl IntoView {
                                                                         {k.name}" "
                                                                         {(!k.desc.is_empty()).then(|| format!(" • {}", k.desc))}
                                                                     </span>
-                                                                    <small>{k.expr}</small>
+                                                                    <small>{k.expr}" • Prec: "{k.prec}</small>
                                                                 </div>
                                                             }
                                                         })
@@ -540,7 +540,7 @@ pub fn Ref_el() -> impl IntoView {
                         view! {
                             <div class="ref">
                                 <div class="header-row gr">
-                                    <button on:click=move |_| st.selected.update(|c| c.id = None)>"←"</button>
+                                    <button on:click=move |_| {st.load_meta();st.selected.update(|c| c.id = None)}>"←"</button>
 
                                     <div class="title-group">
                                         <div>
@@ -565,7 +565,7 @@ pub fn Ref_el() -> impl IntoView {
                                 </div>
 
                                 <Show when=move || data.get().is_some() fallback=|| view! { <div>"No data"</div> }>
-                                    <div class="grid2 gr">
+                                    <div class="grid2 44 gr">
                                         {move || {
                                             let d = data.get().unwrap();
                                             let m = st.meta.get().unwrap();
@@ -630,8 +630,10 @@ pub fn Ref_el() -> impl IntoView {
 #[component]
 pub fn RunOper(oper: Operation, vars: HashMap<String, f64>) -> impl IntoView {
     use exmex::Express;
+    let st = use_context::<State>().expect("State missing");
     let orig = RwSignal::new(vars.clone());
     let (inner, set_inner) = signal(vars.clone());
+    let local_prec = RwSignal::new(oper.prec);
 
     // Парсинг формулы
     let formula = oper.expr.clone();
@@ -689,16 +691,47 @@ pub fn RunOper(oper: Operation, vars: HashMap<String, f64>) -> impl IntoView {
         });
     };
 
+    let on_input = move |ev: web_sys::Event| {
+        let new_val = event_target_value(&ev).parse().unwrap_or(2);
+        local_prec.set(new_val);
+        let pb = st.get_full_pb(st.selected.get_untracked().refer.unwrap());
+
+        let mut for_send = st.meta.get_untracked().unwrap().operations;
+        let operation = for_send.iter_mut().find(|o| o.id == oper.id).unwrap();
+        operation.prec = new_val;
+
+        spawn_local(async move {
+            let _ = invoke(
+                "update_meta_entity",
+                &tauri_args! {
+                    "pb": pb,
+                    "key": "operations",
+                    "value": for_send
+                },
+            )
+            .await;
+            
+        });
+    };
+
+    Effect::new(move |_| {
+        log::info!("filtered: {:#?}", filtered());
+        log::info!("inner {:?}", inner.get());
+    });
+
     view! {
         <div class="oper gr grid center gap04">
             <strong class="center">
                 {oper.name}" : "
                 <span>
                     {move || match calculation.get() {
-                        Ok(val) => view! { <span class="success">{format!("{:.*}", oper.prec as usize, val)}</span> }.into_any(),
+                        Ok(val) => view! { <span class="success">{format!("{:.*}", local_prec.get() as usize, val)}</span> }.into_any(),
                         Err(e) => view! { <span class="error">{e}</span> }.into_any(),
                     }}
-                </span>"  " <Prec op_id=oper.id />
+                </span>
+                <select class="precision" on:change=on_input prop:value=move || local_prec.get()>
+                    {(0..18).map(|n| view! { <option value=n>{n}</option> }).collect_view()}
+                </select>
                 {move || {
                     if !filtered().is_empty() {
                         // Кнопка очистки только если есть поля
@@ -730,6 +763,7 @@ pub fn RunOper(oper: Operation, vars: HashMap<String, f64>) -> impl IntoView {
                                     type="number"
                                     placeholder="0.0"
                                     step="any"
+                                    prop:value=move || inner.get().get(&name).cloned().unwrap_or(0.0)
                                     on:input=move |ev| {
                                         let val = event_target_value(&ev).parse::<f64>().unwrap_or(0.0);
                                         set_inner
@@ -738,7 +772,7 @@ pub fn RunOper(oper: Operation, vars: HashMap<String, f64>) -> impl IntoView {
                                             });
                                     }
                                 />
-                            // prop:value=move || inner.get().get(&name).cloned().unwrap_or(0.0)
+                            
                             </div>
                         }
                     }
@@ -748,53 +782,6 @@ pub fn RunOper(oper: Operation, vars: HashMap<String, f64>) -> impl IntoView {
             <small>{oper.desc}</small>
             <small>{oper.expr}</small>
         </div>
-    }
-}
-
-#[component]
-pub fn Prec(op_id: u32) -> impl IntoView {
-    let st = use_context::<State>().expect("State missing");
-
-    let precision = move || {
-        st.meta
-            .get()
-            .unwrap()
-            .operations
-            .iter()
-            .find(|o| o.id == op_id)
-            .unwrap()
-            .prec
-    };
-
-    let on_input = move |ev: web_sys::Event| {
-        let new_val = event_target_value(&ev).parse().unwrap_or(2);
-        let pb = st.get_full_pb(st.selected.get_untracked().refer.unwrap());
-
-        st.meta.update(|meta_opt| {
-            let meta = meta_opt.as_mut().unwrap();
-            let operation = meta.operations.iter_mut().find(|o| o.id == op_id).unwrap();
-            operation.prec = new_val;
-        });
-
-        let for_send = st.meta.get_untracked().unwrap().operations;
-
-        spawn_local(async move {
-            let _ = invoke(
-                "update_meta_entity",
-                &tauri_args! {
-                    "pb": pb,
-                    "key": "operations",
-                    "value": for_send
-                },
-            )
-            .await;
-        });
-    };
-
-    view! {
-        <select class="precision" on:change=on_input prop:value=precision>
-            {(0..18).map(|n| view! { <option value=n>{n}</option> }).collect_view()}
-        </select>
     }
 }
 

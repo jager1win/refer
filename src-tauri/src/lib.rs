@@ -114,6 +114,7 @@ pub fn run() {
             add_fields,
             del_field,
             add_element,
+            save_oper,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

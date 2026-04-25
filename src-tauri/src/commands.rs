@@ -356,13 +356,15 @@ pub async fn get_el(pb: PathBuf, id: u32, state: State<'_, Mutex<DbState>>) -> R
 }
 
 #[tauri::command]
-pub async fn add_element(pb: PathBuf, fields: std::collections::HashMap<String,String> , state: State<'_, Mutex<DbState>>) -> Result<u32, String> {
+pub async fn add_element(
+    pb: PathBuf, fields: std::collections::HashMap<String, String>, state: State<'_, Mutex<DbState>>,
+) -> Result<u32, String> {
     let mut db = state.lock().map_err(|e| e.to_string())?;
     db.with_conn(pb, |conn, _meta| match sql::add_element(conn, fields) {
         Ok(el) => {
             info!("Element added with id: {}", el);
             Ok(el)
-        },
+        }
         Err(e) => {
             error!("Failed to add element: {}", e);
             Err(e.to_string())
@@ -462,6 +464,45 @@ pub async fn del_field(pb: PathBuf, index: String, state: State<'_, Mutex<DbStat
         }
     })
 }
+
+#[tauri::command]
+pub async fn save_oper(pb: PathBuf, oper: Operation, state: State<'_, Mutex<DbState>>) -> Result<(), String> {
+    let mut db = state.lock().map_err(|e| e.to_string())?;
+
+    match oper.id == 0 {
+        true => db.with_conn(pb, |conn, _meta| {
+            match sql::add_operation(conn, &oper.name, &oper.expr, &oper.desc, oper.prec) {
+                Ok(_el) => {
+                    info!("Added operation by name: {}", &oper.name);
+                    Ok(())
+                }
+                Err(e) => {
+                    error!("Failed add operation: {e}; oper= {:?}", &oper);
+                    Err(e.to_string())
+                }
+            }
+        }),
+        false => match simple(&oper.id) {
+            Ok(_el) => {
+                info!("Updated operation by name: {}", &oper.name);
+                Ok(())
+            }
+            Err(e) => {
+                error!("Failed update operation: {e}; oper= {:?}", &oper);
+                Err(e.to_string())
+            }
+        },
+    }
+}
+
+fn simple(n:&u32) -> Result<(), String> {
+    if *n > 2 {
+        Ok(())
+    }else{
+        Err("n<2".to_string())
+    }
+}
+
 
 fn try_remove(path: &std::path::Path) -> io::Result<()> {
     match fs::remove_file(path) {

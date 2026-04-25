@@ -645,22 +645,6 @@ pub fn OperCrud() -> impl IntoView {
     let st = use_context::<State>().expect("State missing");
     let scene = RwSignal::new(Scene::List);
 
-    /*let get_meta = move || {
-        spawn_local(async move {
-            let pb = full_pb(stat.get_untracked().db_path, selected.get_untracked().refer.unwrap());
-            match invoke("get_meta", &tauri_args!("pb": pb)).await {
-                Ok(js) => {
-                    let s = from_value::<TableMeta>(js).unwrap();
-                    meta.set(Some(s))
-                }
-                Err(js) => {
-                    let error_msg = from_value::<String>(js).unwrap_or_else(|_| "Unknown error".into());
-                    now.set(format!("Error: {}", error_msg));
-                }
-            };
-        });
-    };*/
-
     let del_oper = move |id: u32| {
         let pb = st.get_full_pb(st.selected.get_untracked().refer.unwrap());
         let new_oper_list = st
