@@ -23,7 +23,6 @@ pub fn Ref_main() -> impl IntoView {
     // get meta
     spawn_local(async move {
         let pb = st.get_full_pb(st.selected.get_untracked().refer.unwrap());
-        log::info!("first run - get meta");
         match invoke("get_meta", &tauri_args!("pb": pb)).await {
             Ok(js) => {
                 let s = from_value::<TableMeta>(js).unwrap();
@@ -192,7 +191,7 @@ pub fn Ref_main() -> impl IntoView {
                             }
                                 .into_any()
                         }
-                        0 => view! { <span class="gr center" aria-busy="true"></span> }.into_any(),
+                        0 => view! { <p class="gr center" aria-busy="true"></p> }.into_any(),
                         1 => {
                             let table_meta = st.meta.get().unwrap();
                             let sorted_search: Vec<String> = table_meta
@@ -207,7 +206,7 @@ pub fn Ref_main() -> impl IntoView {
                                     <button on:click=move |_| st.selected.update(|c| c.refer = None)>"←"</button>
 
                                     <div class="title-group">
-                                        <span>{move || st.remove_refer_ext(&st.selected.get().refer.unwrap())}</span>
+                                        <span>{move || st.selected.get().refer.unwrap().display().to_string()}</span>
                                         // name & desc
                                         <p class="info-show m0">
                                             {match table_meta.info[0].1.is_empty() && table_meta.info[1].1.is_empty() {
@@ -324,6 +323,7 @@ pub fn Ref_main() -> impl IntoView {
                                     {
                                         let oper = table_meta.clone().operations;
                                         let search_vec = table_meta.clone().search_config;
+                                        let full_pb = st.get_full_pb(st.selected.get_untracked().refer.unwrap());
 
                                         view! {
                                             <b>{t!(i18n, ref_main.total_records)}</b>
@@ -392,6 +392,9 @@ pub fn Ref_main() -> impl IntoView {
                                                         .into_any()
                                                 }}
                                             </div>
+
+                                            <b>{t!(i18n, refs.st_path)}</b>
+                                            <span>{full_pb.display().to_string()}</span>
                                         }
                                     }
                                 </div>
@@ -548,7 +551,7 @@ pub fn Ref_el() -> impl IntoView {
                                                 {move || if in_qa() { "📍" } else { "📌" }}
                                             </button>
                                         </div>
-                                        <small>{move || st.remove_refer_ext(&st.selected.get().refer.unwrap())}</small>
+                                        <small>{move || st.selected.get_untracked().refer.unwrap().display().to_string()}</small>
                                     </div>
 
                                     <button on:click=move |_| edit_el.set(true)>"🔧"</button>

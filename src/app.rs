@@ -431,12 +431,12 @@ fn Settings() -> impl IntoView {
             </div>
         </div>
         <div class="gr info center">
-            <p>"Сreated with Rust, Tauri & Leptos"</p>
+            <h5>"Сreated with Rust, Tauri & Leptos"</h5>
             {move || {
                 info.get()
                     .into_iter()
                     .map(|(k, v)| {
-                        view! { <p>{k}" → "{v}</p> }
+                        view! { <h6>{k}" → "{v}</h6> }
                     })
                     .collect_view()
             }}

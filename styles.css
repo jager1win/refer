@@ -18,9 +18,9 @@ h1,h2,h3,h4,h5,h6,.center{text-align: center;}
 .grida1a{display: grid;grid-template-columns: auto 1fr auto;gap:0.5rem 1rem;}
 .grid1a button{text-wrap: nowrap;overflow-inline: auto;}
 .a-start{align-items:start;}
-div.now{display: flex;align-items: flex-start;margin:0 0.5rem;height:2rem;position:relative;justify-content: center;}
-div.now p{white-space: nowrap;padding: 0;margin:0;margin-bottom: 1rem;overflow-x: auto;height: 100%;}
-.sp_close{flex: 0 0 auto;cursor:pointer;padding-left:1rem;}
+div.now{display: grid;grid-template-columns: 1fr auto;gap: 1rem;height:3rem; align-items: center; margin: 0 0.5rem;}
+div.now p{white-space: nowrap;margin:auto;}
+.sp_close{flex: 0 0 auto;cursor:pointer;}
 button:not(.navb){padding:0.4rem;max-height: 3rem;text-wrap: nowrap;}
 button.bf{width: max-content;}
 .ref{overflow: hidden;}

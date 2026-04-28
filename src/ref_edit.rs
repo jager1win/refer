@@ -93,7 +93,8 @@ pub fn Ref_el_edit() -> impl IntoView {
                 <button on:click=move |_| edit_el.set(false)>"←"</button>
 
                 <h5 class="m0 title-group">
-                    "🔧 #" {st.selected.get_untracked().id.unwrap()} " | " {move || st.selected.get_untracked().refer.unwrap().display().to_string()}
+                    "🔧 #" {st.selected.get_untracked().id.unwrap()} " | "
+                    {move || st.selected.get_untracked().refer.unwrap().display().to_string()}
                 </h5>
             </div>
             <div class="gr">
@@ -188,7 +189,8 @@ pub fn Ref_edit() -> impl IntoView {
                 }
                 Err(js) => {
                     let error_msg = from_value::<String>(js).unwrap_or_else(|_| "Unknown error".into());
-                    st.now.set(format!("{}: {:?} - {}", tu_string!(i18n, edit.er_del_ref), &name, error_msg));
+                    st.now
+                        .set(format!("{}: {:?} - {}", tu_string!(i18n, edit.er_del_ref), &name, error_msg));
                 }
             }
         });
@@ -198,21 +200,16 @@ pub fn Ref_edit() -> impl IntoView {
             <button on:click=move |_| st.edit_ref.set(false)>"←"</button>
 
             <h5 on:click=move |_| current_tab.set(None) class="m0 title-group">
-                "🔧 "{move || st.selected.get_untracked().refer.unwrap().display().to_string()}
+                "🔧 "
+                {move || st.selected.get_untracked().refer.unwrap().display().to_string()}
             </h5>
         </div>
 
         <nav class="gridline gr gap04">
-            <button
-                class:active=move || current_tab.get() == Some(Tab::Fields)
-                on:click=move |_| current_tab.set(Some(Tab::Fields))
-            >
+            <button class:active=move || current_tab.get() == Some(Tab::Fields) on:click=move |_| current_tab.set(Some(Tab::Fields))>
                 {t!(i18n, ref_main.columns)}
             </button>
-            <button
-                class:active=move || current_tab.get() == Some(Tab::Oper)
-                on:click=move |_| current_tab.set(Some(Tab::Oper))
-            >
+            <button class:active=move || current_tab.get() == Some(Tab::Oper) on:click=move |_| current_tab.set(Some(Tab::Oper))>
                 {t!(i18n, ref_main.operations)}
             </button>
             <button
@@ -297,7 +294,12 @@ pub fn FieldsCrud() -> impl IntoView {
         let updated_fields = fields_list.get_untracked();
 
         spawn_local(async move {
-            match invoke("update_meta_entity", &tauri_args! { "pb": pb, "key": "fields", "value": updated_fields }).await {
+            match invoke(
+                "update_meta_entity",
+                &tauri_args! { "pb": pb, "key": "fields", "value": updated_fields },
+            )
+            .await
+            {
                 Ok(_s) => {
                     st.now.set(tu_string!(i18n, edit.saved).to_string());
                     st.load_meta()
@@ -336,7 +338,11 @@ pub fn FieldsCrud() -> impl IntoView {
     let toggle_type = move |idx: usize| {
         new_fields.update(|f| {
             if let Some(field) = f.get_mut(idx) {
-                field.1 = if field.1 == "text" { "number".to_string() } else { "text".to_string() };
+                field.1 = if field.1 == "text" {
+                    "number".to_string()
+                } else {
+                    "text".to_string()
+                };
             }
         });
     };
@@ -519,7 +525,7 @@ pub fn FieldsCrud() -> impl IntoView {
     }
 }
 
-#[component]
+/*#[component]
 pub fn ElementCrud() -> impl IntoView {
     let i18n = use_i18n();
     let st = use_context::<State>().expect("State missing");
@@ -607,6 +613,119 @@ pub fn ElementCrud() -> impl IntoView {
             }
         }}
     }
+}*/
+
+#[component]
+pub fn ElementCrud() -> impl IntoView {
+    let i18n = use_i18n();
+    let st = use_context::<State>().expect("State missing");
+    let add_mode = RwSignal::new(true);
+    let saved_id = RwSignal::new(None::<u32>);
+    
+    // Создаем начальную структуру с пустыми значениями для всех полей
+    let init_form_data = move || {
+        let mut data = HashMap::<String, String>::new();
+        if let Some(meta) = st.meta.get() {
+            for field_key in &meta.names {
+                data.insert(field_key.clone(), String::new());
+            }
+        }
+        data
+    };
+    
+    let form_data: RwSignal<HashMap<String, String>> = RwSignal::new(init_form_data());
+
+    let save_new = move |_| {
+        let pb = st.get_full_pb(st.selected.get_untracked().refer.unwrap());
+        let data = form_data.get_untracked();
+        
+        // Опционально: фильтруем только непустые значения
+        /*let filtered_data: HashMap<String, String> = data.clone()
+            .into_iter()
+            .filter(|(_, v)| !v.is_empty())
+            .collect();*/
+
+        spawn_local(async move {
+            // Используйте data для отправки всех полей или filtered_data для только заполненных
+            match invoke("add_element", &tauri_args! { "pb": pb, "fields": data }).await {
+                Ok(js) => {
+                    let id = from_value::<u32>(js).unwrap();
+                    saved_id.set(Some(id));
+                    add_mode.set(false);
+                    form_data.set(init_form_data()); // Сбрасываем с пустыми значениями вместо пустого HashMap
+                }
+                Err(js) => {
+                    let error_msg = from_value::<String>(js).unwrap_or_else(|_| "Error".into());
+                    st.now.set(format!("Error: {:?}", error_msg));
+                }
+            }
+        });
+    };
+
+    Effect::new(move |_| {
+        //log::info!("edit_ref {:?}", edit_ref.get());
+    });
+    
+    view! {
+        {move || match add_mode.get() {
+            false => {
+                view! {
+                    <div class="gr grid center">
+                        <button on:click=move |_| {
+                            st.edit_ref.set(false);
+                            st.selected.update(|s| s.id = saved_id.get_untracked())
+                        }>"→ "{t!(i18n, all.element)}</button>
+                        <button on:click=move |_| st.edit_ref.set(false)>"→ "{t!(i18n, all.reference)}</button>
+                        <button on:click=move |_| {
+                            form_data.set(init_form_data()); // Инициализируем при переходе в режим добавления
+                            add_mode.set(true);
+                        }>"+ "{t!(i18n, all.element)}</button>
+                    </div>
+                }
+                    .into_any()
+            }
+            true => {
+                view! {
+                    <div class="grid2 gr a-start">
+                        {move || {
+                            st.meta
+                                .get()
+                                .unwrap()
+                                .names
+                                .iter()
+                                .map(|field_key| {
+                                    let binding = st.meta.get().unwrap();
+                                    let field_def = binding.fields.get(field_key).unwrap();
+                                    let field_key = field_key.clone();
+                                    let value = form_data.get().get(&field_key).cloned().unwrap_or_default();
+
+                                    view! {
+                                        <label class="field-col">{field_def.name.clone()}<small>{field_def.ftype.clone()}</small></label>
+                                        <input
+                                            type=field_def.ftype.clone()
+                                            inputmode=if field_def.ftype == "number" { "decimal" } else { "text" }
+                                            prop:value=value
+                                            on:input=move |ev| {
+                                                let val = event_target_value(&ev);
+                                                form_data
+                                                    .update(|f| {
+                                                        f.insert(field_key.clone(), val);
+                                                    });
+                                            }
+                                        />
+                                    }
+                                })
+                                .collect_view()
+                        }}
+                    </div>
+                    <div class="gr center">
+                        <button on:click=save_new>"💾 "{t!(i18n, edit.save)}</button>
+                    </div>
+                }
+                    .into_any()
+            }
+        }}
+    }
 }
 
 #[derive(Clone, Copy, PartialEq)]
@@ -634,7 +753,12 @@ pub fn OperCrud() -> impl IntoView {
             .collect::<Vec<Operation>>();
 
         spawn_local(async move {
-            match invoke("update_meta_entity", &tauri_args! { "pb": pb, "key": "operations", "value": new_oper_list }).await {
+            match invoke(
+                "update_meta_entity",
+                &tauri_args! { "pb": pb, "key": "operations", "value": new_oper_list },
+            )
+            .await
+            {
                 Ok(_s) => {
                     st.now.set(tu_string!(i18n, edit.saved).to_string());
                     st.load_meta();
