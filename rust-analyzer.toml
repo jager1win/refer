@@ -1,0 +1,12 @@
+# rust-analyzer.toml
+[diagnostics]
+disabled = [
+    "unresolved-proc-macro",
+    "macro-error",
+    "unresolved-macro-call",
+    "unresolved-import",
+    "unused-variables",
+    "unused-mut",
+    "dead-code",
+    "unused-must-use",
+]

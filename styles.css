@@ -74,7 +74,7 @@ small{margin:2px;color: oklch(from currentColor l c h / 0.8);}
 .info-show {display:flex; gap: 1rem;line-height: normal;}
 .info-show span:first-child{font-weight: bold;}
 .precision{max-width:fit-content;display: inline-flex;margin:0 0 0 1rem;padding: 0 1.6rem 0 1rem !important;}
-.flex_wrap2,.flex_wrap3{ display: flex;flex-wrap: wrap;gap: 1rem; align-items: center;}
+.flex_wrap2,.flex_wrap3{ display: flex;flex-wrap: wrap;gap: 1rem; align-items: center;justify-content: center;}
 .flex_wrap2 > * {flex: 0 1 calc(50% - 2rem);}
 .flex_wrap3 > * {flex: 0 0 calc(33.33% - 2rem);}
 .gr details{margin:0.4rem;}
@@ -86,7 +86,7 @@ small{margin:2px;color: oklch(from currentColor l c h / 0.8);}
 /* COLORS */
 .error{color:red;}
 .warn,.modified{color: oklch(70.5% 0.213 47.604);}
-button.modified{outline: 3px oklch(70.5% 0.213 47.604) groove;outline-offset: -3px;}
+button.modified,.header-row.modified{outline: 3px oklch(70.5% 0.213 47.604) groove;outline-offset: -3px;}
 
 .orange{background-color: orange;}
 .lime{background-color: lime;}

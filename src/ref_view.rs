@@ -23,6 +23,7 @@ pub fn Ref_main() -> impl IntoView {
     // get meta
     spawn_local(async move {
         let pb = st.get_full_pb(st.selected.get_untracked().refer.unwrap());
+        log::info!("first run - get meta");
         match invoke("get_meta", &tauri_args!("pb": pb)).await {
             Ok(js) => {
                 let s = from_value::<TableMeta>(js).unwrap();
@@ -48,11 +49,12 @@ pub fn Ref_main() -> impl IntoView {
             match invoke("search_items", &tauri_args!("pb": pb, "query": query)).await {
                 Ok(js) => {
                     let s = from_value::<Vec<DataRecord>>(js).unwrap();
-                    ref_state.update(|st| {
+                    ref_state.update(|rst| {
                         if query.is_empty() && s.is_empty() {
-                            st.data = -1;
+                            rst.data = -1;
+                            data.set(None);
                         } else {
-                            st.data = 1;
+                            rst.data = 1;
                             data.set(Some(s));
                         }
                     });
@@ -60,8 +62,8 @@ pub fn Ref_main() -> impl IntoView {
                 Err(js) => {
                     let error_msg = from_value::<String>(js).unwrap_or_else(|_| "Unknown error".into());
                     st.now.set(format!("{} {}", "", error_msg));
-                    ref_state.update(|st| {
-                        st.data = -1;
+                    ref_state.update(|rst| {
+                        rst.data = -1;
                     });
                 }
             };
@@ -103,20 +105,14 @@ pub fn Ref_main() -> impl IntoView {
         spawn_local(async move {
             match invoke("del_ref", &tauri_args!("val" : name.clone())).await {
                 Ok(_s) => {
-                    st.now
-                        .set(format!("{}: {:?}", tu_string!(i18n, edit.ok_del_ref), &name));
+                    st.now.set(format!("{}: {:?}", tu_string!(i18n, edit.ok_del_ref), &name));
                     st.selected.update(|c| c.refer = None);
                     st.edit_ref.set(false);
                     st.upd_stat();
                 }
                 Err(js) => {
                     let error_msg = from_value::<String>(js).unwrap_or_else(|_| "Unknown error".into());
-                    st.now.set(format!(
-                        "{}: {:?} - {}",
-                        tu_string!(i18n, edit.er_del_ref),
-                        &name,
-                        error_msg
-                    ));
+                    st.now.set(format!("{}: {:?} - {}", tu_string!(i18n, edit.er_del_ref), &name, error_msg));
                 }
             }
         });
@@ -125,15 +121,16 @@ pub fn Ref_main() -> impl IntoView {
     // first run
     Effect::new(move |_| {
         st.selected.track();
-
+        log::info!("first run return");
         if st.meta.get().is_none() {
+            log::info!("return");
             return;
         }
 
-        let meta_data = st.meta.get().unwrap();
-        if meta_data.search_config.is_empty() || meta_data.count_data == 0 {
+        let met = st.meta.get().unwrap();
+        if met.search_config.is_empty() || met.count_data == 0 {
             data.set(None);
-            ref_state.update(|st| st.data = if meta_data.count_data == 0 { -1 } else { 0 });
+            ref_state.update(|st| st.data = if met.count_data == 0 { -1 } else { 0 });
             return;
         }
 
@@ -172,7 +169,7 @@ pub fn Ref_main() -> impl IntoView {
     });
 
     Effect::new(move |_| {
-        //log::info!("ref: {:?}", ref_state.get());
+        log::info!("ref_state: {:?}", ref_state.get());
         //log::info!("meta: {:#?}", meta.get());
         //log::info!("selected: {:#?}", selected.get());
         //log::info!("stat: {:#?}", stat.get());
@@ -195,7 +192,7 @@ pub fn Ref_main() -> impl IntoView {
                             }
                                 .into_any()
                         }
-                        0 => view! { <span class="gr" aria-busy="true"></span> }.into_any(),
+                        0 => view! { <span class="gr center" aria-busy="true"></span> }.into_any(),
                         1 => {
                             let table_meta = st.meta.get().unwrap();
                             let sorted_search: Vec<String> = table_meta
@@ -385,10 +382,9 @@ pub fn Ref_main() -> impl IntoView {
                                                             view! {
                                                                 <div class="grid gap02">
                                                                     <span class="gridline">
-                                                                        {k.name}" "
-                                                                        {(!k.desc.is_empty()).then(|| format!(" • {}", k.desc))}
+                                                                        {k.name}" "{(!k.desc.is_empty()).then(|| format!(" • {}", k.desc))}" • Prec: "{k.prec}
                                                                     </span>
-                                                                    <small>{k.expr}" • Prec: "{k.prec}</small>
+                                                                    <small>{k.expr}</small>
                                                                 </div>
                                                             }
                                                         })
@@ -420,20 +416,14 @@ pub fn Ref_el() -> impl IntoView {
 
     let in_qa = move || {
         let (refer, element) = (st.selected.get().refer.clone().unwrap(), st.selected.get().id.unwrap());
-        st.settings
-            .with(|s| s.qa.iter().any(|item| item.path == refer && item.id == element))
+        st.settings.with(|s| s.qa.iter().any(|item| item.path == refer && item.id == element))
     };
 
     // get el
     let get_el = move || {
         spawn_local(async move {
             let pb = st.get_full_pb(st.selected.get_untracked().refer.unwrap());
-            match invoke(
-                "get_el",
-                &tauri_args!("pb": pb, "id": Some(st.selected.get_untracked().id)),
-            )
-            .await
-            {
+            match invoke("get_el", &tauri_args!("pb": pb, "id": Some(st.selected.get_untracked().id))).await {
                 Ok(js) => {
                     let s = from_value::<DataRecord>(js).unwrap();
                     data.set(Some(s));
@@ -534,7 +524,7 @@ pub fn Ref_el() -> impl IntoView {
                         }
                             .into_any()
                     }
-                    0 => view! { <span class="gr" aria-busy="true"></span> }.into_any(),
+                    0 => view! { <p class="gr center" aria-busy="true"></p> }.into_any(),
                     1 => {
                         let title = get_item_title(&data.get_untracked().unwrap(), &st.meta.get_untracked().unwrap());
                         view! {
@@ -676,10 +666,7 @@ pub fn RunOper(oper: Operation, vars: HashMap<String, f64>) -> impl IntoView {
     let filtered = move || {
         let names = var_names.get();
         let inner = orig.get();
-        names
-            .into_iter()
-            .filter(|n| !inner.contains_key(n))
-            .collect::<Vec<String>>()
+        names.into_iter().filter(|n| !inner.contains_key(n)).collect::<Vec<String>>()
     };
 
     let clear_inputs = move |_| {
@@ -710,7 +697,6 @@ pub fn RunOper(oper: Operation, vars: HashMap<String, f64>) -> impl IntoView {
                 },
             )
             .await;
-            
         });
     };
 
@@ -772,7 +758,7 @@ pub fn RunOper(oper: Operation, vars: HashMap<String, f64>) -> impl IntoView {
                                             });
                                     }
                                 />
-                            
+
                             </div>
                         }
                     }
@@ -806,19 +792,11 @@ pub fn get_item_title(record: &DataRecord, meta: &TableMeta) -> String {
     }
 }
 
-pub fn transform_fields(
-    fields_def: &HashMap<String, FieldDef>, data_fields: &HashMap<String, String>,
-) -> Result<HashMap<String, f64>, String> {
+pub fn transform_fields(fields_def: &HashMap<String, FieldDef>, data_fields: &HashMap<String, String>) -> Result<HashMap<String, f64>, String> {
     // Создаём HashMap для быстрого поиска по ключу
-    let field_types_map: HashMap<_, _> = fields_def
-        .iter()
-        .map(|(k, def)| (k.clone(), def.ftype.as_str()))
-        .collect();
+    let field_types_map: HashMap<_, _> = fields_def.iter().map(|(k, def)| (k.clone(), def.ftype.as_str())).collect();
 
-    let field_names_map: HashMap<_, _> = fields_def
-        .iter()
-        .map(|(k, def)| (k.clone(), def.name.as_str()))
-        .collect();
+    let field_names_map: HashMap<_, _> = fields_def.iter().map(|(k, def)| (k.clone(), def.name.as_str())).collect();
 
     let (successes, errors): (Vec<_>, Vec<_>) = data_fields
         .iter()

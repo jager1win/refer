@@ -268,8 +268,7 @@ fn Settings() -> impl IntoView {
     let all: &[Locale] = Locale::get_all();
     let st = use_context::<State>().expect("State missing");
     let colors = [
-        "orange", "lime", "green", "cyan", "blue", "indigo", "purple", "fuchsia", "pink", "rose", "slate", "zinc",
-        "taupe", "mauve", "mist", "olive",
+        "orange", "lime", "green", "cyan", "blue", "indigo", "purple", "fuchsia", "pink", "rose", "slate", "zinc", "taupe", "mauve", "mist", "olive",
     ];
     /* Possible color choices: orange, lime, green, cyan, blue, indigo, purple, fuchsia, pink, rose, slate, zinc, taupe, mauve, mist, olive*/
     let info = RwSignal::new(Vec::<(String, String)>::new());
@@ -598,21 +597,14 @@ fn Create() -> impl IntoView {
             return;
         }
 
-        let command_name = if form_data.mode == "empty" {
-            "create_empty"
-        } else {
-            "create_from_file"
-        };
+        let command_name = if form_data.mode == "empty" { "create_empty" } else { "create_from_file" };
         st.now.set("⏳".to_string());
         is_loading.set(true);
         spawn_local(async move {
             match invoke(command_name, &tauri_args!("val": form_data)).await {
                 Ok(_s) => {
-                    st.now.set(format!(
-                        "{}: {}",
-                        tu_string!(i18n, create.ok_create),
-                        form_data.db_name.to_string_lossy()
-                    ));
+                    st.now
+                        .set(format!("{}: {}", tu_string!(i18n, create.ok_create), form_data.db_name.to_string_lossy()));
                     if let Some(f) = form_ref.get_untracked() {
                         f.reset();
                     }
@@ -643,20 +635,14 @@ fn Create() -> impl IntoView {
         spawn_local(async move {
             match invoke("create_example", &tauri_args!("val": form_data)).await {
                 Ok(_js) => {
-                    st.now
-                        .set(format!("{}: {:?}", tu_string!(i18n, create.ok_create), &name));
+                    st.now.set(format!("{}: {:?}", tu_string!(i18n, create.ok_create), &name));
                     st.upd_stat();
                     st.selected.update(|c| c.refer = Some(name));
                     active_tab.set(1);
                 }
                 Err(js) => {
                     let error_msg = from_value::<String>(js).unwrap_or_else(|_| "Unknown error".into());
-                    st.now.set(format!(
-                        "{}: {:?} - {}",
-                        tu_string!(i18n, create.er_create),
-                        &name,
-                        error_msg
-                    ));
+                    st.now.set(format!("{}: {:?} - {}", tu_string!(i18n, create.er_create), &name, error_msg));
                 }
             }
         });
@@ -664,10 +650,7 @@ fn Create() -> impl IntoView {
 
     Effect::new(move |_| {
         err_form.track();
-        set_timeout(
-            move || err_form.set("".to_string()),
-            std::time::Duration::from_millis(6000),
-        );
+        set_timeout(move || err_form.set("".to_string()), std::time::Duration::from_millis(6000));
     });
     view! {
         <Show
@@ -721,8 +704,7 @@ fn Create() -> impl IntoView {
                             "empty" => view! { <h6>{tu!(i18n, create.ttp_empty)}</h6> }.into_any(),
                             "sheet" => {
                                 view! {
-                                    <h6>{tu!(i18n, create.ftable)}</h6>
-                                    <h6>{tu!(i18n, create.ttp_table)}</h6>
+                                    <h6>{tu!(i18n, create.ftable)} <br /> {tu!(i18n, create.ttp_table)}</h6>
                                     <div class="gridl">
                                         <label>
                                             {t!(i18n, create.fheader)}
@@ -771,8 +753,8 @@ fn Create() -> impl IntoView {
             </div>
 
             <div class="gr">
-                <h5>{t!(i18n, create.example)}</h5>
-                <p class="center">{t!(i18n, create.example_replace)}</p>
+                <h5>{t!(i18n, create.example)}
+                <br />{t!(i18n, create.example_replace)}</h5>
                 <div class="test_create gridl">
                     {st
                         .stat

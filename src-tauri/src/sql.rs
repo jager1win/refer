@@ -86,7 +86,6 @@ impl DbState {
         Ok(self.conn.as_ref().expect("Connection must exist here"))
     }
 
-    // теперь замыкание получает и соединение, и ссылку на meta
     pub fn with_conn<F, T>(&mut self, path: PathBuf, f: F) -> Result<T, String>
     where
         F: FnOnce(&Connection, Option<&TableMeta>) -> Result<T, String>,
@@ -153,7 +152,7 @@ impl DbState {
         })
     }
 
-    pub fn update_meta(&mut self, path: PathBuf, new_meta: TableMeta) -> Result<(), String> {
+    /*pub fn update_meta(&mut self, path: PathBuf, new_meta: TableMeta) -> Result<(), String> {
         // Используем with_conn, чтобы гарантировать наличие соединения
         // Игнорируем meta в аргументах замыкания, так как мы ее сейчас перезапишем
         self.with_conn(path, |conn, _| {
@@ -178,7 +177,7 @@ impl DbState {
             tx.commit().map_err(|e| e.to_string())?;
             Ok(())
         })
-    }
+    }*/
 }
 
 pub fn search_items(conn: &Connection, meta: &TableMeta, query: &str) -> Result<Vec<DataRecord>, String> {
@@ -379,6 +378,40 @@ pub fn add_operation(
             "desc": desc,
             "prec": prec,
         }));
+    }
+
+    conn.execute(
+        "UPDATE meta SET value = ?1 WHERE key = 'operations'",
+        params![ops.to_string()],
+    )
+    .map_err(|e| e.to_string())?;
+
+    Ok(())
+}
+
+// Обновление существующей операции
+pub fn update_operation(
+    conn: &Connection, 
+    operation: &Operation,
+) -> Result<(), String> {
+    let ops_json: String = conn
+        .query_row("SELECT value FROM meta WHERE key = 'operations'", [], |row| row.get(0))
+        .map_err(|e| e.to_string())?;
+
+    let mut ops: serde_json::Value = serde_json::from_str(&ops_json).unwrap_or(json!([]));
+
+    if let Some(arr) = ops.as_array_mut() {
+        if let Some(existing) = arr.iter_mut().find(|op| op["id"].as_u64().unwrap_or(0) as u32 == operation.id) {
+            *existing = json!({
+                "id": operation.id,
+                "name": operation.name,
+                "expr": operation.expr,
+                "desc": operation.desc,
+                "prec": operation.prec,
+            });
+        } else {
+            return Err(format!("Operation with id {} not found", operation.id));
+        }
     }
 
     conn.execute(

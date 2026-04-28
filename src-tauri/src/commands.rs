@@ -482,27 +482,20 @@ pub async fn save_oper(pb: PathBuf, oper: Operation, state: State<'_, Mutex<DbSt
                 }
             }
         }),
-        false => match simple(&oper.id) {
-            Ok(_el) => {
-                info!("Updated operation by name: {}", &oper.name);
-                Ok(())
+        false => db.with_conn(pb, |conn, _meta| {
+            match sql::update_operation(conn, &oper) {
+                Ok(_el) => {
+                    info!("Updated operation by name: {}", &oper.name);
+                    Ok(())
+                }
+                Err(e) => {
+                    error!("Failed update operation: {e}; oper= {:?}", &oper);
+                    Err(e.to_string())
+                }
             }
-            Err(e) => {
-                error!("Failed update operation: {e}; oper= {:?}", &oper);
-                Err(e.to_string())
-            }
-        },
+        }),
     }
 }
-
-fn simple(n:&u32) -> Result<(), String> {
-    if *n > 2 {
-        Ok(())
-    }else{
-        Err("n<2".to_string())
-    }
-}
-
 
 fn try_remove(path: &std::path::Path) -> io::Result<()> {
     match fs::remove_file(path) {

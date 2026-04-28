@@ -26,6 +26,8 @@
     "save": "Save",
     "saved": "Saved",
     "add": "Add",
+    "title_fields_item": "Edit item fields",
+    "warning_item_edit": "⚠ Here: only edit and delete item. Everything else (fields, operations, add new items) — in reference editor.",
     "warning": "⚠ Attention!\n- Don't add items if not all fields have been created yet\n- There are 2 field types - 'text' and 'number', you can change them if you wish\n- Operations can only be performed on the 'number' type"
   },
   "create": {
