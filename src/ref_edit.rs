@@ -382,7 +382,8 @@ pub fn FieldsCrud() -> impl IntoView {
     });
     view! {
         // edit info(name & desc) // class="bf"
-        <div class="gr grid41">
+        <div class="gr center">
+            <p class="center warn">{t!(i18n, edit.meta_hint)}</p>
             <div class="grid1a">
                 {move || {
                     info_list
@@ -391,7 +392,11 @@ pub fn FieldsCrud() -> impl IntoView {
                         .enumerate()
                         .map(|(idx, (label, value))| {
                             view! {
-                                <label>{label.clone()}</label>
+                                <label>{match label.as_str(){
+                                    "name" => view!{{t!(i18n, ref_main.name)}}.into_any(),
+                                    "desc" => view!{{t!(i18n, ref_main.desc)}}.into_any(),
+                                    &_ => view!{""}.into_any(),
+                                }}</label>
                                 <input
                                     type="text"
                                     prop:value=value.clone()
@@ -404,7 +409,7 @@ pub fn FieldsCrud() -> impl IntoView {
                         .collect_view()
                 }}
             </div>
-            <button class=move || if info_modified.get() { "modified" } else { "" } on:click=upd_info>
+            <button class=move || if info_modified.get() { "modified m04" } else { "m04" } on:click=upd_info>
                 "💾 "
                 {t!(i18n, edit.save)}
             </button>
@@ -412,6 +417,7 @@ pub fn FieldsCrud() -> impl IntoView {
         // edit exist fields
         <Show when=move || !fields_list.get().is_empty() fallback=|| view! { <div>""</div> }>
             <div class="gr center">
+                <p class="center warn">{t!(i18n, edit.fields_edit_hint)}</p>
                 <div class="grida1a">
                     {move || {
                         st.meta
@@ -484,6 +490,7 @@ pub fn FieldsCrud() -> impl IntoView {
 
         // add fields
         <div class="gr">
+            <p class="center warn">{t!(i18n, edit.fields_add_hint)}</p>
             <div class="grid2">
                 <For
                     each=move || new_fields.get().into_iter().enumerate()
@@ -511,15 +518,19 @@ pub fn FieldsCrud() -> impl IntoView {
                     }
                 />
             </div>
-            <div class="gridline m04">
+            <div class="flex-center m04">
                 <button on:click=add_new_field>"✚ "{t!(i18n, edit.add)}</button>
+                {move || match new_fields.get().is_empty(){
+                    true => view!{<span></span>}.into_any(),
+                    false => view!{
+                        <button on:click=move |_| new_fields.set(Vec::<(String, String)>::new())>"🧹 "{t!(i18n, all.clear)}</button>
 
-                <button on:click=move |_| new_fields.set(Vec::<(String, String)>::new())>"🧹 "{t!(i18n, all.clear)}</button>
-
-                <button class=move || if new_fields_modified.get() { "modified" } else { "" } on:click=save_new_fields>
-                    "💾 "
-                    {t!(i18n, edit.save)}
-                </button>
+                        <button class=move || if new_fields_modified.get() { "modified" } else { "" } on:click=save_new_fields>
+                            "💾 "
+                            {t!(i18n, edit.save)}
+                        </button>
+                    }.into_any()
+                }}
             </div>
         </div>
     }
@@ -621,7 +632,7 @@ pub fn ElementCrud() -> impl IntoView {
     let st = use_context::<State>().expect("State missing");
     let add_mode = RwSignal::new(true);
     let saved_id = RwSignal::new(None::<u32>);
-    
+
     // Создаем начальную структуру с пустыми значениями для всех полей
     let init_form_data = move || {
         let mut data = HashMap::<String, String>::new();
@@ -632,18 +643,18 @@ pub fn ElementCrud() -> impl IntoView {
         }
         data
     };
-    
+
     let form_data: RwSignal<HashMap<String, String>> = RwSignal::new(init_form_data());
 
     let save_new = move |_| {
         let pb = st.get_full_pb(st.selected.get_untracked().refer.unwrap());
         let data = form_data.get_untracked();
-        
+
         // Опционально: фильтруем только непустые значения
         /*let filtered_data: HashMap<String, String> = data.clone()
-            .into_iter()
-            .filter(|(_, v)| !v.is_empty())
-            .collect();*/
+        .into_iter()
+        .filter(|(_, v)| !v.is_empty())
+        .collect();*/
 
         spawn_local(async move {
             // Используйте data для отправки всех полей или filtered_data для только заполненных
@@ -665,7 +676,7 @@ pub fn ElementCrud() -> impl IntoView {
     Effect::new(move |_| {
         //log::info!("edit_ref {:?}", edit_ref.get());
     });
-    
+
     view! {
         {move || match add_mode.get() {
             false => {
@@ -677,7 +688,7 @@ pub fn ElementCrud() -> impl IntoView {
                         }>"→ "{t!(i18n, all.element)}</button>
                         <button on:click=move |_| st.edit_ref.set(false)>"→ "{t!(i18n, all.reference)}</button>
                         <button on:click=move |_| {
-                            form_data.set(init_form_data()); // Инициализируем при переходе в режим добавления
+                            form_data.set(init_form_data());
                             add_mode.set(true);
                         }>"+ "{t!(i18n, all.element)}</button>
                     </div>
@@ -686,37 +697,44 @@ pub fn ElementCrud() -> impl IntoView {
             }
             true => {
                 view! {
-                    <div class="grid2 gr a-start">
-                        {move || {
-                            st.meta
-                                .get()
-                                .unwrap()
-                                .names
-                                .iter()
-                                .map(|field_key| {
-                                    let binding = st.meta.get().unwrap();
-                                    let field_def = binding.fields.get(field_key).unwrap();
-                                    let field_key = field_key.clone();
-                                    let value = form_data.get().get(&field_key).cloned().unwrap_or_default();
+                    <div class="gr">
+                        <p class="center warn">{t!(i18n, edit.add_item_hint)}</p>
+                        <div class="grid2 a-start">
+                            <small class="center">{t!(i18n, ref_main.column_name)}", "{t!(i18n, ref_main.column_type)}</small>
+                            <small class="center">{t!(i18n, ref_main.column_value)}</small>
+                            {move || {
+                                st.meta
+                                    .get()
+                                    .unwrap()
+                                    .names
+                                    .iter()
+                                    .map(|field_key| {
+                                        let binding = st.meta.get().unwrap();
+                                        let field_def = binding.fields.get(field_key).unwrap();
+                                        let field_key = field_key.clone();
+                                        let value = form_data.get().get(&field_key).cloned().unwrap_or_default();
 
-                                    view! {
-                                        <label class="field-col">{field_def.name.clone()}<small>{field_def.ftype.clone()}</small></label>
-                                        <input
-                                            type=field_def.ftype.clone()
-                                            inputmode=if field_def.ftype == "number" { "decimal" } else { "text" }
-                                            prop:value=value
-                                            on:input=move |ev| {
-                                                let val = event_target_value(&ev);
-                                                form_data
-                                                    .update(|f| {
-                                                        f.insert(field_key.clone(), val);
-                                                    });
-                                            }
-                                        />
-                                    }
-                                })
-                                .collect_view()
-                        }}
+                                        view! {
+                                            <label class="field-col">
+                                                {field_def.name.clone()}<small>{field_def.ftype.clone()}</small>
+                                            </label>
+                                            <input
+                                                type=field_def.ftype.clone()
+                                                inputmode=if field_def.ftype == "number" { "decimal" } else { "text" }
+                                                prop:value=value
+                                                on:input=move |ev| {
+                                                    let val = event_target_value(&ev);
+                                                    form_data
+                                                        .update(|f| {
+                                                            f.insert(field_key.clone(), val);
+                                                        });
+                                                }
+                                            />
+                                        }
+                                    })
+                                    .collect_view()
+                            }}
+                        </div>
                     </div>
                     <div class="gr center">
                         <button on:click=save_new>"💾 "{t!(i18n, edit.save)}</button>
