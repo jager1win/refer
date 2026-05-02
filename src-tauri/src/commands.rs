@@ -1,9 +1,7 @@
-use crate::import::*;
 use crate::sql::{self, *};
-use crate::{APP_EXT, DbState, SettingsStore, StatisticsState};
+use crate::{APP_EXT, DbState, SettingsStore, StatisticsState, import::*};
 use serde::{Deserialize, Serialize};
-use std::fs::File;
-use std::fs::{self};
+use std::fs::{self,File};
 use std::io::{self, Read};
 use std::path::{Component, Path, PathBuf};
 use std::sync::Mutex;

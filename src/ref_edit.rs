@@ -199,7 +199,7 @@ pub fn Ref_edit() -> impl IntoView {
         <div class="header-row gr modified">
             <button on:click=move |_| st.edit_ref.set(false)>"←"</button>
 
-            <h5 on:click=move |_| current_tab.set(None) class="m0 title-group">
+            <h5 on:click=move |_| current_tab.set(None) class="m0 title-group sp_close">
                 "🔧 "
                 {move || st.selected.get_untracked().refer.unwrap().display().to_string()}
             </h5>
@@ -392,11 +392,13 @@ pub fn FieldsCrud() -> impl IntoView {
                         .enumerate()
                         .map(|(idx, (label, value))| {
                             view! {
-                                <label>{match label.as_str(){
-                                    "name" => view!{{t!(i18n, ref_main.name)}}.into_any(),
-                                    "desc" => view!{{t!(i18n, ref_main.desc)}}.into_any(),
-                                    &_ => view!{""}.into_any(),
-                                }}</label>
+                                <label>
+                                    {match label.as_str() {
+                                        "name" => view! { {t!(i18n, ref_main.name)} }.into_any(),
+                                        "desc" => view! { {t!(i18n, ref_main.desc)} }.into_any(),
+                                        &_ => view! { "" }.into_any(),
+                                    }}
+                                </label>
                                 <input
                                     type="text"
                                     prop:value=value.clone()
@@ -520,16 +522,19 @@ pub fn FieldsCrud() -> impl IntoView {
             </div>
             <div class="flex-center m04">
                 <button on:click=add_new_field>"✚ "{t!(i18n, edit.add)}</button>
-                {move || match new_fields.get().is_empty(){
-                    true => view!{<span></span>}.into_any(),
-                    false => view!{
-                        <button on:click=move |_| new_fields.set(Vec::<(String, String)>::new())>"🧹 "{t!(i18n, all.clear)}</button>
+                {move || match new_fields.get().is_empty() {
+                    true => view! { "" }.into_any(),
+                    false => {
+                        view! {
+                            <button on:click=move |_| new_fields.set(Vec::<(String, String)>::new())>"🧹 "{t!(i18n, all.clear)}</button>
 
-                        <button class=move || if new_fields_modified.get() { "modified" } else { "" } on:click=save_new_fields>
-                            "💾 "
-                            {t!(i18n, edit.save)}
-                        </button>
-                    }.into_any()
+                            <button class=move || if new_fields_modified.get() { "modified" } else { "" } on:click=save_new_fields>
+                                "💾 "
+                                {t!(i18n, edit.save)}
+                            </button>
+                        }
+                            .into_any()
+                    }
                 }}
             </div>
         </div>
@@ -636,7 +641,7 @@ pub fn ElementCrud() -> impl IntoView {
     // Создаем начальную структуру с пустыми значениями для всех полей
     let init_form_data = move || {
         let mut data = HashMap::<String, String>::new();
-        if let Some(meta) = st.meta.get() {
+        if let Some(meta) = st.meta.get_untracked() {
             for field_key in &meta.names {
                 data.insert(field_key.clone(), String::new());
             }
@@ -737,7 +742,7 @@ pub fn ElementCrud() -> impl IntoView {
                         </div>
                     </div>
                     <div class="gr center">
-                        <button on:click=save_new>"💾 "{t!(i18n, edit.save)}</button>
+                        <button on:click=save_new>"💾 "{t!(i18n, edit.add)}</button>
                     </div>
                 }
                     .into_any()
@@ -812,7 +817,7 @@ pub fn OperCrud() -> impl IntoView {
                                 />
                             </div>
                             <hr />
-                            <button on:click=move |_| scene.set(Scene::Create)>"+ "</button>
+                            <button on:click=move |_| scene.set(Scene::Create)>"+ "{t!(i18n, edit.add)}</button>
                         },
                     )
                 }
@@ -884,7 +889,6 @@ pub fn EditOper(initial_data: Option<Operation>, #[prop(into)] on_done: Callback
         raw.trim_matches(|c| c == '{' || c == '}').to_string()
     }
 
-    // Список переменных (убираем скобки {} для красивого вывода в списке)
     let var_names = Memo::new(move |_| {
         match expr_result.get() {
             Ok(e) => e
@@ -896,7 +900,6 @@ pub fn EditOper(initial_data: Option<Operation>, #[prop(into)] on_done: Callback
         }
     });
 
-    // Расчет со скобками {}
     let calculation = Memo::new(move |_| {
         match expr_result.get() {
             Ok(e) => {
@@ -960,25 +963,23 @@ pub fn EditOper(initial_data: Option<Operation>, #[prop(into)] on_done: Callback
 
     view! {
         <div class="oper grid center">
-            <section>
-                <label>
-                    "Expression"
-                    <input
-                        type="text"
-                        prop:value=move || op.get().expr
-                        on:input=move |ev| op.update(|o| o.expr = event_target_value(&ev))
-                        attr:data-error=move || expr_result.get().is_err()
-                    />
-                </label>
-            </section>
+            <div>
+                <p class="warn">
+                    "Expression"<br />
+                    "Variables should consist only of latin or greek letters, numbers, and underscores."
+                    "They need to fit the regular expression r\"[a-zA-Zα-ωΑ-Ω_]+[a-zA-Zα-ωΑ-Ω_0-9]*\", if they are not between curly brackets."
+                </p>
+                <input
+                    class="w100 center"
+                    type="text"
+                    prop:value=move || op.get().expr
+                    on:input=move |ev| op.update(|o| o.expr = event_target_value(&ev))
+                    attr:data-error=move || expr_result.get().is_err()
+                />
+            </div>
 
             // блок числовых полей со случайными значениями
-            <section>
-                <p>
-                    "Variables should consist only of latin or greek letters, numbers, and underscores.
-                    They need to fit the regular expression r\"[a-zA-Zα-ωΑ-Ω_]+[a-zA-Zα-ωΑ-Ω_0-9]*\", if they are not between curly brackets."
-                </p>
-
+            <div class="ch_m">
                 {move || {
                     inputs
                         .get()
@@ -1000,10 +1001,10 @@ pub fn EditOper(initial_data: Option<Operation>, #[prop(into)] on_done: Callback
                         })
                         .collect_view()
                 }}
-            </section>
+            </div>
 
             // блок операторов
-            <section>
+            <div class="ch_m">
                 {get_standard_operators()
                     .into_iter()
                     .map(|ops| {
@@ -1020,15 +1021,13 @@ pub fn EditOper(initial_data: Option<Operation>, #[prop(into)] on_done: Callback
                         }
                     })
                     .collect_view()}
-            </section>
+            </div>
 
             // результат и ошибки
-            <section>
-                {move || match calculation.get() {
-                    Ok(res) => view! { <div data-status="ok">" = " {res}</div> }.into_any(),
-                    Err(err) => view! { <div data-status="error">{err}</div> }.into_any(),
-                }}
-            </section>
+            {move || match calculation.get() {
+                Ok(res) => view! { <div data-status="ok">" = " {res}</div> }.into_any(),
+                Err(err) => view! { <div data-status="error">{err}</div> }.into_any(),
+            }}
 
             // Динамические инпуты для переменных
             <section class="grid3">
@@ -1042,7 +1041,7 @@ pub fn EditOper(initial_data: Option<Operation>, #[prop(into)] on_done: Callback
                             <div>
                                 <label>{n_label}</label>
                                 <input
-                                    type="number"
+                                    type="text"
                                     on:input=move |ev| {
                                         let val = event_target_value(&ev).parse::<f64>().unwrap_or(0.0);
                                         set_inputs
@@ -1057,10 +1056,9 @@ pub fn EditOper(initial_data: Option<Operation>, #[prop(into)] on_done: Callback
                     }
                 />
             </section>
-            <section class="actions">
-                <h3>{if initial_data.is_some() { "Правка" } else { "Новая" }}</h3>
-                <button on:click=save>"upd"</button>
-                <button on:click=move |_| on_done.run(())>"Отмена"</button>
+            <section class="flex-center">
+                <button on:click=move |_| on_done.run(())>{t!(i18n, edit.cancel)}</button>
+                <button on:click=save>{t!(i18n, edit.save)}</button>
             </section>
         </div>
     }

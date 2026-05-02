@@ -111,7 +111,8 @@ pub fn Ref_main() -> impl IntoView {
                 }
                 Err(js) => {
                     let error_msg = from_value::<String>(js).unwrap_or_else(|_| "Unknown error".into());
-                    st.now.set(format!("{}: {:?} - {}", tu_string!(i18n, edit.er_del_ref), &name, error_msg));
+                    st.now
+                        .set(format!("{}: {:?} - {}", tu_string!(i18n, edit.er_del_ref), &name, error_msg));
                 }
             }
         });
@@ -382,7 +383,9 @@ pub fn Ref_main() -> impl IntoView {
                                                             view! {
                                                                 <div class="grid gap02">
                                                                     <span class="gridline">
-                                                                        {k.name}" "{(!k.desc.is_empty()).then(|| format!(" • {}", k.desc))}" • Prec: "{k.prec}
+                                                                        {k.name}" "
+                                                                        {(!k.desc.is_empty()).then(|| format!(" • {}", k.desc))}
+                                                                        " • Prec: "{k.prec}
                                                                     </span>
                                                                     <small>{k.expr}</small>
                                                                 </div>
@@ -419,7 +422,8 @@ pub fn Ref_el() -> impl IntoView {
 
     let in_qa = move || {
         let (refer, element) = (st.selected.get().refer.clone().unwrap(), st.selected.get().id.unwrap());
-        st.settings.with(|s| s.qa.iter().any(|item| item.path == refer && item.id == element))
+        st.settings
+            .with(|s| s.qa.iter().any(|item| item.path == refer && item.id == element))
     };
 
     // get el
@@ -533,7 +537,10 @@ pub fn Ref_el() -> impl IntoView {
                         view! {
                             <div class="ref">
                                 <div class="header-row gr">
-                                    <button on:click=move |_| {st.load_meta();st.selected.update(|c| c.id = None)}>"←"</button>
+                                    <button on:click=move |_| {
+                                        st.load_meta();
+                                        st.selected.update(|c| c.id = None)
+                                    }>"←"</button>
 
                                     <div class="title-group">
                                         <div>
@@ -558,7 +565,7 @@ pub fn Ref_el() -> impl IntoView {
                                 </div>
 
                                 <Show when=move || data.get().is_some() fallback=|| view! { <div>"No data"</div> }>
-                                    <div class="grid2 44 gr">
+                                    <div class="grid2 gr">
                                         {move || {
                                             let d = data.get().unwrap();
                                             let m = st.meta.get().unwrap();
@@ -672,15 +679,6 @@ pub fn RunOper(oper: Operation, vars: HashMap<String, f64>) -> impl IntoView {
         names.into_iter().filter(|n| !inner.contains_key(n)).collect::<Vec<String>>()
     };
 
-    let clear_inputs = move |_| {
-        let filtered_names = filtered();
-        set_inner.update(|map| {
-            for name in filtered_names {
-                map.remove(&name);
-            }
-        });
-    };
-
     let on_input = move |ev: web_sys::Event| {
         let new_val = event_target_value(&ev).parse().unwrap_or(2);
         local_prec.set(new_val);
@@ -715,54 +713,64 @@ pub fn RunOper(oper: Operation, vars: HashMap<String, f64>) -> impl IntoView {
                 <span>
                     {move || match calculation.get() {
                         Ok(val) => view! { <span class="success">{format!("{:.*}", local_prec.get() as usize, val)}</span> }.into_any(),
-                        Err(e) => view! { <span class="error">{e}</span> }.into_any(),
+                        Err(e) => view! { <span class="warn">{e}</span> }.into_any(),
                     }}
                 </span>
+                <span class="ml1">" .: "</span>
                 <select class="precision" on:change=on_input prop:value=move || local_prec.get()>
                     {(0..18).map(|n| view! { <option value=n>{n}</option> }).collect_view()}
                 </select>
-                {move || {
-                    if !filtered().is_empty() {
-                        // Кнопка очистки только если есть поля
-                        view! {
-                            <button class="ml1 sm_b" on:click=clear_inputs>
-                                "🧹"
-                            </button>
-                        }
-                            .into_any()
-                    } else {
-                        let _: () = view! { <></> };
-                        ().into_any()
-                    }
-                }}
+
             </strong>
 
             // Динамические инпуты для неопределенных переменных
-            <div class="flex_wrap3">
+            <div class="gline">
                 <For
                     each=move || filtered()
                     key=|name| name.clone()
                     children=move |name| {
-                        let n_label = name.clone();
                         let n_input = name.clone();
+                        let (display_val, set_display_val) = signal(inner.get_untracked().get(&name).cloned().unwrap_or(0.0).to_string());
                         view! {
-                            <div>
-                                <label>{n_label}</label>
-                                <input
-                                    type="number"
-                                    placeholder="0.0"
-                                    step="any"
-                                    prop:value=move || inner.get().get(&name).cloned().unwrap_or(0.0)
-                                    on:input=move |ev| {
-                                        let val = event_target_value(&ev).parse::<f64>().unwrap_or(0.0);
-                                        set_inner
-                                            .update(|map| {
-                                                map.insert(n_input.clone(), val);
-                                            });
+                            <label class="m0">{name.clone()}</label>
+                            <input
+                                type="text"
+                                // Теперь это сработает, так как display_val будет меняться всегда
+                                class:error=move || {
+                                    let val = display_val.get();
+                                    if val.is_empty() || val == "." || val == "-" {
+                                        return false;
                                     }
-                                />
-
-                            </div>
+                                    val.parse::<f64>().is_err()
+                                }
+                                prop:value=display_val
+                                on:input={
+                                    let value_name = n_input.clone();
+                                    move |ev| {
+                                        let val_str = event_target_value(&ev);
+                                        set_display_val.set(val_str.clone());
+                                        if let Ok(val) = val_str.parse::<f64>() {
+                                            set_inner
+                                                .update(|map| {
+                                                    map.insert(value_name.clone(), val);
+                                                });
+                                        }
+                                    }
+                                }
+                            />
+                            <button
+                                class="bf m0"
+                                type="button"
+                                on:click=move |_| {
+                                    set_display_val.set("0".to_string());
+                                    set_inner
+                                        .update(|map| {
+                                            map.insert(n_input.clone(), 0.0);
+                                        });
+                                }
+                            >
+                                "🧹"
+                            </button>
                         }
                     }
                 />
@@ -795,7 +803,9 @@ pub fn get_item_title(record: &DataRecord, meta: &TableMeta) -> String {
     }
 }
 
-pub fn transform_fields(fields_def: &HashMap<String, FieldDef>, data_fields: &HashMap<String, String>) -> Result<HashMap<String, f64>, String> {
+pub fn transform_fields(
+    fields_def: &HashMap<String, FieldDef>, data_fields: &HashMap<String, String>,
+) -> Result<HashMap<String, f64>, String> {
     // Создаём HashMap для быстрого поиска по ключу
     let field_types_map: HashMap<_, _> = fields_def.iter().map(|(k, def)| (k.clone(), def.ftype.as_str())).collect();
 

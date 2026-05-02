@@ -738,8 +738,8 @@ fn Create() -> impl IntoView {
                         <input type="text" name="db_name" placeholder="my_refer" required />
                     </div>
 
-                    <div class="actions">
-                        <button type="submit" disabled=move || is_loading.get()>
+                    <div class="center">
+                        <button class="m0" type="submit" disabled=move || is_loading.get()>
                             {move || {
                                 if mode.get() == "empty" {
                                     { t!(i18n, create.button) }.into_any()
