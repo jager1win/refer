@@ -866,38 +866,14 @@ pub fn EditOper(initial_data: Option<Operation>, #[prop(into)] on_done: Callback
         prec: 2,
     }));
 
-    let vars = st
-        .meta
-        .get_untracked()
-        .unwrap()
-        .fields
-        .into_iter()
-        .filter(|f| f.1.ftype == "number")
-        .map(|f| {
-            let random_f64 = js_sys::Math::random();
-            let val = (random_f64 * 91.0).floor() + 20.0;
-            let final_val = val / 10.0;
-            (f.1.name, final_val)
-        })
-        .collect::<HashMap<String, f64>>();
-    let (inputs, set_inputs) = signal(vars.clone());
+    let (inputs, set_inputs) = signal(<HashMap<String, f64>>::new());
 
     // Парсинг формулы
     let expr_result = Memo::new(move |_| exmex::parse::<f64>(&op.get().expr));
 
-    fn display_name(raw: &str) -> String {
-        raw.trim_matches(|c| c == '{' || c == '}').to_string()
-    }
-
-    let var_names = Memo::new(move |_| {
-        match expr_result.get() {
-            Ok(e) => e
-                .var_names()
-                .iter()
-                .map(|n| display_name(n)) // " {x} " -> " x "
-                .collect::<Vec<_>>(),
-            Err(_) => vec![],
-        }
+    let var_names = Memo::new(move |_| match expr_result.get() {
+        Ok(e) => e.var_names().to_vec(),
+        Err(_) => vec![],
     });
 
     let calculation = Memo::new(move |_| {
@@ -907,19 +883,30 @@ pub fn EditOper(initial_data: Option<Operation>, #[prop(into)] on_done: Callback
                 let mut vals = Vec::new();
 
                 for raw_name in e.var_names() {
-                    // Извлекаем "чистое" имя, чтобы найти его в нашем словаре инпутов
-                    let clean = display_name(raw_name);
-                    if let Some(val) = current_inputs.get(&clean) {
+                    // raw_name уже чистый (&String)
+                    if let Some(val) = current_inputs.get(raw_name) {
                         vals.push(*val);
                     } else {
-                        return Err(format!("Введите значение для {}", clean));
+                        return Err(format!("{}: {}", t_string!(i18n, edit.enter_value_for), raw_name));
                     }
                 }
-
-                e.eval(&vals).map(|v| format!("{:.4}", v)).map_err(|e| format!("Ошибка: {:?}", e))
+                e.eval(&vals).map(|v| format!("{:.*}", op.get().prec as usize, v)).map_err(|e| format!("{}: {:?}", tu_string!(i18n, all.error), e))
             }
-            Err(e) => Err(format!("Формула: {}", e)),
+            Err(e) => Err(format!("{}: {:?}", tu_string!(i18n, all.error), e)),
         }
+    });
+
+    let n_fields = Memo::new(move |_| {
+        st.meta
+            .get()
+            .map(|m| {
+                m.fields
+                    .iter()
+                    .filter(|(_, v)| v.ftype == "number")
+                    .map(|(_, f)| f.name.clone())
+                    .collect::<Vec<_>>()
+            })
+            .unwrap_or_default()
     });
 
     // Функция очистки
@@ -927,12 +914,6 @@ pub fn EditOper(initial_data: Option<Operation>, #[prop(into)] on_done: Callback
         //set_formula.set(String::new());
         //set_inputs.update(|map| map.clear());
     };*/
-
-    let filtered = move || {
-        let names = var_names.get();
-        let inputs = vars.clone();
-        names.into_iter().filter(|n| !inputs.contains_key(n)).collect::<Vec<String>>()
-    };
 
     let save = move |_| {
         let op = op.get_untracked();
@@ -955,7 +936,7 @@ pub fn EditOper(initial_data: Option<Operation>, #[prop(into)] on_done: Callback
 
     Effect::new(move |_| {
         //log::info!("new_fields: {:#?}", new_fields.get());
-        //og::info!("meta {:?}", meta.get());
+        //log::info!("filtered {:?}", fields.get());
         log::debug!("var_names:{:?}", var_names.get());
         log::debug!("inputs:{:?}", inputs.get());
         log::debug!("op:{:?}", op.get());
@@ -963,11 +944,32 @@ pub fn EditOper(initial_data: Option<Operation>, #[prop(into)] on_done: Callback
 
     view! {
         <div class="oper grid center">
+            <div class="grid1a">
+                <label>{t!(i18n, ref_main.name)}</label>
+                <input
+                    class="w100 center"
+                    type="text"
+                    prop:value=move || op.get().name
+                    on:input=move |ev| op.update(|o| o.name = event_target_value(&ev))
+                />
+                <label>{t!(i18n, ref_main.desc)}</label>
+                <input
+                    class="w100 center"
+                    type="text"
+                    prop:value=move || op.get().desc
+                    on:input=move |ev| op.update(|o| o.desc = event_target_value(&ev))
+                />
+                <label>{t!(i18n, ref_main.prec)}</label>
+                <select class="precision" on:change:target=move |ev| op.update(|o| o.prec = ev.target().value().parse().unwrap())
+                    prop:value=move || op.get().prec>
+                    {(0..18).map(|n| view! { <option value=n>{n}</option> }).collect_view()}
+                </select>
+            </div>
             <div>
-                <p class="warn">
-                    "Expression"<br />
-                    "Variables should consist only of latin or greek letters, numbers, and underscores."
-                    "They need to fit the regular expression r\"[a-zA-Zα-ωΑ-Ω_]+[a-zA-Zα-ωΑ-Ω_0-9]*\", if they are not between curly brackets."
+                <p class="grid gap02">
+                    <span class="warn">{t!(i18n, edit.allowed_vars_title)}</span>
+                    <small>{t!(i18n, edit.allowed_vars_rule)}<span class="error">" r\"[a-zA-Zα-ωΑ-Ω_]+[a-zA-Zα-ωΑ-Ω_0-9]*\""</span></small>
+                    <small>{t!(i18n, edit.allowed_vars_curly_hint)}</small>
                 </p>
                 <input
                     class="w100 center"
@@ -978,33 +980,36 @@ pub fn EditOper(initial_data: Option<Operation>, #[prop(into)] on_done: Callback
                 />
             </div>
 
-            // блок числовых полей со случайными значениями
-            <div class="ch_m">
-                {move || {
-                    inputs
-                        .get()
-                        .into_iter()
-                        .map(|inp| {
-                            let inp_name = inp.clone().0;
-                            let inpclon = inp.clone();
-                            view! {
-                                <button on:click=move |_| {
-                                    op.update(|f| {
-                                        if !f.expr.is_empty() && !f.expr.ends_with(' ') {
+            // блок имеющихся числовых полей
+            <Show when=move || !n_fields.get().is_empty()>
+                <div class="ch_m">
+                    <p class="warn">{t!(i18n, edit.existing_fields)}</p>
+                    {move || {
+                        n_fields
+                            .get()
+                            .into_iter()
+                            .map(|name| {
+                                let name_display = name.clone();
+                                view! {
+                                    <button on:click=move |_| {
+                                        op.update(|f| {
+                                            if !f.expr.is_empty() && !f.expr.ends_with(' ') {
+                                                f.expr.push(' ');
+                                            }
+                                            f.expr.push_str(&format!("{{{name}}}"));
                                             f.expr.push(' ');
-                                        }
-                                        f.expr.push_str(&inp_name);
-                                        f.expr.push(' ');
-                                    });
-                                }>{inpclon.0}"("{inpclon.1}")"</button>
-                            }
-                        })
-                        .collect_view()
-                }}
-            </div>
+                                        });
+                                    }>{name_display}</button>
+                                }
+                            })
+                            .collect_view()
+                    }}
+                </div>
+            </Show>
 
             // блок операторов
             <div class="ch_m">
+                <p class="warn">{t!(i18n, edit.operators)}</p>
                 {get_standard_operators()
                     .into_iter()
                     .map(|ops| {
@@ -1023,16 +1028,10 @@ pub fn EditOper(initial_data: Option<Operation>, #[prop(into)] on_done: Callback
                     .collect_view()}
             </div>
 
-            // результат и ошибки
-            {move || match calculation.get() {
-                Ok(res) => view! { <div data-status="ok">" = " {res}</div> }.into_any(),
-                Err(err) => view! { <div data-status="error">{err}</div> }.into_any(),
-            }}
-
             // Динамические инпуты для переменных
-            <section class="grid3">
+            <div class="grid3">
                 <For
-                    each=move || filtered()
+                    each=move || var_names.get()
                     key=|name| name.clone()
                     children=move |name| {
                         let n_label = name.clone();
@@ -1055,18 +1054,27 @@ pub fn EditOper(initial_data: Option<Operation>, #[prop(into)] on_done: Callback
                         }
                     }
                 />
-            </section>
-            <section class="flex-center">
-                <button on:click=move |_| on_done.run(())>{t!(i18n, edit.cancel)}</button>
-                <button on:click=save>{t!(i18n, edit.save)}</button>
-            </section>
+            </div>
+
+            // результат и ошибки
+            <div class="flex-center">
+                {move || match calculation.get() {
+                    Ok(res) => view! { <p class="m0">{t!(i18n, edit.result)}": " {res}</p> }.into_any(),
+                    Err(err) => view! { <p class="error m0">{err}</p> }.into_any(),
+                }}
+            </div>
+            
+            <div class="flex-center">
+                <button on:click=move |_| on_done.run(())>"⨯ "{t!(i18n, edit.cancel)}</button>
+                <button on:click=save>"💾 "{t!(i18n, edit.save)}</button>
+            </div>
         </div>
     }
 }
 
 pub fn get_standard_operators() -> Vec<&'static str> {
     vec![
-        "(", ")", "{", "}", // скобки
+        "{", "}", "(", ")", // скобки
         "+", "-", "*", "/", "^", "%", // Арифметика
         "sin", "cos", "tan", "asin", "acos", // Тригонометрия
         "atan", "atan2", "sinh", "cosh", "tanh", "exp", "ln", "log10", "log2", "sqrt", // Логарифмы и корни

@@ -8,7 +8,8 @@
     "element_not_found": "Item not found",
     "refer_not_found": "Reference not found",
     "element": "Item",
-    "clear": "Clear"
+    "clear": "Clear",
+    "error": "Error"
   },
   "settings": {
     "title": "App settings",
@@ -30,9 +31,16 @@
     "warning_item_edit": "⚠ Here: only edit and delete item. Everything else (fields, operations, add new items) — in reference editor.",
     "warning": "⚠ Attention!\n- Don't add items if not all fields have been created yet\n- There are 2 field types - 'text' and 'number', you can change them if you wish\n- Operations can only be performed on the 'number' type",
     "add_item_hint": "Fill what you need. Leave the rest empty.",
-    "meta_hint": "Change reference name and description",
+    "meta_hint": "Reference name and description",
     "fields_edit_hint": "Edit fields: type, name, delete",
-    "fields_add_hint": "Add a new field to the reference"
+    "fields_add_hint": "Add a new field",
+    "enter_value_for": "Enter values to test",
+    "existing_fields": "Reference fields",
+    "operators": "Operators",
+    "result": "Result",
+    "allowed_vars_title": "Allowed variable names:",
+    "allowed_vars_rule": "Variables must consist only of latin or greek letters, numbers, and underscores.",
+    "allowed_vars_curly_hint": "If your variable doesn't match these rules, simply wrap it in curly brackets {} — like {Path} or {道}."
   },
   "create": {
     "button": "Create",
@@ -77,6 +85,7 @@
     "column_type": "type",
     "column_value": "value",
     "column_in_search": "in search",
-    "operations": "Operations"
+    "operations": "Operations",
+    "prec": "Precision"
   }
 }

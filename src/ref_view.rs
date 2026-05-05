@@ -385,7 +385,7 @@ pub fn Ref_main() -> impl IntoView {
                                                                     <span class="gridline">
                                                                         {k.name}" "
                                                                         {(!k.desc.is_empty()).then(|| format!(" • {}", k.desc))}
-                                                                        " • Prec: "{k.prec}
+                                                                        " • "{t!(i18n, ref_main.prec)}": "{k.prec}
                                                                     </span>
                                                                     <small>{k.expr}</small>
                                                                 </div>
@@ -629,6 +629,7 @@ pub fn Ref_el() -> impl IntoView {
 
 #[component]
 pub fn RunOper(oper: Operation, vars: HashMap<String, f64>) -> impl IntoView {
+    let i18n = use_i18n();
     use exmex::Express;
     let st = use_context::<State>().expect("State missing");
     let orig = RwSignal::new(vars.clone());
@@ -716,7 +717,7 @@ pub fn RunOper(oper: Operation, vars: HashMap<String, f64>) -> impl IntoView {
                         Err(e) => view! { <span class="warn">{e}</span> }.into_any(),
                     }}
                 </span>
-                <span class="ml1">" .: "</span>
+                <span class="ml1">{t!(i18n,ref_main.prec)}</span>
                 <select class="precision" on:change=on_input prop:value=move || local_prec.get()>
                     {(0..18).map(|n| view! { <option value=n>{n}</option> }).collect_view()}
                 </select>

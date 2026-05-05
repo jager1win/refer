@@ -34,8 +34,8 @@ default = "en"
 locales = ["en", "ru"]
 
 [workspace]
-members = ["src-tauri"]
-
+members = ["src-tauri","."]
+resolver = "2"
 
 [profile.release]
 opt-level = "z" # Maximum optimization by size
