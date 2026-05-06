@@ -207,7 +207,16 @@ pub fn Ref_main() -> impl IntoView {
                                     <button on:click=move |_| st.selected.update(|c| c.refer = None)>"←"</button>
 
                                     <div class="title-group">
-                                        <span>{move || st.selected.get().refer.unwrap().display().to_string()}</span>
+                                        <span>{move || st.selected.get().refer.as_ref().map(|p| p.display().to_string())}</span>
+                                        /*<span>
+                                            {move || {
+                                                st.selected
+                                                    .get()
+                                                    .refer
+                                                    .as_ref()
+                                                    .map(|p| { st.get_full_pb(p.clone()).display().to_string() })
+                                            }}
+                                        </span>*/
                                         // name & desc
                                         <p class="info-show m0">
                                             {match table_meta.info[0].1.is_empty() && table_meta.info[1].1.is_empty() {
@@ -324,7 +333,6 @@ pub fn Ref_main() -> impl IntoView {
                                     {
                                         let oper = table_meta.clone().operations;
                                         let search_vec = table_meta.clone().search_config;
-                                        let full_pb = st.get_full_pb(st.selected.get_untracked().refer.unwrap());
 
                                         view! {
                                             <b>{t!(i18n, ref_main.total_records)}</b>
@@ -384,8 +392,8 @@ pub fn Ref_main() -> impl IntoView {
                                                                 <div class="grid gap02">
                                                                     <span class="gridline">
                                                                         {k.name}" "
-                                                                        {(!k.desc.is_empty()).then(|| format!(" • {}", k.desc))}
-                                                                        " • "{t!(i18n, ref_main.prec)}": "{k.prec}
+                                                                        {(!k.desc.is_empty()).then(|| format!(" • {}", k.desc))} " • "
+                                                                        {t!(i18n, ref_main.prec)}": "{k.prec}
                                                                     </span>
                                                                     <small>{k.expr}</small>
                                                                 </div>
@@ -396,8 +404,19 @@ pub fn Ref_main() -> impl IntoView {
                                                 }}
                                             </div>
 
-                                            <b>{t!(i18n, refs.st_path)}</b>
-                                            <span>{full_pb.display().to_string()}</span>
+                                            <Show when=move || st.selected.get().refer.is_some() fallback=|| view! { <span>"-"</span> }>
+                                                // Здесь мы знаем, что путь есть, но unwrap() все равно лучше избегать
+                                                <b>{t!(i18n, refs.st_path)}</b>
+                                                <span>
+                                                    {move || {
+                                                        st.selected
+                                                            .get()
+                                                            .refer
+                                                            .as_ref()
+                                                            .map(|p| { st.get_full_pb(p.clone()).display().to_string() })
+                                                    }}
+                                                </span>
+                                            </Show>
                                         }
                                     }
                                 </div>
@@ -633,7 +652,7 @@ pub fn RunOper(oper: Operation, vars: HashMap<String, f64>) -> impl IntoView {
     use exmex::Express;
     let st = use_context::<State>().expect("State missing");
     let orig = RwSignal::new(vars.clone());
-    let (inner, set_inner) = signal(vars.clone());
+    let (inputs, set_inputs) = signal(vars.clone());
     let local_prec = RwSignal::new(oper.prec);
 
     // Парсинг формулы
@@ -647,7 +666,7 @@ pub fn RunOper(oper: Operation, vars: HashMap<String, f64>) -> impl IntoView {
 
     let calculation = Memo::new(move |_| match expr_result.get() {
         Ok(e) => {
-            let current_inputs = inner.get();
+            let current_inputs = inputs.get();
             let mut vals = Vec::new();
 
             for raw_name in e.var_names() {
@@ -704,7 +723,7 @@ pub fn RunOper(oper: Operation, vars: HashMap<String, f64>) -> impl IntoView {
 
     Effect::new(move |_| {
         log::info!("filtered: {:#?}", filtered());
-        log::info!("inner {:?}", inner.get());
+        log::info!("inner {:?}", inputs.get());
     });
 
     view! {
@@ -716,8 +735,7 @@ pub fn RunOper(oper: Operation, vars: HashMap<String, f64>) -> impl IntoView {
                         Ok(val) => view! { <span class="success">{format!("{:.*}", local_prec.get() as usize, val)}</span> }.into_any(),
                         Err(e) => view! { <span class="warn">{e}</span> }.into_any(),
                     }}
-                </span>
-                <span class="ml1">{t!(i18n,ref_main.prec)}</span>
+                </span> <span class="ml1">{t!(i18n,ref_main.prec)}</span>
                 <select class="precision" on:change=on_input prop:value=move || local_prec.get()>
                     {(0..18).map(|n| view! { <option value=n>{n}</option> }).collect_view()}
                 </select>
@@ -731,7 +749,9 @@ pub fn RunOper(oper: Operation, vars: HashMap<String, f64>) -> impl IntoView {
                     key=|name| name.clone()
                     children=move |name| {
                         let n_input = name.clone();
-                        let (display_val, set_display_val) = signal(inner.get_untracked().get(&name).cloned().unwrap_or(0.0).to_string());
+                        let n_input0 = name.clone();
+                        let (display_val, set_display_val) = signal(inputs.get_untracked().get(&name).cloned().unwrap_or(0.0).to_string());
+                        set_display_val.set("".to_string());
                         view! {
                             <label class="m0">{name.clone()}</label>
                             <input
@@ -751,7 +771,7 @@ pub fn RunOper(oper: Operation, vars: HashMap<String, f64>) -> impl IntoView {
                                         let val_str = event_target_value(&ev);
                                         set_display_val.set(val_str.clone());
                                         if let Ok(val) = val_str.parse::<f64>() {
-                                            set_inner
+                                            set_inputs
                                                 .update(|map| {
                                                     map.insert(value_name.clone(), val);
                                                 });
@@ -763,10 +783,10 @@ pub fn RunOper(oper: Operation, vars: HashMap<String, f64>) -> impl IntoView {
                                 class="bf m0"
                                 type="button"
                                 on:click=move |_| {
-                                    set_display_val.set("0".to_string());
-                                    set_inner
+                                    set_display_val.set("".to_string());
+                                    set_inputs
                                         .update(|map| {
-                                            map.insert(n_input.clone(), 0.0);
+                                            map.remove(&n_input0);
                                         });
                                 }
                             >

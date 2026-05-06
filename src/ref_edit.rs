@@ -890,7 +890,9 @@ pub fn EditOper(initial_data: Option<Operation>, #[prop(into)] on_done: Callback
                         return Err(format!("{}: {}", t_string!(i18n, edit.enter_value_for), raw_name));
                     }
                 }
-                e.eval(&vals).map(|v| format!("{:.*}", op.get().prec as usize, v)).map_err(|e| format!("{}: {:?}", tu_string!(i18n, all.error), e))
+                e.eval(&vals)
+                    .map(|v| format!("{:.*}", op.get().prec as usize, v))
+                    .map_err(|e| format!("{}: {:?}", tu_string!(i18n, all.error), e))
             }
             Err(e) => Err(format!("{}: {:?}", tu_string!(i18n, all.error), e)),
         }
@@ -937,9 +939,9 @@ pub fn EditOper(initial_data: Option<Operation>, #[prop(into)] on_done: Callback
     Effect::new(move |_| {
         //log::info!("new_fields: {:#?}", new_fields.get());
         //log::info!("filtered {:?}", fields.get());
-        log::debug!("var_names:{:?}", var_names.get());
-        log::debug!("inputs:{:?}", inputs.get());
-        log::debug!("op:{:?}", op.get());
+        //log::debug!("var_names:{:?}", var_names.get());
+        //log::debug!("inputs:{:?}", inputs.get());
+        //log::debug!("op:{:?}", op.get());
     });
 
     view! {
@@ -960,15 +962,20 @@ pub fn EditOper(initial_data: Option<Operation>, #[prop(into)] on_done: Callback
                     on:input=move |ev| op.update(|o| o.desc = event_target_value(&ev))
                 />
                 <label>{t!(i18n, ref_main.prec)}</label>
-                <select class="precision" on:change:target=move |ev| op.update(|o| o.prec = ev.target().value().parse().unwrap())
-                    prop:value=move || op.get().prec>
+                <select
+                    class="precision"
+                    on:change:target=move |ev| op.update(|o| o.prec = ev.target().value().parse().unwrap())
+                    prop:value=move || op.get().prec
+                >
                     {(0..18).map(|n| view! { <option value=n>{n}</option> }).collect_view()}
                 </select>
             </div>
             <div>
                 <p class="grid gap02">
                     <span class="warn">{t!(i18n, edit.allowed_vars_title)}</span>
-                    <small>{t!(i18n, edit.allowed_vars_rule)}<span class="error">" r\"[a-zA-Zα-ωΑ-Ω_]+[a-zA-Zα-ωΑ-Ω_0-9]*\""</span></small>
+                    <small>
+                        {t!(i18n, edit.allowed_vars_rule)}<span class="error">" r\"[a-zA-Zα-ωΑ-Ω_]+[a-zA-Zα-ωΑ-Ω_0-9]*\""</span>
+                    </small>
                     <small>{t!(i18n, edit.allowed_vars_curly_hint)}</small>
                 </p>
                 <input
@@ -1029,28 +1036,55 @@ pub fn EditOper(initial_data: Option<Operation>, #[prop(into)] on_done: Callback
             </div>
 
             // Динамические инпуты для переменных
-            <div class="grid3">
+            <div class="gline">
                 <For
                     each=move || var_names.get()
                     key=|name| name.clone()
                     children=move |name| {
-                        let n_label = name.clone();
                         let n_input = name.clone();
+                        let n_input0 = name.clone();
+                        let (display_val, set_display_val) = signal(inputs.get_untracked().get(&name).cloned().unwrap_or(0.0).to_string());
+                        set_display_val.set("".to_string());
                         view! {
-                            <div>
-                                <label>{n_label}</label>
-                                <input
-                                    type="text"
-                                    on:input=move |ev| {
-                                        let val = event_target_value(&ev).parse::<f64>().unwrap_or(0.0);
-                                        set_inputs
-                                            .update(|map| {
-                                                map.insert(n_input.clone(), val);
-                                            });
+                            <label>{name.clone()}</label>
+                            <input
+                                type="text"
+                                // Теперь это сработает, так как display_val будет меняться всегда
+                                class:error=move || {
+                                    let val = display_val.get();
+                                    if val.is_empty() || val == "." || val == "-" {
+                                        return false;
                                     }
-                                    prop:value=move || inputs.get().get(&name).cloned().unwrap_or(0.0)
-                                />
-                            </div>
+                                    val.parse::<f64>().is_err()
+                                }
+                                prop:value=display_val
+                                on:input={
+                                    let value_name = n_input.clone();
+                                    move |ev| {
+                                        let val_str = event_target_value(&ev);
+                                        set_display_val.set(val_str.clone());
+                                        if let Ok(val) = val_str.parse::<f64>() {
+                                            set_inputs
+                                                .update(|map| {
+                                                    map.insert(value_name.clone(), val);
+                                                });
+                                        }
+                                    }
+                                }
+                            />
+                            <button
+                                class="bf m0"
+                                type="button"
+                                on:click=move |_| {
+                                    set_display_val.set("".to_string());
+                                    set_inputs
+                                        .update(|map| {
+                                            map.remove(&n_input0);
+                                        });
+                                }
+                            >
+                                "🧹"
+                            </button>
                         }
                     }
                 />
@@ -1063,7 +1097,7 @@ pub fn EditOper(initial_data: Option<Operation>, #[prop(into)] on_done: Callback
                     Err(err) => view! { <p class="error m0">{err}</p> }.into_any(),
                 }}
             </div>
-            
+
             <div class="flex-center">
                 <button on:click=move |_| on_done.run(())>"⨯ "{t!(i18n, edit.cancel)}</button>
                 <button on:click=save>"💾 "{t!(i18n, edit.save)}</button>
