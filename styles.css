@@ -1,6 +1,7 @@
 @charset "UTF-8";
 html, body {height: 100%;margin: 0;overflow: hidden;line-height: 0.9rem;}
 body {display: flex;flex-direction: column;padding-top: env(safe-area-inset-top);padding-bottom: env(safe-area-inset-bottom);}
+html{border-radius: 0.6rem;height: 100vh;width: 100vw;}
 header{flex-shrink: 0;padding-block:0!important;height:6rem;}
 .main {display: grid;grid-template-columns: 1fr;overflow-y:auto;justify-items: stretch;padding:0;}
 .top-nav {display: grid;grid-template-columns: 1fr 4fr 1fr;width: 100%;gap: 2rem;padding: 0.2rem;}
@@ -84,7 +85,31 @@ small{margin:2px;color: oklch(from currentColor l c h / 0.8);}
 .sm_b{height: 1.6rem;width: 1.6rem;padding: 0!important;}
 .field-col{display: inline-flex;flex-direction: column;gap: 0.2rem;align-items: flex-start;margin:0;}
 .pre-line{white-space: pre-line;line-height: 1.4rem;font-weight:bolder;}
+/* для декораций */
+[data-tauri-drag-region] {user-select: none;-webkit-user-select: none;}
+.titlebar {
+    display: grid;
+    grid-template-columns: 1fr 1fr 1fr;
+    align-items: center;
+    -webkit-app-region: drag;
+    user-select: none;
+    height: 2rem;
+    padding: 0 0.2rem;
+    border-bottom: 1px solid gray;
+}
+.titlebar-logo{justify-self: start;}
+.titlebar-title{justify-self: center;}
+.window-controls {justify-self: end;overflow: hidden;}
 
+.window-controls button {
+  background: none;
+  border: none;
+  cursor: pointer;
+  -webkit-app-region: no-drag;
+  height: 1.6rem;
+  width: 1.6rem;
+  padding: initial;
+}
 /* COLORS */
 .error{color:red;}
 .warn,.modified{color: oklch(70.5% 0.213 47.604);}

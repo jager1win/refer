@@ -19,6 +19,19 @@ pub struct CreateForm {
 }
 
 #[tauri::command]
+pub async fn ctrl_window(action: &str, app: tauri::AppHandle) -> Result<(), tauri::Error> {
+    let window = app.get_webview_window("main").unwrap();
+    let _ = match action {
+        "min" => window.minimize(),
+        "max0" => window.maximize(),
+        "max1" => window.unmaximize(),
+        "close" => window.close(),
+        &_ => Ok(()),
+    };
+    Ok(())
+}
+
+#[tauri::command]
 pub async fn get_app_info() -> Result<Vec<(String, String)>, String> {
     let result = vec![
         ("Version".to_string(), env!("CARGO_PKG_VERSION").to_string()),

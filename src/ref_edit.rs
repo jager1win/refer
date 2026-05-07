@@ -371,8 +371,6 @@ pub fn FieldsCrud() -> impl IntoView {
     let new_fields_modified = Memo::new(move |_| !new_fields.get().is_empty());
 
     Effect::new(move |_| {
-        //log::info!("new_fields: {:#?}", new_fields.get());
-        //log::info!("meta {:?}", st.meta.get().unwrap());
         if let Some(m) = st.meta.get() {
             info_list.set(m.info.clone());
             fields_list.set(m.fields.clone());
@@ -541,96 +539,6 @@ pub fn FieldsCrud() -> impl IntoView {
     }
 }
 
-/*#[component]
-pub fn ElementCrud() -> impl IntoView {
-    let i18n = use_i18n();
-    let st = use_context::<State>().expect("State missing");
-    let add_mode = RwSignal::new(true);
-    let saved_id = RwSignal::new(None::<u32>);
-    let form_data: RwSignal<HashMap<String, String>> = RwSignal::new(HashMap::<String, String>::new());
-
-    let save_new = move |_| {
-        let pb = st.get_full_pb(st.selected.get_untracked().refer.unwrap());
-        let data = form_data.get_untracked();
-
-        spawn_local(async move {
-            match invoke("add_element", &tauri_args! { "pb": pb, "fields": data }).await {
-                Ok(js) => {
-                    let id = from_value::<u32>(js).unwrap();
-                    saved_id.set(Some(id));
-                    add_mode.set(false);
-                    form_data.set(HashMap::new()); // очищаем для следующего раза
-                }
-                Err(js) => {
-                    let error_msg = from_value::<String>(js).unwrap_or_else(|_| "Error".into());
-                    st.now.set(format!("Error: {:?}", error_msg));
-                }
-            }
-        });
-    };
-
-    Effect::new(move |_| {
-        //log::info!("edit_ref {:?}", edit_ref.get());
-    });
-    view! {
-        {move || match add_mode.get() {
-            false => {
-                view! {
-                    <div class="gr grid center">
-                        <button on:click=move |_| {
-                            st.edit_ref.set(false);
-                            st.selected.update(|s| s.id = saved_id.get_untracked())
-                        }>"→ "{t!(i18n, all.element)}</button>
-                        <button on:click=move |_| st.edit_ref.set(false)>"→ "{t!(i18n, all.reference)}</button>
-                        <button on:click=move |_| add_mode.set(true)>"+ "{t!(i18n, all.element)}</button>
-                    </div>
-                }
-                    .into_any()
-            }
-            true => {
-                view! {
-                    <div class="grid2 gr a-start">
-                        {move || {
-                            st.meta
-                                .get()
-                                .unwrap()
-                                .names
-                                .iter()
-                                .map(|field_key| {
-                                    let binding = st.meta.get().unwrap();
-                                    let field_def = binding.fields.get(field_key).unwrap();
-                                    let field_key = field_key.clone();
-                                    let value = form_data.get().get(&field_key).cloned().unwrap_or_default();
-
-                                    view! {
-                                        <label class="field-col">{field_def.name.clone()}<small>{field_def.ftype.clone()}</small></label>
-                                        <input
-                                            type=field_def.ftype.clone()
-                                            inputmode=if field_def.ftype == "number" { "decimal" } else { "text" }
-                                            prop:value=value
-                                            on:input=move |ev| {
-                                                let val = event_target_value(&ev);
-                                                form_data
-                                                    .update(|f| {
-                                                        f.insert(field_key.clone(), val);
-                                                    });
-                                            }
-                                        />
-                                    }
-                                })
-                                .collect_view()
-                        }}
-                    </div>
-                    <div class="gr center">
-                        <button on:click=save_new>"💾 "{t!(i18n, edit.save)}</button>
-                    </div>
-                }
-                    .into_any()
-            }
-        }}
-    }
-}*/
-
 #[component]
 pub fn ElementCrud() -> impl IntoView {
     let i18n = use_i18n();
@@ -677,10 +585,6 @@ pub fn ElementCrud() -> impl IntoView {
             }
         });
     };
-
-    Effect::new(move |_| {
-        //log::info!("edit_ref {:?}", edit_ref.get());
-    });
 
     view! {
         {move || match add_mode.get() {
@@ -936,14 +840,6 @@ pub fn EditOper(initial_data: Option<Operation>, #[prop(into)] on_done: Callback
         on_done.run(());
     };
 
-    Effect::new(move |_| {
-        //log::info!("new_fields: {:#?}", new_fields.get());
-        //log::info!("filtered {:?}", fields.get());
-        //log::debug!("var_names:{:?}", var_names.get());
-        //log::debug!("inputs:{:?}", inputs.get());
-        //log::debug!("op:{:?}", op.get());
-    });
-
     view! {
         <div class="oper grid center">
             <div class="grid1a">
@@ -1115,34 +1011,3 @@ pub fn get_standard_operators() -> Vec<&'static str> {
         "abs", "signum", "floor", "ceil", "round", "PI", "TAU", "E", // Константы
     ]
 }
-
-/*
-
-        <button on:click=move |_| { edit_ref.set(false) }>"💾 "{t!(i18n, edit.save)}</button>
-        <button on:click=move |_| del_ref(selected.get_untracked().refer.unwrap())>"🗑️ "{t!(i18n, all.del)}</button>
-
-*/
-/*
-    let upd_info = move |_| {
-        let pb = full_pb(stat.get_untracked().db_path, selected.get_untracked().refer.unwrap());
-        let new_info = info_list.get_untracked();
-
-        spawn_local(async move {
-            match invoke(
-                "update_meta_entity",
-                &tauri_args! { "pb": pb, "key": "info", "value": new_info },
-            )
-            .await
-            {
-                Ok(_s) => {
-                    now.set(tu_string!(i18n, edit.saved).to_string());
-                }
-                Err(js) => {
-                    let error_msg = from_value::<String>(js).unwrap_or_else(|_| "Error".into());
-                    now.set(format!("Error: {:?}", error_msg));
-                }
-            };
-        });
-        get_meta();
-    };
-*/

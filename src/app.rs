@@ -157,7 +157,6 @@ pub fn App() -> impl IntoView {
 
     // now clean if not error+
     Effect::new(move |_| {
-        //log::debug!("stat: {:?}",stat.get());
         let cur = now.get();
         let contains_bad = er_pat.iter().any(|p| cur.to_lowercase().contains(p));
         if !contains_bad {
@@ -174,6 +173,7 @@ pub fn App() -> impl IntoView {
     });
 
     view! {
+        <WindowTitlebar />
         <header>
             <nav class="top-nav">
                 <button
@@ -343,8 +343,6 @@ fn Settings() -> impl IntoView {
         html_element.set_attribute("data-color", &color_value).unwrap();
     });
 
-    //log::debug!("lang: {:?}", &all);
-    //log::debug!("lang: {:?}", &current);
     view! {
         <div class="settings_block gr">
             <h5>{t!(i18n, settings.title)}</h5>
@@ -810,6 +808,38 @@ fn LogViewer() -> impl IntoView {
 
             <div class="log-panel">
                 <code id="logs">{move || logs.get()}</code>
+            </div>
+        </div>
+    }
+}
+
+#[component]
+fn WindowTitlebar() -> impl IntoView{
+    let (is_maximized, set_is_maximized) = signal("max0");
+    let ctrl_window = move |ctrl| {
+        if ctrl == "max0"{
+            set_is_maximized.set("max1");
+        }else {set_is_maximized.set("max0");}
+
+        spawn_local(async move {
+            let _ = invoke("ctrl_window", &tauri_args!("action": ctrl)).await;
+        });
+    };
+
+    view!{
+        <div class="titlebar" data-tauri-drag-region>
+            <div class="titlebar-logo">"img"</div>
+            <div class="titlebar-title">"Refer"</div>
+            <div class="window-controls">
+                <button on:click=move |_| ctrl_window("min") id="titlebar-minimize">
+                    "–"
+                </button>
+                <button on:click=move |_| ctrl_window(is_maximized.get()) id="titlebar-maximize">
+                    {move || if is_maximized.get() == "max1" { "❐" } else { "□" }}
+                </button>
+                <button on:click=move |_| ctrl_window("close") id="titlebar-close">
+                    "x"
+                </button>
             </div>
         </div>
     }

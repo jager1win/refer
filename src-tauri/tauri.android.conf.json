@@ -4,8 +4,12 @@
     "windows": [
       {
         "title": "Refer",
+        "width": 600,
+        "height": 800,
+        "fullscreen": false,
         "resizable": true,
-        "fullscreen": true
+        "decorations": false,
+        "transparent": true
       }
     ],
     "security": {

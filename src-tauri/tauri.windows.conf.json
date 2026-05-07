@@ -5,7 +5,12 @@
       {
         "title": "Refer",
         "width": 600,
-        "height": 800
+        "height": 800,
+        "fullscreen": false,
+        "resizable": true,
+        "decorations": false,
+        "transparent": true,
+        "shadow": false  
       }
     ],
     "security": {

@@ -121,9 +121,7 @@ pub fn Ref_main() -> impl IntoView {
     // first run
     Effect::new(move |_| {
         st.selected.track();
-        log::info!("first run return");
         if st.meta.get().is_none() {
-            log::info!("return");
             return;
         }
 
@@ -166,14 +164,6 @@ pub fn Ref_main() -> impl IntoView {
             },
             std::time::Duration::from_millis(150),
         );
-    });
-
-    Effect::new(move |_| {
-        log::info!("ref_state: {:?}", ref_state.get());
-        //log::info!("meta: {:#?}", meta.get());
-        //log::info!("selected: {:#?}", selected.get());
-        //log::info!("stat: {:#?}", stat.get());
-        //log::info!("ref_main data: {:#?}", data.get());
     });
 
     view! {
@@ -252,7 +242,7 @@ pub fn Ref_main() -> impl IntoView {
                                                 (_, true) => tu_string!(i18n, ref_main.found),
                                                 (_, false) => tu_string!(i18n, ref_main.nothing_found),
                                             };
-                                            // log::info!("query_len:{},has_data:{}",query_len, has_data);
+
                                             view! {
                                                 <div class:hidden=move || {
                                                     (tm_clon.count_data < 11) || (tm_clon.search_config.is_empty())
@@ -516,12 +506,6 @@ pub fn Ref_el() -> impl IntoView {
         get_el();
     });
 
-    Effect::new(move |_| {
-        //log::info!("meta: {:#?}", meta.get());
-        //log::info!("selected {:?}", selected.get());
-        //log::info!("ref_el data: {:#?}", data.get());
-        //log::info!("sett: {:#?}", settings.get());
-    });
     provide_context(edit_el);
     view! {
         <Show when=move || { !edit_el.get() } fallback=move || view! { <Ref_el_edit /> }>
@@ -720,11 +704,6 @@ pub fn RunOper(oper: Operation, vars: HashMap<String, f64>) -> impl IntoView {
             .await;
         });
     };
-
-    Effect::new(move |_| {
-        log::info!("filtered: {:#?}", filtered());
-        log::info!("inner {:?}", inputs.get());
-    });
 
     view! {
         <div class="oper gr grid center gap04">
