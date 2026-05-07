@@ -268,7 +268,8 @@ fn Settings() -> impl IntoView {
     let all: &[Locale] = Locale::get_all();
     let st = use_context::<State>().expect("State missing");
     let colors = [
-        "orange", "lime", "green", "cyan", "blue", "indigo", "purple", "fuchsia", "pink", "rose", "slate", "zinc", "taupe", "mauve", "mist", "olive",
+        "orange", "lime", "green", "cyan", "blue", "indigo", "purple", "fuchsia", "pink", "rose", "slate", "zinc", "taupe", "mauve",
+        "mist", "olive",
     ];
     /* Possible color choices: orange, lime, green, cyan, blue, indigo, purple, fuchsia, pink, rose, slate, zinc, taupe, mauve, mist, olive*/
     let info = RwSignal::new(Vec::<(String, String)>::new());
@@ -595,14 +596,21 @@ fn Create() -> impl IntoView {
             return;
         }
 
-        let command_name = if form_data.mode == "empty" { "create_empty" } else { "create_from_file" };
+        let command_name = if form_data.mode == "empty" {
+            "create_empty"
+        } else {
+            "create_from_file"
+        };
         st.now.set("⏳".to_string());
         is_loading.set(true);
         spawn_local(async move {
             match invoke(command_name, &tauri_args!("val": form_data)).await {
                 Ok(_s) => {
-                    st.now
-                        .set(format!("{}: {}", tu_string!(i18n, create.ok_create), form_data.db_name.to_string_lossy()));
+                    st.now.set(format!(
+                        "{}: {}",
+                        tu_string!(i18n, create.ok_create),
+                        form_data.db_name.to_string_lossy()
+                    ));
                     if let Some(f) = form_ref.get_untracked() {
                         f.reset();
                     }
@@ -640,7 +648,8 @@ fn Create() -> impl IntoView {
                 }
                 Err(js) => {
                     let error_msg = from_value::<String>(js).unwrap_or_else(|_| "Unknown error".into());
-                    st.now.set(format!("{}: {:?} - {}", tu_string!(i18n, create.er_create), &name, error_msg));
+                    st.now
+                        .set(format!("{}: {:?} - {}", tu_string!(i18n, create.er_create), &name, error_msg));
                 }
             }
         });
@@ -751,8 +760,7 @@ fn Create() -> impl IntoView {
             </div>
 
             <div class="gr">
-                <h5>{t!(i18n, create.example)}
-                <br />{t!(i18n, create.example_replace)}</h5>
+                <h5>{t!(i18n, create.example)} <br />{t!(i18n, create.example_replace)}</h5>
                 <div class="test_create gridl">
                     {st
                         .stat
@@ -814,21 +822,23 @@ fn LogViewer() -> impl IntoView {
 }
 
 #[component]
-fn WindowTitlebar() -> impl IntoView{
+fn WindowTitlebar() -> impl IntoView {
     let (is_maximized, set_is_maximized) = signal("max0");
     let ctrl_window = move |ctrl| {
-        if ctrl == "max0"{
+        if ctrl == "max0" {
             set_is_maximized.set("max1");
-        }else {set_is_maximized.set("max0");}
+        } else {
+            set_is_maximized.set("max0");
+        }
 
         spawn_local(async move {
             let _ = invoke("ctrl_window", &tauri_args!("action": ctrl)).await;
         });
     };
 
-    view!{
+    view! {
         <div class="titlebar" data-tauri-drag-region>
-            <div class="titlebar-logo">"img"</div>
+            <div class="titlebar-logo">"⬡"</div>
             <div class="titlebar-title">"Refer"</div>
             <div class="window-controls">
                 <button on:click=move |_| ctrl_window("min") id="titlebar-minimize">
