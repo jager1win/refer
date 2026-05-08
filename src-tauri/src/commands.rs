@@ -20,14 +20,24 @@ pub struct CreateForm {
 
 #[tauri::command]
 pub async fn ctrl_window(action: &str, app: tauri::AppHandle) -> Result<(), tauri::Error> {
-    let window = app.get_webview_window("main").unwrap();
-    let _ = match action {
-        "min" => window.minimize(),
-        "max0" => window.maximize(),
-        "max1" => window.unmaximize(),
-        "close" => window.close(),
-        &_ => Ok(()),
-    };
+    #[cfg(not(target_os = "android"))]
+    {
+        let window = app.get_webview_window("main").unwrap();
+        match action {
+            "min" => { let _ = window.minimize(); }
+            "max0" => { let _ = window.maximize(); }
+            "max1" => { let _ = window.unmaximize(); }
+            "close" => { let _ = window.close(); }
+            _ => {}
+        };
+    }
+    #[cfg(target_os = "android")]
+    {
+        match action {
+            "close" => { std::process::exit(0); }
+            _ => {}
+        };
+    }
     Ok(())
 }
 
