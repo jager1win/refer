@@ -198,15 +198,7 @@ pub fn Ref_main() -> impl IntoView {
 
                                     <div class="title-group">
                                         <span>{move || st.selected.get().refer.as_ref().map(|p| p.display().to_string())}</span>
-                                        /*<span>
-                                            {move || {
-                                                st.selected
-                                                    .get()
-                                                    .refer
-                                                    .as_ref()
-                                                    .map(|p| { st.get_full_pb(p.clone()).display().to_string() })
-                                            }}
-                                        </span>*/
+
                                         // name & desc
                                         <p class="info-show m0">
                                             {match table_meta.info[0].1.is_empty() && table_meta.info[1].1.is_empty() {
@@ -262,10 +254,8 @@ pub fn Ref_main() -> impl IntoView {
                                                             }
                                                             prop:value=move || query_string.get()
                                                         />
-
-                                                        <span class="">{text}</span>
                                                     </div>
-                                                    <hr />
+                                                    <p class="center m04">{text}</p>
                                                 </div>
                                             }
                                         }
@@ -319,17 +309,33 @@ pub fn Ref_main() -> impl IntoView {
                                     }}
                                 </div>
 
-                                <div class="grid1a stat_table gr info a-start">
+                                // вывод статистики базы
+                                <div class="grid stat_table gr info a-start">
                                     {
                                         let oper = table_meta.clone().operations;
                                         let search_vec = table_meta.clone().search_config;
 
                                         view! {
-                                            <b>{t!(i18n, ref_main.total_records)}</b>
-                                            <span>{table_meta.count_data}</span>
+                                            <b>{t!(i18n, ref_main.total_records)}": "<span>{table_meta.count_data}</span></b>
+
+                                            <Show when=move || st.selected.get().refer.is_some() fallback=|| view! { <span>"-"</span> }>
+                                                // Здесь мы знаем, что путь есть, но unwrap() все равно лучше избегать
+                                                <b>
+                                                    {t!(i18n, refs.st_path)}": "
+                                                    <span>
+                                                        {move || {
+                                                            st.selected
+                                                                .get()
+                                                                .refer
+                                                                .as_ref()
+                                                                .map(|p| { st.get_full_pb(p.clone()).display().to_string() })
+                                                        }}
+                                                    </span>
+                                                </b>
+                                            </Show>
 
                                             <b>{t!(i18n, ref_main.columns)}</b>
-                                            <div class="ref_fields">
+                                            <div class="ref_fields ml1">
                                                 {match table_meta.names.is_empty() {
                                                     true => view! { <span>"-"</span> }.into_any(),
                                                     false => {
@@ -372,7 +378,7 @@ pub fn Ref_main() -> impl IntoView {
                                             </div>
 
                                             <b>{t!(i18n, ref_main.operations)}</b>
-                                            <div class="grid">
+                                            <div class="grid ml1">
                                                 {if oper.is_empty() {
                                                     view! { <span>"-"</span> }.into_any()
                                                 } else {
@@ -393,20 +399,6 @@ pub fn Ref_main() -> impl IntoView {
                                                         .into_any()
                                                 }}
                                             </div>
-
-                                            <Show when=move || st.selected.get().refer.is_some() fallback=|| view! { <span>"-"</span> }>
-                                                // Здесь мы знаем, что путь есть, но unwrap() все равно лучше избегать
-                                                <b>{t!(i18n, refs.st_path)}</b>
-                                                <span>
-                                                    {move || {
-                                                        st.selected
-                                                            .get()
-                                                            .refer
-                                                            .as_ref()
-                                                            .map(|p| { st.get_full_pb(p.clone()).display().to_string() })
-                                                    }}
-                                                </span>
-                                            </Show>
                                         }
                                     }
                                 </div>
@@ -735,7 +727,8 @@ pub fn RunOper(oper: Operation, vars: HashMap<String, f64>) -> impl IntoView {
                             <label class="m0">{name.clone()}</label>
                             <input
                                 type="text"
-                                // Теперь это сработает, так как display_val будет меняться всегда
+                                inputmode="decimal"
+                                pattern="[0-9]*[.]?[0-9]*"
                                 class:error=move || {
                                     let val = display_val.get();
                                     if val.is_empty() || val == "." || val == "-" {

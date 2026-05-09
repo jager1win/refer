@@ -379,7 +379,7 @@ pub fn FieldsCrud() -> impl IntoView {
         }
     });
     view! {
-        // edit info(name & desc) // class="bf"
+        // edit info(name & desc)
         <div class="gr center">
             <p class="center warn">{t!(i18n, edit.meta_hint)}</p>
             <div class="grid1a">
@@ -945,7 +945,7 @@ pub fn EditOper(initial_data: Option<Operation>, #[prop(into)] on_done: Callback
                             <label>{name.clone()}</label>
                             <input
                                 type="text"
-                                // Теперь это сработает, так как display_val будет меняться всегда
+                                inputmode="decimal" pattern="[0-9]*[.]?[0-9]*"
                                 class:error=move || {
                                     let val = display_val.get();
                                     if val.is_empty() || val == "." || val == "-" {
