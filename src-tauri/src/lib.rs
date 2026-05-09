@@ -47,7 +47,6 @@ pub struct SettingsStore {
     pub theme: String,
     pub language: String,
     pub color: String,
-    log: String,
     pub qa: Vec<QuickAccess>,
 }
 
@@ -64,7 +63,6 @@ impl Default for SettingsStore {
             theme: "light".to_string(),
             language: "en".to_string(),
             color: "blue".to_string(),
-            log: "false".to_string(),
             qa: Vec::new(),
         }
     }

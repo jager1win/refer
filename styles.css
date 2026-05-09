@@ -1,7 +1,13 @@
 @charset "UTF-8";
 html, body {height: 100%;margin: 0;overflow: hidden;line-height: 0.9rem;}
-body {display: flex;flex-direction: column;padding-top: env(safe-area-inset-top);padding-bottom: env(safe-area-inset-bottom);}
-html{border-radius: 0.6rem;height: 100vh;width: 100vw;}
+body {display: flex;
+flex-direction: column;
+padding-top: env(safe-area-inset-top, 0px);
+padding-bottom: env(safe-area-inset-bottom, 0px);
+padding-left: env(safe-area-inset-left, 0px);
+padding-right: env(safe-area-inset-right, 0px);
+height: 100%;}
+html{  border-radius: 0;height: 100%;width: 100%;}
 header{flex-shrink: 0;padding-block:0!important;height:6rem;}
 .main {display: grid;grid-template-columns: 1fr;overflow-y:auto;justify-items: stretch;padding:0;}
 .top-nav {display: grid;grid-template-columns: 1fr 4fr 1fr;width: 100%;gap: 2rem;padding: 0.2rem;}
@@ -53,13 +59,9 @@ input.csv_deli{width: 2rem!important;padding: 0.4rem!important;}
 .tab-content.active {opacity: 1;pointer-events: auto;visibility: visible;}
 .tab-content > * {max-height: 90vh;overflow-y: auto;}
 .main-content {width: 100%;height: 100%;overflow-y: auto;overflow-x: hidden;}
-.log-viewer-wrapper {position: fixed;bottom: 0;left: 0;z-index: 200;}
-.log-trigger-btn {position: fixed;bottom: 1rem;z-index: 201;right: 1rem;width: 3rem;height: 3rem;
-    padding: 0;display: flex;justify-content: center;align-items: center;box-shadow: 0 4px 12px rgba(0,0,0,0.3);
-    border: 2px solid var(--pico-border-color);}
 .log-panel {display: none;width: 100vw;max-height: 50vh;background-color: var(--pico-background-color);overflow-y: auto;}
 .log-viewer-wrapper.active .log-panel {display: flex;}
-code#logs{padding:0.2rem;overflow: scroll;width: 100%;white-space: pre-line;color:var(--pico-color);border-top:1px dashed var(--pico-color);}
+code#logs{padding:0.2rem;overflow: scroll;width: 100%;white-space: pre-line;color:var(--pico-color);border:1px dashed var(--pico-color);}
 .ffull{display: flex;justify-content: space-between;}
 .info {position: relative;}
 .form_new{display:grid;gap:0.4rem;}
@@ -109,6 +111,11 @@ small{margin:2px;color: oklch(from currentColor l c h / 0.8);}
   height: 1.6rem;
   width: 1.6rem;
   padding: initial;
+}
+@media (min-width: 769px) {
+  html {
+    border-radius: 0.6rem;
+  }
 }
 /* COLORS */
 .error{color:red;}

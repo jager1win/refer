@@ -25,7 +25,6 @@ pub struct AppSettings {
     theme: String,
     language: String,
     color: String,
-    log: String,
     pub qa: Vec<QuickAccess>,
 }
 
@@ -42,7 +41,6 @@ impl Default for AppSettings {
             theme: "light".to_string(),
             language: "en".to_string(),
             color: "blue".to_string(),
-            log: "false".to_string(),
             qa: Vec::new(),
         }
     }
@@ -172,8 +170,16 @@ pub fn App() -> impl IntoView {
         }
     });
 
+    let is_android = move || {
+        web_sys::window()
+            .and_then(|w| w.navigator().user_agent().ok())
+            .map(|ua| ua.contains("Android"))
+            .unwrap_or(false)
+    };
     view! {
-        <WindowTitlebar />
+        <Show when=move || !is_android()>
+            <WindowTitlebar />
+        </Show>
         <header>
             <nav class="top-nav">
                 <button
@@ -239,11 +245,6 @@ pub fn App() -> impl IntoView {
                 <Create />
             </div>
         </main>
-        {move || match settings.get().log.as_str() {
-            "false" => view! { "" }.into_any(),
-            "true" => view! { <LogViewer /> }.into_any(),
-            _ => view! { "" }.into_any(),
-        }}
     }
 }
 
@@ -273,6 +274,8 @@ fn Settings() -> impl IntoView {
     ];
     /* Possible color choices: orange, lime, green, cyan, blue, indigo, purple, fuchsia, pink, rose, slate, zinc, taupe, mauve, mist, olive*/
     let info = RwSignal::new(Vec::<(String, String)>::new());
+    let logs = RwSignal::new(None::<String>);
+    let show_logs = RwSignal::new(false);
 
     spawn_local(async move {
         match invoke("get_app_info", &JsValue::NULL).await {
@@ -302,17 +305,33 @@ fn Settings() -> impl IntoView {
     };
 
     let toggle_log = move |_| {
-        st.settings.update(|current| {
-            if current.log == "false" {
-                current.log = "true".to_string();
-            } else {
-                current.log = "false".to_string();
-            }
-            spawn_local(async move {
-                let _ = invoke("set_settings", &tauri_args!("new": st.settings.get_untracked())).await;
-            });
+        show_logs.update(|current| {
+            *current = !*current;
         });
     };
+
+    let load_logs = move || {
+        spawn_local(async move {
+            match invoke("get_log", &JsValue::NULL).await {
+                Ok(js) => {
+                    let res = from_value::<String>(js).unwrap_or_default();
+                    logs.set(Some(res));
+                }
+                Err(js) => {
+                    let error_msg = from_value::<String>(js).unwrap_or_else(|_| "Unknown error".into());
+                    logs.set(Some(format!("Failed to load logs: {}", error_msg)));
+                }
+            }
+        });
+    };
+
+    Effect::new(move |_| {
+        if show_logs.get() {
+            load_logs();
+            #[allow(clippy::redundant_closure)]
+            let _ = set_interval_with_handle(move || load_logs(), std::time::Duration::from_secs(2)).ok();
+        }
+    });
 
     let set_color = move |color: &str| {
         st.settings.update(|current| {
@@ -420,15 +439,21 @@ fn Settings() -> impl IntoView {
                 </div>
                 <div>
                     <button on:click=toggle_log class="theme-switcher">
-                        {move || match st.settings.get().log.as_str() {
-                            "false" => t!(i18n, settings.show).into_any(),
-                            "true" => t!(i18n, settings.hide).into_any(),
-                            _ => "".into_any(),
+                        {move || match show_logs.get() {
+                            false => t!(i18n, settings.show).into_any(),
+                            true => t!(i18n, settings.hide).into_any(),
                         }}
                     </button>
                 </div>
             </div>
         </div>
+
+        <div class="log-viewer-wrapper" class:active=move || show_logs.get()>
+            <div class="log-panel">
+                <code id="logs">{move || logs.get()}</code>
+            </div>
+        </div>
+
         <div class="gr info center">
             <h5>"Сreated with Rust, Tauri & Leptos"</h5>
             {move || {
@@ -777,47 +802,6 @@ fn Create() -> impl IntoView {
                 </div>
             </div>
         </Show>
-    }
-}
-
-#[component]
-fn LogViewer() -> impl IntoView {
-    let logs = RwSignal::new(None::<String>);
-    let show_logs = RwSignal::new(false);
-
-    let load_logs = move || {
-        spawn_local(async move {
-            match invoke("get_log", &JsValue::NULL).await {
-                Ok(js) => {
-                    let res = from_value::<String>(js).unwrap_or_default();
-                    logs.set(Some(res));
-                }
-                Err(js) => {
-                    let error_msg = from_value::<String>(js).unwrap_or_else(|_| "Unknown error".into());
-                    logs.set(Some(format!("Failed to load logs: {}", error_msg)));
-                }
-            }
-        });
-    };
-
-    Effect::new(move |_| {
-        if show_logs.get() {
-            load_logs();
-            #[allow(clippy::redundant_closure)]
-            let _ = set_interval_with_handle(move || load_logs(), std::time::Duration::from_secs(2)).ok();
-        }
-    });
-
-    view! {
-        <div class="log-viewer-wrapper" class:active=move || show_logs.get()>
-            <button class="log-trigger-btn" on:click=move |_| show_logs.update(|v| *v = !*v)>
-                "📋"
-            </button>
-
-            <div class="log-panel">
-                <code id="logs">{move || logs.get()}</code>
-            </div>
-        </div>
     }
 }
 
