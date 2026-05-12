@@ -7,7 +7,7 @@ padding-bottom: env(safe-area-inset-bottom, 0px);
 padding-left: env(safe-area-inset-left, 0px);
 padding-right: env(safe-area-inset-right, 0px);
 height: 100%;}
-html{  border-radius: 0;height: 100%;width: 100%;}
+html{border-radius: 0.6rem;height: 100%;width: 100%;}
 header{flex-shrink: 0;padding-block:0!important;height:6rem;}
 .main {display: grid;grid-template-columns: 1fr;overflow-y:auto;justify-items: stretch;padding:0;}
 .top-nav {display: grid;grid-template-columns: 1fr 4fr 1fr;width: 100%;gap: 2rem;padding: 0.2rem;}

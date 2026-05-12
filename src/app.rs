@@ -53,7 +53,7 @@ pub struct StatisticsState {
     pub db_list: Vec<PathBuf>,
     pub log_path: String,
     pub db_path_ok: String,
-    pub demo_refs: [(String, String, String); 6],
+    pub demo_refs: [(String, String); 6],
 }
 
 #[derive(Serialize, Deserialize, Clone, Default, Debug)]
@@ -176,6 +176,7 @@ pub fn App() -> impl IntoView {
             .map(|ua| ua.contains("Android"))
             .unwrap_or(false)
     };
+    Effect::new(move |_| log::debug!("st.selected: {:?}", st.selected.get()));
     view! {
         <Show when=move || !is_android()>
             <WindowTitlebar />
@@ -223,8 +224,14 @@ pub fn App() -> impl IntoView {
                 </button>
             </nav>
             <div class="now">
-                <p class:error=move || er_pat.iter().any(|p| now.get().to_lowercase().contains(p))>{move || now.get()}</p>
-                <span class="sp_close" class:hidden=move || now.get().is_empty() on:click=move |_| now.set("".to_string())>
+                <p class:error=move || {
+                    er_pat.iter().any(|p| now.get().to_lowercase().contains(p))
+                }>{move || now.get()}</p>
+                <span
+                    class="sp_close"
+                    class:hidden=move || now.get().is_empty()
+                    on:click=move |_| now.set("".to_string())
+                >
                     "x"
                 </span>
             </div>
@@ -269,8 +276,8 @@ fn Settings() -> impl IntoView {
     let all: &[Locale] = Locale::get_all();
     let st = use_context::<State>().expect("State missing");
     let colors = [
-        "orange", "lime", "green", "cyan", "blue", "indigo", "purple", "fuchsia", "pink", "rose", "slate", "zinc", "taupe", "mauve",
-        "mist", "olive",
+        "orange", "lime", "green", "cyan", "blue", "indigo", "purple", "fuchsia", "pink", "rose", "slate", "zinc",
+        "taupe", "mauve", "mist", "olive",
     ];
     /* Possible color choices: orange, lime, green, cyan, blue, indigo, purple, fuchsia, pink, rose, slate, zinc, taupe, mauve, mist, olive*/
     let info = RwSignal::new(Vec::<(String, String)>::new());
@@ -377,7 +384,13 @@ fn Settings() -> impl IntoView {
                             let is_active = move || st.settings.get().language == loc.to_string();
                             view! {
                                 <button
-                                    class=move || { if is_active() { "locale-btn active".to_string() } else { "locale-btn".to_string() } }
+                                    class=move || {
+                                        if is_active() {
+                                            "locale-btn active".to_string()
+                                        } else {
+                                            "locale-btn".to_string()
+                                        }
+                                    }
                                     on:click=move |_| {
                                         if !is_active() {
                                             spawn_local(async move {
@@ -386,7 +399,11 @@ fn Settings() -> impl IntoView {
                                                     .update(|current| {
                                                         current.language = loc.as_str().to_string();
                                                     });
-                                                let _ = invoke("set_settings", &tauri_args!("new": st.settings.get_untracked())).await;
+                                                let _ = invoke(
+                                                        "set_settings",
+                                                        &tauri_args!("new": st.settings.get_untracked()),
+                                                    )
+                                                    .await;
                                             });
                                         }
                                     }
@@ -408,7 +425,11 @@ fn Settings() -> impl IntoView {
                             view! {
                                 <button
                                     class=move || {
-                                        if st.settings.get().color == color { format!("{} active", color) } else { color.to_string() }
+                                        if st.settings.get().color == color {
+                                            format!("{} active", color)
+                                        } else {
+                                            color.to_string()
+                                        }
                                     }
                                     on:click=move |_| set_color(color)
                                 />
@@ -663,18 +684,24 @@ fn Create() -> impl IntoView {
             db_name: name.to_path_buf(),
             ..Default::default()
         };
+        log::debug!("fd: {:?}", &form_data);
         spawn_local(async move {
             match invoke("create_example", &tauri_args!("val": form_data)).await {
                 Ok(_js) => {
-                    st.now.set(format!("{}: {:?}", tu_string!(i18n, create.ok_create), &name));
+                    st.now
+                        .set(format!("{}: {:?}", tu_string!(i18n, create.ok_create), &name));
                     st.upd_stat();
                     st.selected.update(|c| c.refer = Some(name));
                     active_tab.set(1);
                 }
                 Err(js) => {
                     let error_msg = from_value::<String>(js).unwrap_or_else(|_| "Unknown error".into());
-                    st.now
-                        .set(format!("{}: {:?} - {}", tu_string!(i18n, create.er_create), &name, error_msg));
+                    st.now.set(format!(
+                        "{}: {:?} - {}",
+                        tu_string!(i18n, create.er_create),
+                        &name,
+                        error_msg
+                    ));
                 }
             }
         });
@@ -682,7 +709,10 @@ fn Create() -> impl IntoView {
 
     Effect::new(move |_| {
         err_form.track();
-        set_timeout(move || err_form.set("".to_string()), std::time::Duration::from_millis(6000));
+        set_timeout(
+            move || err_form.set("".to_string()),
+            std::time::Duration::from_millis(6000),
+        );
     });
     view! {
         <Show
@@ -696,7 +726,9 @@ fn Create() -> impl IntoView {
             }
         >
             <div class="gr">
-                <span class="err_send">{move || err_form.get()}<div aria-busy="true" class:hidden=move || !is_loading.get()></div></span>
+                <span class="err_send">
+                    {move || err_form.get()}<div aria-busy="true" class:hidden=move || !is_loading.get()></div>
+                </span>
                 <form class="form_new" on:submit=create_refer node_ref=form_ref novalidate>
                     <fieldset class="grida m0">
                         <label>
@@ -740,7 +772,10 @@ fn Create() -> impl IntoView {
                                     <div class="gridl">
                                         <label>
                                             {t!(i18n, create.fheader)}
-                                            <span data-placement="right" data-tooltip=t_string!(i18n, create.ttp_header)>
+                                            <span
+                                                data-placement="right"
+                                                data-tooltip=t_string!(i18n, create.ttp_header)
+                                            >
                                                 "?"
                                             </span>
                                         </label>
@@ -762,7 +797,8 @@ fn Create() -> impl IntoView {
 
                     <div class="block gridl">
                         <label>
-                            {t!(i18n, create.fname)} <span data-placement="right" data-tooltip=t_string!(i18n, create.ttp_path)>
+                            {t!(i18n, create.fname)}
+                            <span data-placement="right" data-tooltip=t_string!(i18n, create.ttp_path)>
                                 "?"
                             </span>
                         </label>
@@ -792,9 +828,16 @@ fn Create() -> impl IntoView {
                         .get_untracked()
                         .demo_refs
                         .into_iter()
-                        .map(|(path, name, desc)| {
+                        .map(|(name, desc)| {
+                            let view_name = std::path::Path::new(&name)
+                                .file_stem()
+                                .unwrap()
+                                .to_string_lossy()
+                                .to_string();
                             view! {
-                                <button on:click=move |_| create_example(PathBuf::from({ &path }))>{name}</button>
+                                <button on:click=move |_| create_example(
+                                    PathBuf::from({ name.clone() }),
+                                )>{view_name}</button>
                                 <span>{desc}</span>
                             }
                         })

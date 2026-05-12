@@ -36,3 +36,4 @@ rusqlite = { version = "0.39", features = ["bundled", "functions"] }
 csv = "1"
 calamine = "0.34.0"
 tauri-plugin-dialog = "2"
+

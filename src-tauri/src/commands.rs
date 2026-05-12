@@ -1,11 +1,11 @@
 use crate::sql::{self, *};
 use crate::{APP_EXT, DbState, SettingsStore, StatisticsState, import::*};
 use serde::{Deserialize, Serialize};
-use std::fs::{self,File};
+use std::fs::{self, File, create_dir_all};
 use std::io::{self, Read};
 use std::path::{Component, Path, PathBuf};
 use std::sync::Mutex;
-use tauri::{Manager, State};
+use tauri::{AppHandle, Manager, State};
 use tauri_plugin_dialog::DialogExt;
 use tracing::{debug, error, info};
 
@@ -19,22 +19,32 @@ pub struct CreateForm {
 }
 
 #[tauri::command]
-pub async fn ctrl_window(action: &str, app: tauri::AppHandle) -> Result<(), tauri::Error> {
+pub async fn ctrl_window(action: &str, app: AppHandle) -> Result<(), tauri::Error> {
     #[cfg(not(target_os = "android"))]
     {
         let window = app.get_webview_window("main").unwrap();
         match action {
-            "min" => { let _ = window.minimize(); }
-            "max0" => { let _ = window.maximize(); }
-            "max1" => { let _ = window.unmaximize(); }
-            "close" => { let _ = window.close(); }
+            "min" => {
+                let _ = window.minimize();
+            }
+            "max0" => {
+                let _ = window.maximize();
+            }
+            "max1" => {
+                let _ = window.unmaximize();
+            }
+            "close" => {
+                let _ = window.close();
+            }
             _ => {}
         };
     }
     #[cfg(target_os = "android")]
     {
         match action {
-            "close" => { std::process::exit(0); }
+            "close" => {
+                std::process::exit(0);
+            }
             _ => {}
         };
     }
@@ -52,7 +62,7 @@ pub async fn get_app_info() -> Result<Vec<(String, String)>, String> {
 }
 
 #[tauri::command]
-pub async fn get_settings(app: tauri::AppHandle) -> Result<SettingsStore, String> {
+pub async fn get_settings(app: AppHandle) -> Result<SettingsStore, String> {
     let config_dir = app.path().app_config_dir().map_err(|e| e.to_string())?;
     let settings_path = config_dir.join(".settings.json");
 
@@ -67,12 +77,12 @@ pub async fn get_settings(app: tauri::AppHandle) -> Result<SettingsStore, String
 }
 
 #[tauri::command]
-pub async fn set_settings(app: tauri::AppHandle, new: SettingsStore) -> Result<(), String> {
+pub async fn set_settings(app: AppHandle, new: SettingsStore) -> Result<(), String> {
     let config_dir = app.path().app_config_dir().map_err(|e| e.to_string())?;
     let settings_path = config_dir.join(".settings.json");
 
     if let Some(parent) = settings_path.parent() {
-        fs::create_dir_all(parent).map_err(|e| e.to_string())?;
+        create_dir_all(parent).map_err(|e| e.to_string())?;
     }
 
     let json_data = serde_json::to_string_pretty(&new).map_err(|e| e.to_string())?;
@@ -90,7 +100,7 @@ pub async fn get_stat(stat_state: State<'_, Mutex<StatisticsState>>) -> Result<S
 }
 
 #[tauri::command]
-pub async fn del_ref(app: tauri::AppHandle, val: PathBuf, state: State<'_, Mutex<DbState>>) -> Result<String, String> {
+pub async fn del_ref(app: AppHandle, val: PathBuf, state: State<'_, Mutex<DbState>>) -> Result<String, String> {
     let mut dbs = state.lock().map_err(|e| e.to_string())?;
     *dbs = DbState::default();
 
@@ -111,7 +121,7 @@ pub async fn del_ref(app: tauri::AppHandle, val: PathBuf, state: State<'_, Mutex
 
 /// Команда для получения содержимого лог-файла
 #[tauri::command]
-pub async fn get_log(app: tauri::AppHandle) -> Result<String, String> {
+pub async fn get_log(app: AppHandle) -> Result<String, String> {
     let state = app.state::<Mutex<StatisticsState>>();
     let state = state.lock().unwrap();
 
@@ -148,11 +158,6 @@ pub async fn create_empty(val: CreateForm, stat_state: State<'_, Mutex<Statistic
         }
     }
 
-    println!(
-        "val.mode: {:?}, val.db_name: {:?}, header:{:?}, file_ext: {:?}",
-        &val.mode, &val.db_name, &val.has_header, &val.file_extension
-    );
-
     match create_empty_database(&root) {
         Ok(()) => {
             info!("Empty database created: {:?}", &val.db_name);
@@ -161,7 +166,7 @@ pub async fn create_empty(val: CreateForm, stat_state: State<'_, Mutex<Statistic
         Err(e) => {
             let _ = fs::remove_file(&root);
             error!("Failed to create empty db: {}", e);
-            Err(format!("Failed to create db: {}", e))
+            Err(format!("Failed to create empty db: {}", e))
         }
     }
 }
@@ -186,8 +191,8 @@ pub async fn create_example(
     }
 
     println!(
-        "val.mode: {:?}, val.db_name: {:?}, header:{:?}, file_ext: {:?}",
-        &val.mode, &val.db_name, &val.has_header, &val.file_extension
+        "val.mode: {:?}, val.db_name: {:?}, header:{:?}, root:{:?}",
+        &val.mode, &val.db_name, &val.has_header, &root
     );
 
     let demo_name = &val.db_name.display().to_string();
@@ -206,7 +211,7 @@ pub async fn create_example(
 
 #[tauri::command]
 pub async fn create_from_file(
-    mut val: CreateForm, app: tauri::AppHandle, stat_state: State<'_, Mutex<StatisticsState>>,
+    mut val: CreateForm, app: AppHandle, stat_state: State<'_, Mutex<StatisticsState>>,
 ) -> Result<(), String> {
     let s_state = stat_state.lock().unwrap();
     let mut root = s_state.db_path.clone();
@@ -281,56 +286,6 @@ pub async fn create_from_file(
     }
 }
 
-fn build_and_create_refer_path(root: &Path, p: &Path, example: bool) -> Result<PathBuf, io::Error> {
-    // Reject absolute on target platform or any prefix/root components
-    if p.is_absolute() {
-        return Err(io::Error::new(io::ErrorKind::InvalidInput, "incoming path is absolute"));
-    }
-
-    for comp in p.components() {
-        match comp {
-            Component::ParentDir => {
-                return Err(io::Error::new(
-                    io::ErrorKind::InvalidInput,
-                    "parent-dir (`..`) not allowed",
-                ));
-            }
-            Component::Prefix(_) | Component::RootDir => {
-                return Err(io::Error::new(
-                    io::ErrorKind::InvalidInput,
-                    "absolute/prefix component not allowed",
-                ));
-            }
-            Component::Normal(os)
-                // Доп. проверка: запретить пустые имена или недопустимые байты
-                if os.is_empty() => {
-                    return Err(io::Error::new(io::ErrorKind::InvalidInput, "empty path component"));
-                }
-            _ => {}
-        }
-    }
-
-    // Собираем полный путь и нормализуем слэши косвенно (Path на Unix/Windows)
-    let full = root.join(p);
-
-    // Создаём директории, если нужно (безопасно, только внутри root)
-    if let Some(parent) = full.parent() {
-        std::fs::create_dir_all(parent)?;
-    }
-
-    if example {
-        let _ = try_remove(&full);
-    }
-
-    // Попробуем атомарно создать файл, не перезаписывая существующий
-    let _f = fs::OpenOptions::new()
-        .write(true)
-        .create_new(true) // если файл уже есть — ошибка
-        .open(&full)?;
-
-    Ok(full)
-}
-
 #[tauri::command]
 pub async fn get_meta(pb: PathBuf, state: State<'_, Mutex<DbState>>) -> Result<TableMeta, String> {
     let mut db = state.lock().map_err(|e| e.to_string())?;
@@ -344,9 +299,7 @@ pub async fn get_meta(pb: PathBuf, state: State<'_, Mutex<DbState>>) -> Result<T
 }
 
 #[tauri::command]
-pub async fn search_items(
-    pb: PathBuf, query: String, state: State<'_, Mutex<DbState>>,
-) -> Result<Vec<DataRecord>, String> {
+pub async fn search_items(pb: PathBuf, query: String, state: State<'_, Mutex<DbState>>) -> Result<Vec<DataRecord>, String> {
     let mut db = state.lock().map_err(|e| e.to_string())?;
     db.with_conn(pb.clone(), |conn, meta| {
         let Some(meta) = meta else {
@@ -394,9 +347,7 @@ pub async fn add_element(
 }
 
 #[tauri::command]
-pub async fn apply_el_action(
-    pb: PathBuf, action: &str, dr: DataRecord, state: State<'_, Mutex<DbState>>,
-) -> Result<(), String> {
+pub async fn apply_el_action(pb: PathBuf, action: &str, dr: DataRecord, state: State<'_, Mutex<DbState>>) -> Result<(), String> {
     let mut db = state.lock().map_err(|e| e.to_string())?;
     db.with_conn(pb, |conn, _meta| match sql::apply_el_action(conn, action, dr) {
         Ok(el) => {
@@ -411,9 +362,7 @@ pub async fn apply_el_action(
 }
 
 #[tauri::command]
-pub async fn update_meta_entity(
-    pb: PathBuf, key: &str, value: serde_json::Value, state: State<'_, Mutex<DbState>>,
-) -> Result<(), String> {
+pub async fn update_meta_entity(pb: PathBuf, key: &str, value: serde_json::Value, state: State<'_, Mutex<DbState>>) -> Result<(), String> {
     let mut db = state.lock().map_err(|e| e.to_string())?;
 
     db.with_conn(pb, |conn, _meta| match sql::update_meta_entity(conn, key, &value) {
@@ -429,20 +378,14 @@ pub async fn update_meta_entity(
 }
 
 #[tauri::command]
-pub async fn add_fields(
-    pb: PathBuf,
-    fields: Vec<(String, String)>, // (name, ftype)
-    state: State<'_, Mutex<DbState>>,
-) -> Result<(), String> {
+pub async fn add_fields(pb: PathBuf, fields: Vec<(String, String)>, state: State<'_, Mutex<DbState>>) -> Result<(), String> {
     let mut db = state.lock().map_err(|e| e.to_string())?;
 
     db.with_conn(pb, |conn, _meta| {
         // Находим максимальный индекс из существующих f_*
         // Получаем реальные колонки из таблицы data
         let mut stmt = conn.prepare("PRAGMA table_info(data)").map_err(|e| e.to_string())?;
-        let columns = stmt
-            .query_map([], |row| row.get::<_, String>(1))
-            .map_err(|e| e.to_string())?;
+        let columns = stmt.query_map([], |row| row.get::<_, String>(1)).map_err(|e| e.to_string())?;
 
         let max_index = columns
             .filter_map(|col| col.ok()?.strip_prefix("f_").and_then(|num| num.parse::<usize>().ok()))
@@ -503,19 +446,67 @@ pub async fn save_oper(pb: PathBuf, oper: Operation, state: State<'_, Mutex<DbSt
                 }
             }
         }),
-        false => db.with_conn(pb, |conn, _meta| {
-            match sql::update_operation(conn, &oper) {
-                Ok(_el) => {
-                    info!("Updated operation by name: {}", &oper.name);
-                    Ok(())
-                }
-                Err(e) => {
-                    error!("Failed update operation: {e}; oper= {:?}", &oper);
-                    Err(e.to_string())
-                }
+        false => db.with_conn(pb, |conn, _meta| match sql::update_operation(conn, &oper) {
+            Ok(_el) => {
+                info!("Updated operation by name: {}", &oper.name);
+                Ok(())
+            }
+            Err(e) => {
+                error!("Failed update operation: {e}; oper= {:?}", &oper);
+                Err(e.to_string())
             }
         }),
     }
+}
+
+fn build_and_create_refer_path(root: &Path, p: &Path, example: bool) -> Result<PathBuf, io::Error> {
+    // Reject absolute on target platform or any prefix/root components
+    if p.is_absolute() {
+        return Err(io::Error::new(io::ErrorKind::InvalidInput, "incoming path is absolute"));
+    }
+
+    for comp in p.components() {
+        match comp {
+            Component::ParentDir => {
+                return Err(io::Error::new(
+                    io::ErrorKind::InvalidInput,
+                    "parent-dir (`..`) not allowed",
+                ));
+            }
+            Component::Prefix(_) | Component::RootDir => {
+                return Err(io::Error::new(
+                    io::ErrorKind::InvalidInput,
+                    "absolute/prefix component not allowed",
+                ));
+            }
+            Component::Normal(os)
+                // Доп. проверка: запретить пустые имена или недопустимые байты
+                if os.is_empty() => {
+                    return Err(io::Error::new(io::ErrorKind::InvalidInput, "empty path component"));
+                }
+            _ => {}
+        }
+    }
+
+    // Собираем полный путь и нормализуем слэши косвенно (Path на Unix/Windows)
+    let full = root.join(p);
+
+    // Создаём директории, если нужно (безопасно, только внутри root)
+    if let Some(parent) = full.parent() {
+        std::fs::create_dir_all(parent)?;
+    }
+
+    if example {
+        let _ = try_remove(&full);
+    }
+
+    // Попробуем атомарно создать файл, не перезаписывая существующий
+    let _f = fs::OpenOptions::new()
+        .write(true)
+        .create_new(true) // если файл уже есть — ошибка
+        .open(&full)?;
+
+    Ok(full)
 }
 
 fn try_remove(path: &std::path::Path) -> io::Result<()> {

@@ -4,7 +4,7 @@ use std::io::{self, Write};
 use std::path::{Path, PathBuf};
 use std::sync::Mutex;
 use std::time::{SystemTime, UNIX_EPOCH};
-use tauri::{Manager, State};
+use tauri::{Manager, State, AppHandle};
 use tracing::{error, info, warn};
 use tracing_appender::non_blocking::WorkerGuard;
 use tracing_subscriber::{EnvFilter, Layer, fmt, prelude::*};
@@ -17,29 +17,13 @@ use crate::sql::DbState;
 pub const APP_EXT: &str = "refer";
 
 /// Демо-справочники: [(путь, Имя, Описание); 6]
-pub const DEMO_REFERENCES: [(&str, &str, &str); 6] = [
-    (
-        "example/shrinkflation.refer",
-        "Shrinkflation",
-        "Compare prices per unit weight/volume",
-    ),
-    ("example/dilution.refer", "Dilution", "Calculate solution mixing ratios"),
-    (
-        "example/ballistics.refer",
-        "Ballistics",
-        "Ballistic trajectory calculator for rifle calibers",
-    ),
-    ("example/deposit.refer", "Deposit", "Calculate compound interest growth"),
-    (
-        "example/geometry.refer",
-        "Geometry",
-        "Circle and sphere measurements - enter your radius",
-    ),
-    (
-        "example/oscillator.refer",
-        "Oscillator",
-        "Wave value at time t - use Time Hint for reference",
-    ),
+pub const DEMO_REFERENCES: [(&str, &str); 6] = [
+    ("example/Shrinkflation.refer", "Compare prices per unit weight/volume"),
+    ("example/Dilution.refer", "Calculate solution mixing ratios"),
+    ("example/Ballistics.refer", "Ballistic trajectory calculator for rifle calibers"),
+    ("example/Deposit.refer", "Calculate compound interest growth"),
+    ("example/Geometry.refer", "Circle and sphere measurements - enter your radius"),
+    ("example/Oscillator.refer", "Wave value at time t - use Time Hint for reference"),
 ];
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -75,7 +59,7 @@ pub struct StatisticsState {
     pub db_list: Vec<PathBuf>, // список имен баз включая пути от папки refer
     pub log_path: PathBuf,     // файл логов куда пишет tracing
     pub db_path_ok: String,    // Пустое если еще не проверяли, "Ok" если всё хорошо, иначе сообщение об ошибке
-    pub demo_refs: [(&'static str, &'static str, &'static str); 6],
+    pub demo_refs: [(&'static str, &'static str); 6],
     pub initialized: bool, // Флаг, что инициализация уже выполнена
 }
 
@@ -91,7 +75,7 @@ pub fn run() {
             app.manage(Mutex::new(StatisticsState::default()));
             app.manage(Mutex::new(DbState::default()));
             // Только инициализация при запуске, без вызова set_stat_all
-            init_stat_all(app.handle())?;
+            init_stat(app.handle())?;
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
@@ -120,30 +104,41 @@ pub fn run() {
 }
 
 // Инициализация состояния при запуске (вызывается один раз)
-fn init_stat_all(app: &tauri::AppHandle) -> Result<(), Box<dyn std::error::Error>> {
+fn init_stat(app: &AppHandle) -> Result<(), Box<dyn std::error::Error>> {
     let state = app.state::<Mutex<StatisticsState>>();
     let mut state = state.lock().unwrap();
+
     // Если уже инициализировано, выходим
     if state.initialized {
         return Ok(());
     }
 
+    let refer_path: PathBuf = if cfg!(target_os = "android") {
+        let public_path = PathBuf::from("/storage/emulated/0/Documents/refer");
+        fs::create_dir_all(&public_path).map_err(|e| e.to_string())?;
+        public_path
+    } else {
+        let public_path = app.path().document_dir().unwrap().join("refer");
+        fs::create_dir_all(&public_path).map_err(|e| e.to_string())?;
+        public_path
+    };
+
+
     // Получаем путь к директории документов
-    match app.path().document_dir() {
-        Ok(mut path) => {
-            path.push("refer");
-            state.db_path = path.clone();
+    match fs::read_dir(&refer_path){
+        Ok(_entry) => {
+            state.db_path = refer_path.clone();
 
             // Проверяем доступность директории
-            let check_result = check_writable_dir(&path);
+            let check_result = check_writable_dir(&refer_path);
             state.db_path_ok = check_result;
 
             // Логируем результат проверки
             if state.db_path_ok == "Ok" {
-                info!("Directory /refer check: OK - {}", path.display());
+                info!("Directory /refer check: OK - {}", &refer_path.display());
                 state.demo_refs = DEMO_REFERENCES;
             } else {
-                warn!("Directory /refer check: {} - {}", state.db_path_ok, path.display());
+                warn!("Directory /refer check: {} - {}", state.db_path_ok, &refer_path.display());
             }
 
             // Получаем информацию о файлах
@@ -169,6 +164,7 @@ fn init_stat_all(app: &tauri::AppHandle) -> Result<(), Box<dyn std::error::Error
             error!("Failed to get log directory: {}", e);
         }
     }
+    //println!("{:?}",&state);
 
     state.initialized = true;
 
@@ -192,7 +188,7 @@ pub async fn update_stat_all(stat_state: &State<'_, Mutex<StatisticsState>>) {
     }
 }
 
-/* return StatisticsState (db_path_size,db_list) */
+///return StatisticsState (db_path_size,db_list) 
 fn get_db_path_info(p: &Path) -> (u64, Vec<PathBuf>) {
     let mut total_size: u64 = 0;
     let mut names: Vec<PathBuf> = Vec::new();
@@ -251,8 +247,8 @@ fn get_db_path_info(p: &Path) -> (u64, Vec<PathBuf>) {
     (total_size, names)
 }
 
-// enable tracing::subscriber
-fn init_tracing(app: &tauri::AppHandle) -> Result<(), Box<dyn std::error::Error>> {
+/// enable logging
+fn init_tracing(app: &AppHandle) -> Result<(), Box<dyn std::error::Error>> {
     use tracing_subscriber::fmt::time::FormatTime;
 
     struct MyTime;
@@ -267,11 +263,7 @@ fn init_tracing(app: &tauri::AppHandle) -> Result<(), Box<dyn std::error::Error>
     std::fs::create_dir_all(&log_dir).ok();
     let log_file_path = log_dir.join("app.log");
 
-    let file = OpenOptions::new()
-        .create(true)
-        .write(true)
-        .truncate(true)
-        .open(&log_file_path)?;
+    let file = OpenOptions::new().create(true).write(true).truncate(true).open(&log_file_path)?;
 
     let (non_blocking, guard) = tracing_appender::non_blocking(file);
     let _ = LOG_GUARD.set(guard);
@@ -290,10 +282,7 @@ fn init_tracing(app: &tauri::AppHandle) -> Result<(), Box<dyn std::error::Error>
         .with_filter(EnvFilter::new("info")); // Здесь только INFO и выше
 
     // 3. Собираем всё в единый Registry
-    tracing_subscriber::registry()
-        .with(console_layer)
-        .with(file_layer)
-        .init();
+    tracing_subscriber::registry().with(console_layer).with(file_layer).init();
 
     info!("= Refer App started =");
     Ok(())
@@ -313,10 +302,7 @@ fn check_writable_dir(dir: &Path) -> String {
     }
 
     // Проверяем возможность записи
-    let timestamp = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .map(|d| d.as_nanos())
-        .unwrap_or(0);
+    let timestamp = SystemTime::now().duration_since(UNIX_EPOCH).map(|d| d.as_nanos()).unwrap_or(0);
 
     let test_filename = format!(".refer_write_test_{}.tmp", timestamp);
     let test_file_path = dir.join(test_filename);
@@ -338,3 +324,42 @@ fn check_writable_dir(dir: &Path) -> String {
         Err(e) => format!("Directory not writable: {}", e),
     }
 }
+
+
+/*
+ * fn get_db_path_info(p: &Path) -> (u64, Vec<PathBuf>) {
+     let mut total_size: u64 = 0;
+     let mut names: Vec<PathBuf> = Vec::new();
+ 
+     if !p.is_dir() {
+         return (0, names);
+     }
+ 
+     let entries = match fs::read_dir(p) {
+         Ok(e) => e,
+         Err(_) => return (0, names),
+     };
+ 
+     for entry in entries.flatten() {
+         let path = entry.path();
+         if path.is_dir() {
+             continue;
+         }
+ 
+         if let Ok(meta) = entry.metadata() {
+             total_size += meta.len();
+         }
+ 
+         if let Some(ext_os) = path.extension()
+             && let Some(ext) = ext_os.to_str()
+             && ext.eq_ignore_ascii_case(APP_EXT)
+         {
+             if let Some(name) = path.file_name() {
+                 names.push(PathBuf::from(name));
+             }
+         }
+     }
+ 
+     (total_size, names)
+ }
+ */
