@@ -829,15 +829,14 @@ fn Create() -> impl IntoView {
                         .demo_refs
                         .into_iter()
                         .map(|(name, desc)| {
-                            let view_name = std::path::Path::new(&name)
-                                .file_stem()
+                            let path = std::path::PathBuf::from("example").join(&name);
+                            let namev = name
+                                .split('.')
+                                .next()
                                 .unwrap()
-                                .to_string_lossy()
                                 .to_string();
                             view! {
-                                <button on:click=move |_| create_example(
-                                    PathBuf::from({ name.clone() }),
-                                )>{view_name}</button>
+                                <button on:click=move |_| create_example(path.clone())>{namev}</button>
                                 <span>{desc}</span>
                             }
                         })

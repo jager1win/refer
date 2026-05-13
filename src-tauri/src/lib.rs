@@ -18,12 +18,12 @@ pub const APP_EXT: &str = "refer";
 
 /// Демо-справочники: [(путь, Имя, Описание); 6]
 pub const DEMO_REFERENCES: [(&str, &str); 6] = [
-    ("example/Shrinkflation.refer", "Compare prices per unit weight/volume"),
-    ("example/Dilution.refer", "Calculate solution mixing ratios"),
-    ("example/Ballistics.refer", "Ballistic trajectory calculator for rifle calibers"),
-    ("example/Deposit.refer", "Calculate compound interest growth"),
-    ("example/Geometry.refer", "Circle and sphere measurements - enter your radius"),
-    ("example/Oscillator.refer", "Wave value at time t - use Time Hint for reference"),
+    ("Shrinkflation.refer", "Compare prices per unit weight/volume"),
+    ("Dilution.refer", "Calculate solution mixing ratios"),
+    ("Ballistics.refer", "Ballistic trajectory calculator for rifle calibers"),
+    ("Deposit.refer", "Calculate compound interest growth"),
+    ("Geometry.refer", "Circle and sphere measurements - enter your radius"),
+    ("Oscillator.refer", "Wave value at time t - use Time Hint for reference"),
 ];
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
