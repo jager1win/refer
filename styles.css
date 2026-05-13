@@ -54,7 +54,7 @@ input.csv_deli{width: 2rem!important;padding: 0.4rem!important;}
 .btn{width: 2rem;height: 2rem;display: grid; place-items: center;line-height: 0;}
 .hidden{display:none}
 .db_line{display: flex;align-items: baseline;gap:1rem;}
-.tab-content {position: fixed;top: 6rem;left: 0;width: 100vw;height: calc(100vh - 6rem);z-index: 100;overflow-y:auto;
+.tab-content {position: fixed;top: 8rem;left: 0;width: 100vw;height: calc(100vh - 6rem);z-index: 100;overflow-y:auto;
     opacity: 0;visibility: hidden;transition: opacity 0.2s ease;background-color: var( --pico-background-color);}
 .tab-content.active {opacity: 1;pointer-events: auto;visibility: visible;}
 .tab-content > * {max-height: 90vh;overflow-y: auto;}

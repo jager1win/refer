@@ -864,8 +864,8 @@ fn WindowTitlebar() -> impl IntoView {
 
     view! {
         <div class="titlebar" data-tauri-drag-region>
-            <div class="titlebar-logo">"⬡"</div>
-            <div class="titlebar-title">"Refer"</div>
+            <div class="titlebar-logo">"Refer"</div>
+            <div class="titlebar-title">""</div>
             <div class="window-controls">
                 <button on:click=move |_| ctrl_window("min") id="titlebar-minimize">
                     "–"
