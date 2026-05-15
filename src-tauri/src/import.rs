@@ -25,7 +25,10 @@ pub fn create_from_csv_file(val: &CreateForm) -> Result<(), String> {
         let tab_count = first_line.matches('\t').count();
 
         // Выбираем самый частый разделитель
-        let max_count = *[comma_count, semicolon_count, pipe_count, tab_count].iter().max().unwrap_or(&0);
+        let max_count = *[comma_count, semicolon_count, pipe_count, tab_count]
+            .iter()
+            .max()
+            .unwrap_or(&0);
 
         if max_count == 0 {
             b',' // если нет ни одного разделителя, используем запятую по умолчанию
@@ -79,7 +82,11 @@ pub fn create_from_csv_file(val: &CreateForm) -> Result<(), String> {
 
     for i in 0..col_count {
         let first_value = data_rows[0].get(i).unwrap_or("");
-        let field_type = if first_value.parse::<f64>().is_ok() { "number" } else { "text" };
+        let field_type = if first_value.parse::<f64>().is_ok() {
+            "number"
+        } else {
+            "text"
+        };
 
         let display_name = if val.has_header && i < headers.len() {
             headers[i].clone()
@@ -109,7 +116,9 @@ pub fn create_from_csv_file(val: &CreateForm) -> Result<(), String> {
         let tx = conn.transaction().map_err(|e| e.to_string())?;
 
         // Подготавливаем запросы
-        let mut insert_stmt = tx.prepare("INSERT INTO data DEFAULT VALUES").map_err(|e| e.to_string())?;
+        let mut insert_stmt = tx
+            .prepare("INSERT INTO data DEFAULT VALUES")
+            .map_err(|e| e.to_string())?;
 
         let mut update_stmts = Vec::with_capacity(col_count);
         for i in 0..col_count {
@@ -165,7 +174,11 @@ pub fn create_from_sheet_file(val: &CreateForm) -> Result<(), String> {
 
     let sheet_name = &sheet_names[0];
     if sheet_names.len() > 1 {
-        tracing::warn!("Warn: Using first sheet '{}', ignoring others: {:?}", sheet_name, &sheet_names[1..]);
+        tracing::warn!(
+            "Warn: Using first sheet '{}', ignoring others: {:?}",
+            sheet_name,
+            &sheet_names[1..]
+        );
     }
 
     // Читаем данные из первого листа
@@ -218,7 +231,11 @@ pub fn create_from_sheet_file(val: &CreateForm) -> Result<(), String> {
 
     for i in 0..col_count {
         let first_value = &data_rows[0][i];
-        let field_type = if first_value.parse::<f64>().is_ok() { "number" } else { "text" };
+        let field_type = if first_value.parse::<f64>().is_ok() {
+            "number"
+        } else {
+            "text"
+        };
 
         let display_name = if val.has_header && i < headers.len() {
             headers[i].clone()
@@ -247,7 +264,11 @@ pub fn create_from_sheet_file(val: &CreateForm) -> Result<(), String> {
     let field_list: Vec<String> = (0..col_count).map(|i| format!("f_{}", i)).collect();
     let placeholders: Vec<String> = (0..col_count).map(|_| "?".to_string()).collect();
 
-    let insert_sql = format!("INSERT INTO data ({}) VALUES ({})", field_list.join(", "), placeholders.join(", "));
+    let insert_sql = format!(
+        "INSERT INTO data ({}) VALUES ({})",
+        field_list.join(", "),
+        placeholders.join(", ")
+    );
 
     // Импортируем данные в транзакции
     {
@@ -321,7 +342,11 @@ pub fn create_from_sqlite(val: &CreateForm) -> Result<(), String> {
     let table_name = &tables[0];
 
     if tables.len() > 1 {
-        tracing::warn!("Info: Using first table '{}', ignoring others: {:?}", table_name, &tables[1..]);
+        tracing::warn!(
+            "Info: Using first table '{}', ignoring others: {:?}",
+            table_name,
+            &tables[1..]
+        );
     }
 
     // Получаем информацию о колонках
@@ -381,7 +406,9 @@ pub fn create_from_sqlite(val: &CreateForm) -> Result<(), String> {
     {
         let tx = dest_conn.transaction().map_err(|e| e.to_string())?;
 
-        let mut insert_stmt = tx.prepare("INSERT INTO data DEFAULT VALUES").map_err(|e| e.to_string())?;
+        let mut insert_stmt = tx
+            .prepare("INSERT INTO data DEFAULT VALUES")
+            .map_err(|e| e.to_string())?;
 
         let mut update_stmts = Vec::with_capacity(column_count);
         for i in 0..column_count {

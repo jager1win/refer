@@ -9,7 +9,9 @@
     "refer_not_found": "Reference not found",
     "element": "Item",
     "clear": "Clear",
-    "error": "Error"
+    "error": "Error",
+    "path": "Path",
+    "android": "Enable 'All files access' in Android Settings → Special access and restart the app"
   },
   "settings": {
     "title": "App settings",
@@ -64,7 +66,7 @@
     "ttp_empty": "Create a reference from scratch"
   },
   "refs": {
-    "st_path": "Path",
+    "st_path": "Storage",
     "st_access": "Access",
     "st_count": "Count",
     "st_size": "Size",

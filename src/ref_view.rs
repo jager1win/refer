@@ -321,7 +321,7 @@ pub fn Ref_main() -> impl IntoView {
                                             <Show when=move || st.selected.get().refer.is_some() fallback=|| view! { <span>"-"</span> }>
                                                 // Здесь мы знаем, что путь есть, но unwrap() все равно лучше избегать
                                                 <b>
-                                                    {t!(i18n, refs.st_path)}": "
+                                                    {t!(i18n, all.path)}": "
                                                     <span>
                                                         {move || {
                                                             st.selected

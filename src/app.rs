@@ -53,7 +53,7 @@ pub struct StatisticsState {
     pub db_list: Vec<PathBuf>,
     pub log_path: String,
     pub db_path_ok: String,
-    pub demo_refs: [(String, String); 6],
+    pub demo_refs: [(PathBuf, String); 6],
 }
 
 #[derive(Serialize, Deserialize, Clone, Default, Debug)]
@@ -515,6 +515,7 @@ fn Refs() -> impl IntoView {
                         each=move || st.stat.get().db_list.clone()
                         key=|item| item.clone()
                         children=move |item: PathBuf| {
+                            log::debug!("item:{:?}", &item);
                             view! {
                                 <button on:click=move |_| {
                                     st.selected.update(|c| c.refer = Some(item.clone()))
@@ -567,7 +568,13 @@ fn Refs() -> impl IntoView {
             <b>{t!(i18n, refs.st_access)}": "</b>
             <span class:error=move || {
                 patterns.iter().any(|p| st.stat.get().db_path_ok.to_lowercase().contains(p))
-            }>{move || st.stat.get().db_path_ok}</span>
+            }>
+                {move || match st.stat.get().db_path_ok.as_str() {
+                    "Ok" => "Ok".to_string(),
+                    "fail android" => t_string!(i18n, all.android).to_string(),
+                    other => other.to_string(),
+                }}
+            </span>
             <b>{t!(i18n, refs.st_count)}": "</b>
             <span>{move || st.stat.get().db_list.len()}</span>
             <b>{t!(i18n, refs.st_size)}": "</b>
@@ -719,9 +726,16 @@ fn Create() -> impl IntoView {
             when=move || st.stat.get().db_path_ok == "Ok"
             fallback=move || {
                 view! {
-                    <p>{tu!(i18n, create.main_error)}":"</p>
-                    <span>{move || st.stat.get().db_path.display().to_string()}</span>
-                    <span class="error">{move || st.stat.get().db_path_ok}</span>
+                    <div class="gr center">
+                        <p>{t!(i18n, create.main_error)}":"</p>
+                        <p>{move || st.stat.get().db_path.display().to_string()}</p>
+                        <p class="error">
+                            {move || match st.stat.get().db_path_ok.as_str() {
+                                "fail android" => t_string!(i18n, all.android).to_string(),
+                                other => other.to_string(),
+                            }}
+                        </p>
+                    </div>
                 }
             }
         >
@@ -829,14 +843,10 @@ fn Create() -> impl IntoView {
                         .demo_refs
                         .into_iter()
                         .map(|(name, desc)| {
-                            let path = std::path::PathBuf::from("example").join(&name);
-                            let namev = name
-                                .split('.')
-                                .next()
-                                .unwrap()
-                                .to_string();
+                            let name_only = name.clone().file_stem().unwrap().to_string_lossy().to_string();
+                            // убирает папку и расширение
                             view! {
-                                <button on:click=move |_| create_example(path.clone())>{namev}</button>
+                                <button on:click=move |_| create_example(name.clone())>{name_only}</button>
                                 <span>{desc}</span>
                             }
                         })

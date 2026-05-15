@@ -4,7 +4,7 @@ use std::io::{self, Write};
 use std::path::{Path, PathBuf};
 use std::sync::Mutex;
 use std::time::{SystemTime, UNIX_EPOCH};
-use tauri::{Manager, State, AppHandle};
+use tauri::{AppHandle, Manager, State};
 use tracing::{error, info, warn};
 use tracing_appender::non_blocking::WorkerGuard;
 use tracing_subscriber::{EnvFilter, Layer, fmt, prelude::*};
@@ -69,6 +69,7 @@ static LOG_GUARD: std::sync::OnceLock<WorkerGuard> = std::sync::OnceLock::new();
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
+        .plugin(tauri_plugin_fs::init())
         .plugin(tauri_plugin_dialog::init())
         .setup(|app| {
             init_tracing(app.handle())?;
@@ -123,22 +124,24 @@ fn init_stat(app: &AppHandle) -> Result<(), Box<dyn std::error::Error>> {
         public_path
     };
 
-
     // Получаем путь к директории документов
-    match fs::read_dir(&refer_path){
+    match fs::read_dir(&refer_path) {
         Ok(_entry) => {
             state.db_path = refer_path.clone();
 
             // Проверяем доступность директории
-            let check_result = check_writable_dir(&refer_path);
-            state.db_path_ok = check_result;
+            state.db_path_ok = check_writable_dir(&refer_path);
 
             // Логируем результат проверки
             if state.db_path_ok == "Ok" {
                 info!("Directory /refer check: OK - {}", &refer_path.display());
                 state.demo_refs = DEMO_REFERENCES;
             } else {
-                warn!("Directory /refer check: {} - {}", state.db_path_ok, &refer_path.display());
+                warn!(
+                    "Directory /refer check: {} - {}",
+                    state.db_path_ok,
+                    &refer_path.display()
+                );
             }
 
             // Получаем информацию о файлах
@@ -188,8 +191,50 @@ pub async fn update_stat_all(stat_state: &State<'_, Mutex<StatisticsState>>) {
     }
 }
 
-///return StatisticsState (db_path_size,db_list) 
+///return StatisticsState (db_path_size,db_list)
 fn get_db_path_info(p: &Path) -> (u64, Vec<PathBuf>) {
+    let mut total_size: u64 = 0;
+    let mut names: Vec<PathBuf> = Vec::new();
+
+    if !p.is_dir() {
+        return (0, Vec::new());
+    }
+
+    let mut stack = vec![p.to_path_buf()];
+    while let Some(current) = stack.pop() {
+        if let Ok(entries) = fs::read_dir(&current) {
+            for entry in entries.flatten() {
+                let path = entry.path();
+                if path.is_dir() {
+                    // Добавляем подпапку в стек для дальнейшего обхода
+                    stack.push(path);
+                    // НЕ используем continue, чтобы не пропустить обработку
+                } else {
+                    // Это файл
+                    if let Ok(meta) = entry.metadata() {
+                        total_size += meta.len();
+                    }
+                    
+                    // Проверяем расширение
+                    if let Some(ext_os) = path.extension()
+                        && let Some(ext) = ext_os.to_str()
+                        && ext.eq_ignore_ascii_case(APP_EXT)
+                    {
+                        if let Ok(relative_path) = path.strip_prefix(p) {
+                            names.push(relative_path.to_path_buf());
+                        } else if let Some(name_os) = path.file_name() {
+                            names.push(PathBuf::from(name_os));
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    (total_size, names)
+}
+
+/*fn get_db_path_info(p: &Path) -> (u64, Vec<PathBuf>) {
     let mut total_size: u64 = 0;
     let mut names: Vec<PathBuf> = Vec::new();
 
@@ -246,7 +291,7 @@ fn get_db_path_info(p: &Path) -> (u64, Vec<PathBuf>) {
 
     (total_size, names)
 }
-
+*/
 /// enable logging
 fn init_tracing(app: &AppHandle) -> Result<(), Box<dyn std::error::Error>> {
     use tracing_subscriber::fmt::time::FormatTime;
@@ -263,7 +308,11 @@ fn init_tracing(app: &AppHandle) -> Result<(), Box<dyn std::error::Error>> {
     std::fs::create_dir_all(&log_dir).ok();
     let log_file_path = log_dir.join("app.log");
 
-    let file = OpenOptions::new().create(true).write(true).truncate(true).open(&log_file_path)?;
+    let file = OpenOptions::new()
+        .create(true)
+        .write(true)
+        .truncate(true)
+        .open(&log_file_path)?;
 
     let (non_blocking, guard) = tracing_appender::non_blocking(file);
     let _ = LOG_GUARD.set(guard);
@@ -282,7 +331,10 @@ fn init_tracing(app: &AppHandle) -> Result<(), Box<dyn std::error::Error>> {
         .with_filter(EnvFilter::new("info")); // Здесь только INFO и выше
 
     // 3. Собираем всё в единый Registry
-    tracing_subscriber::registry().with(console_layer).with(file_layer).init();
+    tracing_subscriber::registry()
+        .with(console_layer)
+        .with(file_layer)
+        .init();
 
     info!("= Refer App started =");
     Ok(())
@@ -291,6 +343,61 @@ fn init_tracing(app: &AppHandle) -> Result<(), Box<dyn std::error::Error>> {
 /// Проверяет доступность директории для записи
 /// Возвращает "Ok" если всё хорошо, иначе - сообщение об ошибке
 fn check_writable_dir(dir: &Path) -> String {
+    #[cfg(target_os = "android")]
+     {
+         let example_dir = dir.join("example");
+         
+         if example_dir.exists() {
+             match std::fs::read_dir(&example_dir) {
+                 Ok(mut entries) => {
+                     // Пытаемся получить первый элемент
+                     if entries.next().is_none() {
+                         // Папка существует, но read_dir вернул пустоту
+                         // Проверяем, есть ли файлы через другой метод
+                         if let Ok(metadata) = std::fs::metadata(&example_dir) {
+                             if metadata.len() > 0 {
+                                 // Папка не пуста, но read_dir пуст — нет прав
+                                 return "fail android".to_string();
+                             }
+                         }
+                     }
+                 }
+                 Err(e) => {
+                     if e.kind() == std::io::ErrorKind::PermissionDenied {
+                         return "fail android".to_string();
+                     }
+                 }
+             }
+         }
+         "Ok".to_string()
+     }
+
+    #[cfg(not(target_os = "android"))]
+    {
+        let timestamp = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .map(|d| d.as_nanos())
+            .unwrap_or(0);
+
+        let test_filename = format!(".refer_write_test_{}.tmp", timestamp);
+        let test_file_path = dir.join(test_filename);
+
+        let result = (|| -> io::Result<()> {
+            let mut file = File::options().create_new(true).write(true).open(&test_file_path)?;
+            file.write_all(b"test")?;
+            file.sync_all()?;
+            Ok(())
+        })();
+
+        let _ = fs::remove_file(&test_file_path);
+
+        match result {
+            Ok(_) => "Ok".to_string(),
+            Err(e) => format!("Directory not writable: {}", e),
+        }
+    }
+}
+/*fn check_writable_dir(dir: &Path) -> String {
     // Проверяем, существует ли директория
     if !dir.exists() {
         // Пытаемся создать
@@ -302,7 +409,10 @@ fn check_writable_dir(dir: &Path) -> String {
     }
 
     // Проверяем возможность записи
-    let timestamp = SystemTime::now().duration_since(UNIX_EPOCH).map(|d| d.as_nanos()).unwrap_or(0);
+    let timestamp = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|d| d.as_nanos())
+        .unwrap_or(0);
 
     let test_filename = format!(".refer_write_test_{}.tmp", timestamp);
     let test_file_path = dir.join(test_filename);
@@ -317,49 +427,11 @@ fn check_writable_dir(dir: &Path) -> String {
     })();
 
     // Удаляем тестовый файл в любом случае
-    let _ = fs::remove_file(&test_file_path);
+    //let _ = fs::remove_file(&test_file_path);
 
     match result {
         Ok(_) => "Ok".to_string(),
         Err(e) => format!("Directory not writable: {}", e),
     }
 }
-
-
-/*
- * fn get_db_path_info(p: &Path) -> (u64, Vec<PathBuf>) {
-     let mut total_size: u64 = 0;
-     let mut names: Vec<PathBuf> = Vec::new();
- 
-     if !p.is_dir() {
-         return (0, names);
-     }
- 
-     let entries = match fs::read_dir(p) {
-         Ok(e) => e,
-         Err(_) => return (0, names),
-     };
- 
-     for entry in entries.flatten() {
-         let path = entry.path();
-         if path.is_dir() {
-             continue;
-         }
- 
-         if let Ok(meta) = entry.metadata() {
-             total_size += meta.len();
-         }
- 
-         if let Some(ext_os) = path.extension()
-             && let Some(ext) = ext_os.to_str()
-             && ext.eq_ignore_ascii_case(APP_EXT)
-         {
-             if let Some(name) = path.file_name() {
-                 names.push(PathBuf::from(name));
-             }
-         }
-     }
- 
-     (total_size, names)
- }
- */
+*/

@@ -44,7 +44,11 @@ impl State {
         spawn_local(async move {
             match invoke("get_stat", &wasm_bindgen::JsValue::NULL).await {
                 Ok(js) => {
-                    let res = from_value::<StatisticsState>(js).unwrap_or_default();
+                    let mut res = from_value::<StatisticsState>(js).unwrap_or_default();
+                    res.demo_refs = res.demo_refs.map(|(name, desc)| {
+                        let path = PathBuf::from("example").join(&name);
+                        (path, desc)
+                    });
                     stat.set(res);
                 }
                 Err(js) => {

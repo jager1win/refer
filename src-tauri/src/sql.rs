@@ -1,4 +1,6 @@
-use rusqlite::{Connection, Error as RError, Result, Row, functions::FunctionFlags, params, types::Value, types::ValueRef};
+use rusqlite::{
+    Connection, Error as RError, Result, Row, functions::FunctionFlags, params, types::Value, types::ValueRef,
+};
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 use std::collections::HashMap;
@@ -234,7 +236,8 @@ pub fn apply_el_action(conn: &Connection, action: &str, rec: DataRecord) -> Resu
     match action {
         "create" => {
             // Создаем новую запись
-            conn.execute("INSERT INTO data DEFAULT VALUES", []).map_err(|e| e.to_string())?;
+            conn.execute("INSERT INTO data DEFAULT VALUES", [])
+                .map_err(|e| e.to_string())?;
             let new_id = conn.last_insert_rowid();
 
             // Обновляем каждое поле
@@ -263,7 +266,9 @@ pub fn apply_el_action(conn: &Connection, action: &str, rec: DataRecord) -> Resu
 
 /// Получить один элемент по ID
 pub fn get_el(conn: &Connection, id: u32) -> Result<DataRecord, String> {
-    let mut stmt = conn.prepare("SELECT * FROM data WHERE id = ?1").map_err(|e| e.to_string())?;
+    let mut stmt = conn
+        .prepare("SELECT * FROM data WHERE id = ?1")
+        .map_err(|e| e.to_string())?;
 
     match stmt.query_row([id], row_to_record) {
         Ok(record) => Ok(record),
@@ -285,19 +290,24 @@ fn row_to_record(row: &Row) -> rusqlite::Result<DataRecord> {
         let val_str = match val_raw {
             Value::Text(s) => s,
             Value::Integer(n) => n.to_string(),
-            Value::Real(n) => n.to_string(),                           // Вот это исправит вашу ошибку!
+            Value::Real(n) => n.to_string(), // Вот это исправит вашу ошибку!
             Value::Blob(b) => String::from_utf8_lossy(&b).to_string(), // На случай бинарных данных
-            Value::Null => String::new(),                              // Пустая строка для NULL
+            Value::Null => String::new(),    // Пустая строка для NULL
         };
 
         fields.insert(col_name.to_string(), val_str);
     }
 
-    Ok(DataRecord { id: row.get(0)?, fields })
+    Ok(DataRecord {
+        id: row.get(0)?,
+        fields,
+    })
 }
 
 /// Добавление поля в существующую базу // Новая версия
-pub fn add_field(conn: &Connection, field_index: usize, display_name: Option<&str>, field_type: &str) -> Result<String> {
+pub fn add_field(
+    conn: &Connection, field_index: usize, display_name: Option<&str>, field_type: &str,
+) -> Result<String> {
     let field_name = format!("f_{}", field_index);
     let sql = format!("ALTER TABLE data ADD COLUMN {} TEXT", field_name);
     conn.execute(&sql, [])?;
@@ -352,7 +362,12 @@ pub fn add_operation(conn: &Connection, name: &str, expr: &str, desc: &str, prec
 
     if let Some(arr) = ops.as_array_mut() {
         // Вычисляем новый id
-        let new_id = arr.iter().map(|op| op["id"].as_u64().unwrap_or(0) as u32).max().unwrap_or(0) + 1;
+        let new_id = arr
+            .iter()
+            .map(|op| op["id"].as_u64().unwrap_or(0) as u32)
+            .max()
+            .unwrap_or(0)
+            + 1;
 
         arr.push(json!({
             "id": new_id,
@@ -363,8 +378,11 @@ pub fn add_operation(conn: &Connection, name: &str, expr: &str, desc: &str, prec
         }));
     }
 
-    conn.execute("UPDATE meta SET value = ?1 WHERE key = 'operations'", params![ops.to_string()])
-        .map_err(|e| e.to_string())?;
+    conn.execute(
+        "UPDATE meta SET value = ?1 WHERE key = 'operations'",
+        params![ops.to_string()],
+    )
+    .map_err(|e| e.to_string())?;
 
     Ok(())
 }
@@ -378,7 +396,10 @@ pub fn update_operation(conn: &Connection, operation: &Operation) -> Result<(), 
     let mut ops: serde_json::Value = serde_json::from_str(&ops_json).unwrap_or(json!([]));
 
     if let Some(arr) = ops.as_array_mut() {
-        if let Some(existing) = arr.iter_mut().find(|op| op["id"].as_u64().unwrap_or(0) as u32 == operation.id) {
+        if let Some(existing) = arr
+            .iter_mut()
+            .find(|op| op["id"].as_u64().unwrap_or(0) as u32 == operation.id)
+        {
             *existing = json!({
                 "id": operation.id,
                 "name": operation.name,
@@ -391,8 +412,11 @@ pub fn update_operation(conn: &Connection, operation: &Operation) -> Result<(), 
         }
     }
 
-    conn.execute("UPDATE meta SET value = ?1 WHERE key = 'operations'", params![ops.to_string()])
-        .map_err(|e| e.to_string())?;
+    conn.execute(
+        "UPDATE meta SET value = ?1 WHERE key = 'operations'",
+        params![ops.to_string()],
+    )
+    .map_err(|e| e.to_string())?;
 
     Ok(())
 }
@@ -403,14 +427,16 @@ pub fn add_element(conn: &Connection, fields: HashMap<String, String>) -> Result
     }
 
     // Создаём пустую запись
-    conn.execute("INSERT INTO data DEFAULT VALUES", []).map_err(|e| e.to_string())?;
+    conn.execute("INSERT INTO data DEFAULT VALUES", [])
+        .map_err(|e| e.to_string())?;
 
     let record_id = conn.last_insert_rowid();
 
     // Обновляем каждое поле
     for (col, value) in fields {
         let sql = format!("UPDATE data SET \"{}\" = ?1 WHERE id = ?2", col);
-        conn.execute(&sql, params![value, record_id]).map_err(|e| e.to_string())?;
+        conn.execute(&sql, params![value, record_id])
+            .map_err(|e| e.to_string())?;
     }
 
     Ok(record_id as u32)
@@ -439,7 +465,11 @@ pub fn create_empty_database(path: &PathBuf) -> Result<(), String> {
     )
     .map_err(|e| e.to_string())?;
 
-    let info = serde_json::to_string(&vec![("name".to_string(), "".to_string()), ("desc".to_string(), "".to_string())]).unwrap();
+    let info = serde_json::to_string(&vec![
+        ("name".to_string(), "".to_string()),
+        ("desc".to_string(), "".to_string()),
+    ])
+    .unwrap();
 
     // Базовая meta для пустой базы
     let now = chrono::Local::now().to_rfc3339();
@@ -491,7 +521,11 @@ pub fn import_csv(conn: &Connection, csv_data: &str, has_header: bool) -> Result
         // Пытаемся определить тип поля по первому значению
         let first_line = lines.clone().next().unwrap_or("");
         let first_value = first_line.split(',').nth(i).unwrap_or("");
-        let field_type = if first_value.parse::<f64>().is_ok() { "number" } else { "text" };
+        let field_type = if first_value.parse::<f64>().is_ok() {
+            "number"
+        } else {
+            "text"
+        };
 
         let field_name = add_field(conn, i, Some(header), field_type)?;
         field_names.push(field_name);
@@ -524,7 +558,9 @@ pub fn create_example_refers(name: &str, path: &PathBuf) -> Result<(), String> {
         "example/Deposit.refer" => create_deposit_refer(path),
         "example/Geometry.refer" => create_geometry_refer(path),
         "example/Oscillator.refer" => create_oscillator_refer(path),
-        _ => Err(RError::SqliteFailure(rusqlite::ffi::Error::new(1), Some("Unknown example refer ".to_string())).to_string()),
+        _ => Err(
+            RError::SqliteFailure(rusqlite::ffi::Error::new(1), Some("Unknown example refer ".to_string())).to_string(),
+        ),
     }
 }
 
@@ -657,7 +693,10 @@ Green Light,545000000000000,1.0,0.000000000000001";
 
     let info: Vec<(String, String)> = vec![
         ("name".to_string(), "Oscillator".to_string()),
-        ("desc".to_string(), "Wave value at time t - use Time Hint for reference".to_string()),
+        (
+            "desc".to_string(),
+            "Wave value at time t - use Time Hint for reference".to_string(),
+        ),
     ];
 
     conn.execute(
@@ -695,7 +734,10 @@ Circle/Sphere";
 
     let info: Vec<(String, String)> = vec![
         ("name".to_string(), "Geometry".to_string()),
-        ("desc".to_string(), "Circle and sphere measurements - enter your radius".to_string()),
+        (
+            "desc".to_string(),
+            "Circle and sphere measurements - enter your radius".to_string(),
+        ),
     ];
 
     conn.execute(
@@ -713,7 +755,14 @@ Circle/Sphere";
     import_csv(&conn, GEOMETRY_CSV, true).map_err(|e| e.to_string())?;
 
     // Единицы измерения в названии операции - результат сразу понятен
-    add_operation(&conn, "Area (cm²/in²/etc)", "PI * Radius ^ 2", "Area of circle in square units", 2).map_err(|e| e.to_string())?;
+    add_operation(
+        &conn,
+        "Area (cm²/in²/etc)",
+        "PI * Radius ^ 2",
+        "Area of circle in square units",
+        2,
+    )
+    .map_err(|e| e.to_string())?;
 
     add_operation(
         &conn,
@@ -746,7 +795,7 @@ Circle/Sphere";
 }
 
 pub fn create_shrinkflation_refer(path: &PathBuf) -> Result<(), String> {
-    println!("sql: {:?}",&path);
+    println!("sql: {:?}", &path);
     // Пресеты систем: множитель для перевода к базовой единице
     // Работает с любыми валютами и единицами измерения
     const SHRINK_CSV: &str = "Unit System,Multiplier

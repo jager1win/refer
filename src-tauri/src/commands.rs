@@ -1,5 +1,5 @@
 use crate::sql::{self, *};
-use crate::{APP_EXT, DbState, SettingsStore, StatisticsState, import::*};
+use crate::{DbState, SettingsStore, StatisticsState, import::*};
 use serde::{Deserialize, Serialize};
 use std::fs::{self, File, create_dir_all};
 use std::io::{self, Read};
@@ -7,7 +7,8 @@ use std::path::{Component, Path, PathBuf};
 use std::sync::Mutex;
 use tauri::{AppHandle, Manager, State};
 use tauri_plugin_dialog::DialogExt;
-use tracing::{debug, error, info};
+use tauri_plugin_fs::FilePath;
+use tracing::{error, info, warn};
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct CreateForm {
@@ -100,12 +101,13 @@ pub async fn get_stat(stat_state: State<'_, Mutex<StatisticsState>>) -> Result<S
 }
 
 #[tauri::command]
-pub async fn del_ref(app: AppHandle, val: PathBuf, state: State<'_, Mutex<DbState>>) -> Result<String, String> {
+pub async fn del_ref(val: PathBuf, state: State<'_, Mutex<DbState>>,stat_state: State<'_, Mutex<StatisticsState>>) -> Result<String, String> {
     let mut dbs = state.lock().map_err(|e| e.to_string())?;
     *dbs = DbState::default();
-
-    let document_dir = app.path().document_dir().map_err(|e| e.to_string())?;
-    let reference_path = document_dir.join(APP_EXT).join(&val);
+    let state = stat_state.lock().unwrap();
+    let refer_dir = state.db_path.clone();
+    let reference_path = refer_dir.join(&val);
+    // println!("del_ref: val:{:?} dd:{:?} ref-path:{:?}",&val, &refer_dir,&reference_path);
 
     match fs::remove_file(reference_path) {
         Ok(_i) => Ok({
@@ -216,14 +218,6 @@ pub async fn create_from_file(
     let s_state = stat_state.lock().unwrap();
     let mut root = s_state.db_path.clone();
 
-    match build_and_create_refer_path(&root, &val.db_name, val.mode == "example") {
-        Ok(p) => root = p,
-        Err(e) => {
-            error!("Failed to create path: {}", e);
-            return Err(format!("Failed to create path: {:?}", e));
-        }
-    }
-
     // 1. Настраиваем фильтры диалога
     let mut dialog = app.dialog().file();
     dialog = match val.mode.as_str() {
@@ -236,19 +230,52 @@ pub async fn create_from_file(
     let Some(path_obj) = file_path else {
         return Err("CANCELLED".into());
     };
-    let path = path_obj.as_path().ok_or("Invalid Path")?;
-    val.file_path = Some(path.to_path_buf());
+
+    let original_ext = get_extension_from_filepath(&path_obj);  
+
+    #[cfg(target_os = "android")]
+    let final_path = {
+        use tauri_plugin_fs::FsExt;
+        let bytes = app.fs().read(path_obj.clone())
+            .map_err(|_| "Failed to read Android content URI")?;
+        
+        let cache_dir = app.path().app_cache_dir()
+            .map_err(|_| "Failed to get cache dir")?;
+        
+        // Сохраняем с оригинальным расширением, чтобы парсеры понимали формат
+        let temp_filename = format!("temp_import_data.{}", original_ext);
+        let temp_file_path = cache_dir.join(temp_filename);
+        
+        std::fs::write(&temp_file_path, bytes)
+            .map_err(|_| "Failed to write temp file to cache")?;
+        
+        temp_file_path
+    };
+    
+    #[cfg(not(target_os = "android"))]
+    let final_path = path_obj.as_path().ok_or("Invalid Path")?.to_path_buf();
+
+    match build_and_create_refer_path(&root, &val.db_name, val.mode == "example") {
+        Ok(p) => root = p,
+        Err(e) => {
+            error!("Failed to create path: {}", e);
+            #[cfg(target_os = "android")]
+            let _ = std::fs::remove_file(&final_path);
+            return Err(format!("Failed to create path: {:?}", e));
+        }
+    }
+
+    val.file_path = Some(final_path.clone());
     val.db_name = root;
+    val.file_extension = original_ext;
 
-    // 2. Проверка расширения (на всякий случай, если в ОС нет фильтров)
-    val.file_extension = path.extension().and_then(|e| e.to_str()).unwrap_or("").to_lowercase();
-
-    debug!(
-        "val.mode: {:?}, val.db_name: {:?}, header:{:?}, val.file_extension: {:?}, path: {:?}",
-        &val.mode, &val.db_name, &val.has_header, &val.file_extension, &path
+    warn!(
+        "mode: {:?}, db_name: {:?}, header:{:?}, file_extension: {:?}, path: {:?}",
+        &val.mode, &val.db_name, &val.has_header, &val.file_extension, &final_path
     );
 
-    match val.file_extension.as_ref() {
+    // Сохраняем результат выполнения парсеров в переменную, чтобы выполнить очистку ДО возврата из функции
+    let result = match val.file_extension.as_ref() {
         "csv" | "tsv" => match create_from_csv_file(&val) {
             Ok(()) => {
                 info!("Database '{:?}' from csv file created", &val.db_name);
@@ -282,9 +309,20 @@ pub async fn create_from_file(
                 Err(format!("Failed to create db from sqlite: {:?}", e))
             }
         },
-        _ => Err(format!("Unknown operation: {}", val.mode)),
-    }
+        _ => {
+            error!("Unknown operation in create_from_file:  {:?}", &val);
+            Err(format!("Unknown operation: {:?}", &val))
+        }
+    };
+
+    // Гарантированная очистка временного файла на Android перед выходом из функции
+    #[cfg(target_os = "android")]
+    let _ = std::fs::remove_file(final_path);
+
+    // Возвращаем итоговый результат выполнения
+    result
 }
+
 
 #[tauri::command]
 pub async fn get_meta(pb: PathBuf, state: State<'_, Mutex<DbState>>) -> Result<TableMeta, String> {
@@ -299,7 +337,9 @@ pub async fn get_meta(pb: PathBuf, state: State<'_, Mutex<DbState>>) -> Result<T
 }
 
 #[tauri::command]
-pub async fn search_items(pb: PathBuf, query: String, state: State<'_, Mutex<DbState>>) -> Result<Vec<DataRecord>, String> {
+pub async fn search_items(
+    pb: PathBuf, query: String, state: State<'_, Mutex<DbState>>,
+) -> Result<Vec<DataRecord>, String> {
     let mut db = state.lock().map_err(|e| e.to_string())?;
     db.with_conn(pb.clone(), |conn, meta| {
         let Some(meta) = meta else {
@@ -347,7 +387,9 @@ pub async fn add_element(
 }
 
 #[tauri::command]
-pub async fn apply_el_action(pb: PathBuf, action: &str, dr: DataRecord, state: State<'_, Mutex<DbState>>) -> Result<(), String> {
+pub async fn apply_el_action(
+    pb: PathBuf, action: &str, dr: DataRecord, state: State<'_, Mutex<DbState>>,
+) -> Result<(), String> {
     let mut db = state.lock().map_err(|e| e.to_string())?;
     db.with_conn(pb, |conn, _meta| match sql::apply_el_action(conn, action, dr) {
         Ok(el) => {
@@ -362,7 +404,9 @@ pub async fn apply_el_action(pb: PathBuf, action: &str, dr: DataRecord, state: S
 }
 
 #[tauri::command]
-pub async fn update_meta_entity(pb: PathBuf, key: &str, value: serde_json::Value, state: State<'_, Mutex<DbState>>) -> Result<(), String> {
+pub async fn update_meta_entity(
+    pb: PathBuf, key: &str, value: serde_json::Value, state: State<'_, Mutex<DbState>>,
+) -> Result<(), String> {
     let mut db = state.lock().map_err(|e| e.to_string())?;
 
     db.with_conn(pb, |conn, _meta| match sql::update_meta_entity(conn, key, &value) {
@@ -378,14 +422,18 @@ pub async fn update_meta_entity(pb: PathBuf, key: &str, value: serde_json::Value
 }
 
 #[tauri::command]
-pub async fn add_fields(pb: PathBuf, fields: Vec<(String, String)>, state: State<'_, Mutex<DbState>>) -> Result<(), String> {
+pub async fn add_fields(
+    pb: PathBuf, fields: Vec<(String, String)>, state: State<'_, Mutex<DbState>>,
+) -> Result<(), String> {
     let mut db = state.lock().map_err(|e| e.to_string())?;
 
     db.with_conn(pb, |conn, _meta| {
         // Находим максимальный индекс из существующих f_*
         // Получаем реальные колонки из таблицы data
         let mut stmt = conn.prepare("PRAGMA table_info(data)").map_err(|e| e.to_string())?;
-        let columns = stmt.query_map([], |row| row.get::<_, String>(1)).map_err(|e| e.to_string())?;
+        let columns = stmt
+            .query_map([], |row| row.get::<_, String>(1))
+            .map_err(|e| e.to_string())?;
 
         let max_index = columns
             .filter_map(|col| col.ok()?.strip_prefix("f_").and_then(|num| num.parse::<usize>().ok()))
@@ -517,26 +565,27 @@ fn try_remove(path: &std::path::Path) -> io::Result<()> {
     }
 }
 
-/*fn f2name(v: Vec<String>, names: HashMap<String, String>) -> Vec<String> {
-    let mut res: Vec<String> = Vec::new();
-    for f in v {
-        if names.contains_key(&f) {
-            res.push(names[&f].clone());
+fn get_extension_from_filepath(fp: &FilePath) -> String {
+    use tauri_plugin_fs::FilePath;
+    
+    match fp {
+        FilePath::Path(p) => {
+            // Обычный путь — просто берём расширение
+            p.extension()
+                .and_then(|e| e.to_str())
+                .unwrap_or("")
+                .to_lowercase()
+        }
+        FilePath::Url(url) => {
+            // Для content:// URI — берём имя файла из последнего сегмента пути
+            url.path()
+                .split('/')
+                .next_back()
+                .and_then(|filename| {
+                    filename.split('.').next_back()
+                })
+                .unwrap_or("")
+                .to_lowercase()
         }
     }
-    res
-}*/
-/*
-   let mut path = root.join(String::from("example"));
-   let _ = std::fs::create_dir_all(&path);
-   println!("pb: {:?}", &path);
-   let file_name = format!("{}.refer", val.db_name.to_string_lossy());
-   path = path.join(file_name);
-   println!("pb1: {:?}", &path);
-   let dd = try_remove(&path);
-   println!("pb2: {:?}", &dd);
-   match create_example_database(val.db_name.to_string_lossy().to_string(), path){
-       Ok(()) => Ok("".to_string()),
-       Err(e) => Err(format!("Failed to create: {:?}", e)),
-   }
-*/
+}
