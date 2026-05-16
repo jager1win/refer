@@ -80,6 +80,11 @@ pub fn Ref_main() -> impl IntoView {
         } else {
             meta_data.search_config.push(field);
         }
+        // "правильно" сортируем вектор 
+        meta_data
+            .search_config
+            .sort_by_key(|item| meta_data.names.iter().position(|x| *x == *item).unwrap_or(usize::MAX));
+
         st.meta.set(Some(meta_data.clone()));
 
         spawn_local(async move {
@@ -104,15 +109,20 @@ pub fn Ref_main() -> impl IntoView {
         spawn_local(async move {
             match invoke("del_ref", &tauri_args!("val" : name.clone())).await {
                 Ok(_s) => {
-                    st.now.set(format!("{}: {:?}", tu_string!(i18n, edit.ok_del_ref), &name));
+                    st.now
+                        .set(format!("{}: {:?}", tu_string!(i18n, edit.ok_del_ref), &name));
                     st.selected.update(|c| c.refer = None);
                     st.edit_ref.set(false);
                     st.upd_stat();
                 }
                 Err(js) => {
                     let error_msg = from_value::<String>(js).unwrap_or_else(|_| "Unknown error".into());
-                    st.now
-                        .set(format!("{}: {:?} - {}", tu_string!(i18n, edit.er_del_ref), &name, error_msg));
+                    st.now.set(format!(
+                        "{}: {:?} - {}",
+                        tu_string!(i18n, edit.er_del_ref),
+                        &name,
+                        error_msg
+                    ));
                 }
             }
         });
@@ -176,7 +186,9 @@ pub fn Ref_main() -> impl IntoView {
                                 <div class="gr">
                                     <h5 class="error">"🚫"</h5>
                                     <p class="err_send">
-                                        <button on:click=move |_| del_ref(st.selected.get().refer.unwrap())>{t!(i18n, all.del)}</button>
+                                        <button on:click=move |_| del_ref(
+                                            st.selected.get().refer.unwrap(),
+                                        )>{t!(i18n, all.del)}</button>
                                     </p>
                                 </div>
                             }
@@ -192,12 +204,16 @@ pub fn Ref_main() -> impl IntoView {
                                 .filter_map(|name| table_meta.fields.get(name))
                                 .map(|field_def| field_def.name.clone())
                                 .collect();
+                            log::debug!("table_meta: {:?}", &table_meta);
+                            log::debug!("names: {:?} sorted: {:?}", &table_meta.names, &sorted_search);
                             view! {
                                 <div class="header-row gr">
                                     <button on:click=move |_| st.selected.update(|c| c.refer = None)>"←"</button>
 
                                     <div class="title-group">
-                                        <span>{move || st.selected.get().refer.as_ref().map(|p| p.display().to_string())}</span>
+                                        <span>
+                                            {move || st.selected.get().refer.as_ref().map(|p| p.display().to_string())}
+                                        </span>
 
                                         // name & desc
                                         <p class="info-show m0">
@@ -279,18 +295,25 @@ pub fn Ref_main() -> impl IntoView {
                                                 <div class="search_results" style=format!("--cols: {}", col_count + 1)>
                                                     <div class="row">
                                                         <small>ID</small>
-                                                        {{ names.into_iter().map(|n| view! { <small>{n}</small> }).collect_view() }}
+                                                        {{
+                                                            names
+                                                                .into_iter()
+                                                                .map(|n| view! { <small>{n}</small> })
+                                                                .collect_view()
+                                                        }}
                                                     </div>
                                                     <For
                                                         each=move || d.clone()
                                                         key=|rec: &DataRecord| rec.id
                                                         children=move |rec: DataRecord| {
                                                             let search_fields_info = meta.search_config.clone();
-
+                                                            log::debug!("rec: {:?} sfi:{:?}", &rec,search_fields_info);
                                                             view! {
                                                                 <button
                                                                     class="row"
-                                                                    on:click=move |_| st.selected.update(|c| c.id = Some(rec.id))
+                                                                    on:click=move |_| {
+                                                                        st.selected.update(|c| c.id = Some(rec.id))
+                                                                    }
                                                                 >
                                                                     <div>{format!("#{}", rec.id)}</div>
                                                                     {search_fields_info
@@ -316,10 +339,15 @@ pub fn Ref_main() -> impl IntoView {
                                         let search_vec = table_meta.clone().search_config;
 
                                         view! {
-                                            <b>{t!(i18n, ref_main.total_records)}": "<span>{table_meta.count_data}</span></b>
+                                            <b>
+                                                {t!(i18n, ref_main.total_records)}": "
+                                                <span>{table_meta.count_data}</span>
+                                            </b>
 
-                                            <Show when=move || st.selected.get().refer.is_some() fallback=|| view! { <span>"-"</span> }>
-                                                // Здесь мы знаем, что путь есть, но unwrap() все равно лучше избегать
+                                            <Show
+                                                when=move || st.selected.get().refer.is_some()
+                                                fallback=|| view! { <span>"-"</span> }
+                                            >
                                                 <b>
                                                     {t!(i18n, all.path)}": "
                                                     <span>
@@ -328,7 +356,9 @@ pub fn Ref_main() -> impl IntoView {
                                                                 .get()
                                                                 .refer
                                                                 .as_ref()
-                                                                .map(|p| { st.get_full_pb(p.clone()).display().to_string() })
+                                                                .map(|p| {
+                                                                    st.get_full_pb(p.clone()).display().to_string()
+                                                                })
                                                         }}
                                                     </span>
                                                 </b>
@@ -388,8 +418,8 @@ pub fn Ref_main() -> impl IntoView {
                                                                 <div class="grid gap02">
                                                                     <span class="gridline">
                                                                         {k.name}" "
-                                                                        {(!k.desc.is_empty()).then(|| format!(" • {}", k.desc))} " • "
-                                                                        {t!(i18n, ref_main.prec)}": "{k.prec}
+                                                                        {(!k.desc.is_empty()).then(|| format!(" • {}", k.desc))}
+                                                                        " • " {t!(i18n, ref_main.prec)}": "{k.prec}
                                                                     </span>
                                                                     <small>{k.expr}</small>
                                                                 </div>
@@ -431,7 +461,12 @@ pub fn Ref_el() -> impl IntoView {
     let get_el = move || {
         spawn_local(async move {
             let pb = st.get_full_pb(st.selected.get_untracked().refer.unwrap());
-            match invoke("get_el", &tauri_args!("pb": pb, "id": Some(st.selected.get_untracked().id))).await {
+            match invoke(
+                "get_el",
+                &tauri_args!("pb": pb, "id": Some(st.selected.get_untracked().id)),
+            )
+            .await
+            {
                 Ok(js) => {
                     let s = from_value::<DataRecord>(js).unwrap();
                     data.set(Some(s));
@@ -545,7 +580,10 @@ pub fn Ref_el() -> impl IntoView {
                                                 on:click=move |_| toggle_qa(
                                                     format!(
                                                         "{} | {}",
-                                                        st.remove_refer_ext(&st.selected.get_untracked().refer.unwrap()),
+                                                        st
+                                                            .remove_refer_ext(
+                                                                &st.selected.get_untracked().refer.unwrap(),
+                                                            ),
                                                         title.clone(),
                                                     ),
                                                 )
@@ -553,7 +591,9 @@ pub fn Ref_el() -> impl IntoView {
                                                 {move || if in_qa() { "📍" } else { "📌" }}
                                             </button>
                                         </div>
-                                        <small>{move || st.selected.get_untracked().refer.unwrap().display().to_string()}</small>
+                                        <small>
+                                            {move || st.selected.get_untracked().refer.unwrap().display().to_string()}
+                                        </small>
                                     </div>
 
                                     <button on:click=move |_| edit_el.set(true)>"🔧"</button>
@@ -596,7 +636,10 @@ pub fn Ref_el() -> impl IntoView {
                                     }
                                 >
                                     {move || {
-                                        match transform_fields(&st.meta.get().unwrap().fields, &data.get().unwrap().fields) {
+                                        match transform_fields(
+                                            &st.meta.get().unwrap().fields,
+                                            &data.get().unwrap().fields,
+                                        ) {
                                             Err(e) => view! { <p>{e}</p> }.into_any(),
                                             Ok(vars) => {
                                                 st.meta
@@ -604,7 +647,10 @@ pub fn Ref_el() -> impl IntoView {
                                                     .unwrap()
                                                     .operations
                                                     .iter()
-                                                    .map(|op| { view! { <RunOper oper=op.clone() vars=vars.clone() /> }.into_any() })
+                                                    .map(|op| {
+                                                        view! { <RunOper oper=op.clone() vars=vars.clone() /> }
+                                                            .into_any()
+                                                    })
                                                     .collect_view()
                                                     .into_any()
                                             }
@@ -672,7 +718,10 @@ pub fn RunOper(oper: Operation, vars: HashMap<String, f64>) -> impl IntoView {
     let filtered = move || {
         let names = var_names.get();
         let inner = orig.get();
-        names.into_iter().filter(|n| !inner.contains_key(n)).collect::<Vec<String>>()
+        names
+            .into_iter()
+            .filter(|n| !inner.contains_key(n))
+            .collect::<Vec<String>>()
     };
 
     let on_input = move |ev: web_sys::Event| {
@@ -703,7 +752,10 @@ pub fn RunOper(oper: Operation, vars: HashMap<String, f64>) -> impl IntoView {
                 {oper.name}" : "
                 <span>
                     {move || match calculation.get() {
-                        Ok(val) => view! { <span class="success">{format!("{:.*}", local_prec.get() as usize, val)}</span> }.into_any(),
+                        Ok(val) => {
+                            view! { <span class="success">{format!("{:.*}", local_prec.get() as usize, val)}</span> }
+                                .into_any()
+                        }
                         Err(e) => view! { <span class="warn">{e}</span> }.into_any(),
                     }}
                 </span> <span class="ml1">{t!(i18n,ref_main.prec)}</span>
@@ -721,7 +773,9 @@ pub fn RunOper(oper: Operation, vars: HashMap<String, f64>) -> impl IntoView {
                     children=move |name| {
                         let n_input = name.clone();
                         let n_input0 = name.clone();
-                        let (display_val, set_display_val) = signal(inputs.get_untracked().get(&name).cloned().unwrap_or(0.0).to_string());
+                        let (display_val, set_display_val) = signal(
+                            inputs.get_untracked().get(&name).cloned().unwrap_or(0.0).to_string(),
+                        );
                         set_display_val.set("".to_string());
                         view! {
                             <label class="m0">{name.clone()}</label>
@@ -800,9 +854,15 @@ pub fn transform_fields(
     fields_def: &HashMap<String, FieldDef>, data_fields: &HashMap<String, String>,
 ) -> Result<HashMap<String, f64>, String> {
     // Создаём HashMap для быстрого поиска по ключу
-    let field_types_map: HashMap<_, _> = fields_def.iter().map(|(k, def)| (k.clone(), def.ftype.as_str())).collect();
+    let field_types_map: HashMap<_, _> = fields_def
+        .iter()
+        .map(|(k, def)| (k.clone(), def.ftype.as_str()))
+        .collect();
 
-    let field_names_map: HashMap<_, _> = fields_def.iter().map(|(k, def)| (k.clone(), def.name.as_str())).collect();
+    let field_names_map: HashMap<_, _> = fields_def
+        .iter()
+        .map(|(k, def)| (k.clone(), def.name.as_str()))
+        .collect();
 
     let (successes, errors): (Vec<_>, Vec<_>) = data_fields
         .iter()
@@ -820,6 +880,25 @@ pub fn transform_fields(
     }
 
     Ok(successes.into_iter().map(Result::unwrap).collect())
+}
+
+/*fn f_sort(orig: &Vec<String>, sorted: &Vec<String>) {
+    sorted.sort_by_key(|item| orig.iter().position(|&x| x == item.id).unwrap_or(usize::MAX))
+}*/
+
+// Обобщённая функция сортировки
+// T — тип вашей структуры, F — функция/замыкание, извлекающее ключ
+fn sort_f<T, F>(items: &mut [T], sample: &[String], get_key: F)
+where
+    F: Fn(&T) -> &str,
+{
+    items.sort_by_key(|item| {
+        let key = get_key(item);
+        sample
+            .iter()
+            .position(|sample_str| sample_str == key)
+            .unwrap_or(usize::MAX)
+    });
 }
 
 /*

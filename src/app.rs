@@ -176,7 +176,6 @@ pub fn App() -> impl IntoView {
             .map(|ua| ua.contains("Android"))
             .unwrap_or(false)
     };
-    Effect::new(move |_| log::debug!("st.selected: {:?}", st.selected.get()));
     view! {
         <Show when=move || !is_android()>
             <WindowTitlebar />
@@ -515,7 +514,6 @@ fn Refs() -> impl IntoView {
                         each=move || st.stat.get().db_list.clone()
                         key=|item| item.clone()
                         children=move |item: PathBuf| {
-                            log::debug!("item:{:?}", &item);
                             view! {
                                 <button on:click=move |_| {
                                     st.selected.update(|c| c.refer = Some(item.clone()))
@@ -691,7 +689,6 @@ fn Create() -> impl IntoView {
             db_name: name.to_path_buf(),
             ..Default::default()
         };
-        log::debug!("fd: {:?}", &form_data);
         spawn_local(async move {
             match invoke("create_example", &tauri_args!("val": form_data)).await {
                 Ok(_js) => {

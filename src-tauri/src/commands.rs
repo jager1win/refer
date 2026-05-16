@@ -7,7 +7,6 @@ use std::path::{Component, Path, PathBuf};
 use std::sync::Mutex;
 use tauri::{AppHandle, Manager, State};
 use tauri_plugin_dialog::DialogExt;
-use tauri_plugin_fs::FilePath;
 use tracing::{error, info, warn};
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -231,7 +230,10 @@ pub async fn create_from_file(
         return Err("CANCELLED".into());
     };
 
-    let original_ext = get_extension_from_filepath(&path_obj);  
+    let original_ext = app.path()
+        .file_name(&path_obj.to_string())
+        .map(|name| name.split('.').next_back().unwrap_or("").to_lowercase())
+        .unwrap_or_default();
 
     #[cfg(target_os = "android")]
     let final_path = {
@@ -565,27 +567,4 @@ fn try_remove(path: &std::path::Path) -> io::Result<()> {
     }
 }
 
-fn get_extension_from_filepath(fp: &FilePath) -> String {
-    use tauri_plugin_fs::FilePath;
-    
-    match fp {
-        FilePath::Path(p) => {
-            // Обычный путь — просто берём расширение
-            p.extension()
-                .and_then(|e| e.to_str())
-                .unwrap_or("")
-                .to_lowercase()
-        }
-        FilePath::Url(url) => {
-            // Для content:// URI — берём имя файла из последнего сегмента пути
-            url.path()
-                .split('/')
-                .next_back()
-                .and_then(|filename| {
-                    filename.split('.').next_back()
-                })
-                .unwrap_or("")
-                .to_lowercase()
-        }
-    }
-}
+
