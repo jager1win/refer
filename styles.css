@@ -1,5 +1,5 @@
 @charset "UTF-8";
-html, body {height: 100%;margin: 0;overflow: hidden;line-height: 0.9rem;}
+:root, body {height: 100%;margin: 0;overflow: hidden;line-height: 0.9rem;}
 body {display: flex;
 flex-direction: column;
 padding-top: env(safe-area-inset-top, 0px);
@@ -7,7 +7,7 @@ padding-bottom: env(safe-area-inset-bottom, 0px);
 padding-left: env(safe-area-inset-left, 0px);
 padding-right: env(safe-area-inset-right, 0px);
 height: 100%;}
-html{border-radius: 0.6rem;height: 100%;width: 100%;}
+:root{border-radius: 0.6rem;height: 100%;width: 100%;}
 header{flex-shrink: 0;padding-block:0!important;height:6rem;}
 h1,h2,h3,h4,h5,h6,.center{text-align: center;}
 button:not(.navb){padding:0.4rem;max-height: 3rem;text-wrap: nowrap;}
@@ -113,15 +113,81 @@ code#logs{padding:0.2rem;overflow: scroll;width: 100%;white-space: pre-line;colo
   padding: initial;
 }
 @media (min-width: 769px) {
-  html {
+  :root {
     border-radius: 0.6rem;
   }
 }
 /* COLORS */
-.error{color:red;}
+/* ========================================================
+   СВЕТЛАЯ ТЕМА (Кнопка яркая, ховер темнее)
+   ======================================================== */
+:root[data-theme="light"] {
+  /* Базовый цвет кнопки — чистый Tailwind 500 */
+  --pico-primary: var(--color-brand);
+  --pico-primary-background: var(--pico-primary);
+  --pico-primary-border: var(--pico-primary);
+  
+  /* ХОВЕР: затемняем чистым черным (получаем аналог Tailwind 600) */
+  --pico-primary-hover: color-mix(in oklch, var(--pico-primary) 85%, #000);
+  --pico-primary-hover-background: var(--pico-primary-hover);
+  --pico-primary-hover-border: var(--pico-primary-hover);
+  
+  /* КЛИК: делаем еще темнее (аналог Tailwind 700) */
+  --pico-primary-active: color-mix(in oklch, var(--pico-primary) 70%, #000);
+  --pico-primary-active-background: var(--pico-primary-active);
+  --pico-primary-active-border: var(--pico-primary-active);
+  
+  --pico-primary-focus: color-mix(in oklch, var(--pico-primary) 15%, transparent);
+  --pico-primary-inverse: #ffffff; /* Текст всегда белый */
+}
+
+/* ========================================================
+   ТЕМНАЯ ТЕМА (Кнопка благородно приглушена, ховер ярче)
+   ======================================================== */
+:root[data-theme="dark"] {
+  /* РЕШЕНИЕ ДЛЯ ТЕКСТА: В обычном состоянии подмешиваем к 500-му цвету 
+     немного черного (25%). Кнопка становится чуть глубже (Tailwind 600/700). 
+     Белый текст теперь читается идеально, глаза не устают. */
+  --pico-primary: color-mix(in oklch, var(--color-brand) 75%, #000);
+  --pico-primary-background: var(--pico-primary);
+  --pico-primary-border: var(--pico-primary);
+  
+  /* ХОВЕР: при наведении подсвечиваем кнопку, возвращая её к 
+     исходному яркому Tailwind 500 (подмешиваем 20% белого) */
+  --pico-primary-hover: color-mix(in oklch, var(--pico-primary) 80%, #fff);
+  --pico-primary-hover-background: var(--pico-primary-hover);
+  --pico-primary-hover-border: var(--pico-primary-hover);
+  
+  /* КЛИК: кнопка уходит в тень фона */
+  --pico-primary-active: color-mix(in oklch, var(--pico-primary) 75%, #000);
+  --pico-primary-active-background: var(--pico-primary-active);
+  --pico-primary-active-border: var(--pico-primary-active);
+  
+  --pico-primary-focus: color-mix(in oklch, var(--pico-primary) 25%, transparent);
+  --pico-primary-inverse: #ffffff; /* Текст всегда белый */
+}
+/* my */
+.error{background-color:red;}
 .warn,.modified{color: oklch(70.5% 0.213 47.604);}
 button.modified,.header-row.modified{outline: 3px oklch(70.5% 0.213 47.604) groove;outline-offset: -3px;}
-
+/*button,[role="button"],[type="button"],[type="reset"],[type="submit"],[type="file"]::file-selector-button {
+  --pico-primary-inverse: var(--pico-color);
+}*/
+button:hover,button:active,button:focus{
+  background-color: var(--pico-primary);
+  box-shadow: var(--pico-primary);
+  border-color:var(--pico-primary);}
+[data-theme=light]{
+  --pico-font-weight:550;
+  span:not(.ar_color) > button{ background-color: color-mix(in srgb, var(--pico-primary), white 40%);}
+  button.active, button:active {outline: 2px solid black; outline-offset: -2px;}
+  button:hover{filter: brightness(1.30); }
+}
+[data-theme=dark]{
+  button.active, button:active {outline: 2px solid currentColor; outline-offset: -2px;}
+  button:hover{background-color: unset;}
+}
+/* для селектора */
 .orange{background-color: orange;}
 .lime{background-color: lime;}
 .green{background-color: green;}
@@ -138,246 +204,20 @@ button.modified,.header-row.modified{outline: 3px oklch(70.5% 0.213 47.604) groo
 .mauve{background-color: oklch(54.2% 0.034 322.5)}
 .mist{background-color: oklch(56% 0.021 213.5)}
 .olive{background-color: oklch(58% 0.031 107.3)}
-
-button,[role="button"],[type="button"],[type="reset"],[type="submit"],[type="file"]::file-selector-button {
-  --pico-primary-inverse: var(--pico-color);
-}
-button:hover,button:active,button:focus{
-  background-color: var(--pico-primary);
-  box-shadow: var(--pico-primary)t;
-  border-color:var(--pico-primary);}
-[data-theme=light]{
-  --pico-font-weight:550;
-  :not(.ar_color) > button{ background-color: color-mix(in srgb, var(--pico-primary), white 40%);}
-  button.active, button:active {outline: 2px solid black; outline-offset: -2px;}
-  button:hover{filter: brightness(1.30); }
-}
-[data-theme=dark]{
-  button.active, button:active {outline: 2px solid currentColor; outline-offset: -2px;}
-  button:hover{background-color: unset;}
-}
-
-[data-color="orange"][data-theme=light]{
-  color-scheme: light;
-  --pico-background-color: oklch(98% 0.016 73.684);
-  --pico-color: oklch(26.6% 0.079 36.259);
-  --pico-primary: oklch(70.5% 0.213 47.604);
-  --pico-primary-background: var(--pico-primary);
-}
-[data-color="orange"][data-theme=dark]{
-  color-scheme: dark;
-  --pico-background-color: oklch(26.6% 0.079 36.259);
-  --pico-color: oklch(98% 0.016 73.684);
-  --pico-primary: oklch(70.5% 0.213 47.604);
-  --pico-primary-background: oklch(70.5% 0.213 47.604);
-}
-[data-color="lime"][data-theme=light]{
-  color-scheme: light;
-  --pico-background-color: oklch(98.6% 0.031 120.757);
-  --pico-color: oklch(27.4% 0.072 132.109);
-  --pico-primary: oklch(76.8% 0.233 130.85);
-  --pico-primary-background: oklch(76.8% 0.233 130.85);
-}
-[data-color="lime"][data-theme=dark]{
-  color-scheme: dark;
-  --pico-background-color: oklch(27.4% 0.072 132.109);
-  --pico-color: oklch(98.6% 0.031 120.757);
-  --pico-primary: oklch(76.8% 0.233 130.85);
-  --pico-primary-background: oklch(76.8% 0.233 130.85);
-}
-[data-color="green"][data-theme=light]{
-  color-scheme: light;
-  --pico-background-color: oklch(98.2% 0.018 155.826);
-  --pico-color: oklch(26.6% 0.065 152.934);
-  --pico-primary: oklch(72.3% 0.219 149.579);
-  --pico-primary-background: oklch(72.3% 0.219 149.579);
-}
-[data-color="green"][data-theme=dark]{
-  color-scheme: dark;
-  --pico-background-color:oklch(26.6% 0.065 152.934);
-  --pico-color: oklch(98.2% 0.018 155.826);
-  --pico-primary: oklch(72.3% 0.219 149.579);
-  --pico-primary-background: oklch(72.3% 0.219 149.579);
-}
-[data-color="cyan"][data-theme=light]{
-  color-scheme: light;
-  --pico-background-color: oklch(98.4% 0.019 200.873);
-  --pico-color: oklch(30.2% 0.056 229.695);
-  --pico-primary: oklch(71.5% 0.143 215.221);
-  --pico-primary-background: oklch(71.5% 0.143 215.221);
-}
-[data-color="cyan"][data-theme=dark]{
-  color-scheme: dark;
-  --pico-background-color: oklch(30.2% 0.056 229.695);
-  --pico-color: oklch(98.4% 0.019 200.873);
-  --pico-primary: oklch(71.5% 0.143 215.221);
-  --pico-primary-background: oklch(71.5% 0.143 215.221);
-}
-[data-color="blue"][data-theme=light]{
-  color-scheme: light;
-  --pico-background-color: oklch(97% 0.014 254.604);
-  --pico-color: oklch(28.2% 0.091 267.935);
-  --pico-primary: oklch(62.3% 0.214 259.815);
-  --pico-primary-background: oklch(62.3% 0.214 259.815);
-}
-[data-color="blue"][data-theme=dark]{
-  color-scheme: dark;
-  --pico-background-color: oklch(28.2% 0.091 267.935);
-  --pico-color: oklch(97% 0.014 254.604);
-  --pico-primary: oklch(62.3% 0.214 259.815);
-  --pico-primary-background: oklch(62.3% 0.214 259.815);
-}
-[data-color="indigo"][data-theme=light]{
-  color-scheme: light;
-  --pico-background-color: oklch(96.2% 0.018 272.314);
-  --pico-color: oklch(25.7% 0.09 281.288);
-  --pico-primary: oklch(58.5% 0.233 277.117);
-  --pico-primary-background: oklch(58.5% 0.233 277.117);
-}
-[data-color="indigo"][data-theme=dark]{
-  color-scheme: dark;
-  --pico-background-color: oklch(25.7% 0.09 281.288);
-  --pico-color: oklch(96.2% 0.018 272.314);
-  --pico-primary: oklch(58.5% 0.233 277.117);
-  --pico-primary-background: oklch(58.5% 0.233 277.117);
-}
-[data-color="purple"][data-theme=light]{
-  color-scheme: light;
-  --pico-background-color: oklch(97.7% 0.014 308.299);
-  --pico-color: oklch(29.1% 0.149 302.717);
-  --pico-primary: oklch(62.7% 0.265 303.9);
-  --pico-primary-background: oklch(62.7% 0.265 303.9);
-}
-[data-color="purple"][data-theme=dark]{
-  color-scheme: dark;
-  --pico-background-color: oklch(29.1% 0.149 302.717);
-  --pico-color: oklch(97.7% 0.014 308.299);
-  --pico-primary: oklch(62.7% 0.265 303.9);
-  --pico-primary-background: oklch(62.7% 0.265 303.9);
-}
-[data-color="fuchsia"][data-theme=light]{
-  color-scheme: light;
-  --pico-background-color: oklch(97.7% 0.017 320.058);
-  --pico-color: oklch(29.3% 0.136 325.661);
-  --pico-primary: oklch(66.7% 0.295 322.15);
-  --pico-primary-background: oklch(66.7% 0.295 322.15);
-}
-[data-color="fuchsia"][data-theme=dark]{
-  color-scheme: dark;
-  --pico-background-color: oklch(29.3% 0.136 325.661);
-  --pico-color: oklch(97.7% 0.017 320.058);
-  --pico-primary: oklch(66.7% 0.295 322.15);
-  --pico-primary-background: oklch(66.7% 0.295 322.15);
-}
-[data-color="pink"][data-theme=light]{
-  color-scheme: light;
-  --pico-background-color: oklch(97.1% 0.014 343.198);
-  --pico-color: oklch(28.4% 0.109 3.907);
-  --pico-primary: oklch(65.6% 0.241 354.308);
-  --pico-primary-background: oklch(65.6% 0.241 354.308);
-}
-[data-color="pink"][data-theme=dark]{
-  color-scheme: dark;
-  --pico-background-color: oklch(28.4% 0.109 3.907);
-  --pico-color: oklch(97.1% 0.014 343.198);
-  --pico-primary: oklch(65.6% 0.241 354.308);
-  --pico-primary-background: oklch(65.6% 0.241 354.308);
-}
-[data-color="rose"][data-theme=light]{
-  color-scheme: light;
-  --pico-background-color:oklch(96.9% 0.015 12.422);
-  --pico-color: oklch(27.1% 0.105 12.094);
-  --pico-primary: oklch(64.5% 0.246 16.439);
-  --pico-primary-background: oklch(64.5% 0.246 16.439);
-}
-[data-color="rose"][data-theme=dark]{
-  color-scheme: dark;
-  --pico-background-color: oklch(27.1% 0.105 12.094);
-  --pico-color: oklch(96.9% 0.015 12.422);
-  --pico-primary: oklch(64.5% 0.246 16.439);
-  --pico-primary-background: oklch(64.5% 0.246 16.439);
-}
-[data-color="slate"][data-theme=light]{
-  color-scheme: light;
-  --pico-background-color: oklch(98.4% 0.003 247.858);
-  --pico-color: oklch(12.9% 0.042 264.695);
-  --pico-primary: oklch(55.4% 0.046 257.417);
-  --pico-primary-background: oklch(55.4% 0.046 257.417);
-}
-[data-color="slate"][data-theme=dark]{
-  color-scheme: dark;
-  --pico-background-color: oklch(12.9% 0.042 264.695);
-  --pico-color: oklch(98.4% 0.003 247.858);
-  --pico-primary: oklch(55.4% 0.046 257.417);
-  --pico-primary-background:oklch(55.4% 0.046 257.417);
-}
-[data-color="zinc"][data-theme=light]{
-  color-scheme: light;
-  --pico-background-color: oklch(98.5% 0 0);
-  --pico-color: oklch(14.1% 0.005 285.823);
-  --pico-primary: oklch(55.2% 0.016 285.938);
-  --pico-primary-background:oklch(55.2% 0.016 285.938);
-}
-[data-color="zinc"][data-theme=dark]{
-  color-scheme: dark;
-  --pico-background-color: oklch(14.1% 0.005 285.823);
-  --pico-color: oklch(98.5% 0 0);
-  --pico-primary: oklch(55.2% 0.016 285.938);
-  --pico-primary-background:oklch(55.2% 0.016 285.938);
-}
-[data-color="taupe"][data-theme=light]{
-  color-scheme: light;
-  --pico-background-color: oklch(98.6% 0.002 67.8);
-  --pico-color: oklch(14.7% 0.004 49.3);
-  --pico-primary: oklch(54.7% 0.021 43.1);
-  --pico-primary-background: oklch(54.7% 0.021 43.1);
-}
-[data-color="taupe"][data-theme=dark]{
-  color-scheme: dark;
-  --pico-background-color: oklch(14.7% 0.004 49.3);
-  --pico-color: oklch(98.6% 0.002 67.8);
-  --pico-primary: oklch(54.7% 0.021 43.1);
-  --pico-primary-background: oklch(54.7% 0.021 43.1);
-}
-[data-color="mauve"][data-theme=light]{
-  color-scheme: light;
-  --pico-background-color: oklch(98.5% 0 0);
-  --pico-color: oklch(14.5% 0.008 326);
-  --pico-primary: oklch(54.2% 0.034 322.5);
-  --pico-primary-background: oklch(54.2% 0.034 322.5);
-}
-[data-color="mauve"][data-theme=dark]{
-  color-scheme: dark;
-  --pico-background-color: oklch(14.5% 0.008 326);
-  --pico-color: oklch(98.5% 0 0);
-  --pico-primary: oklch(54.2% 0.034 322.5);
-  --pico-primary-background: oklch(54.2% 0.034 322.5);
-}
-[data-color="mist"][data-theme=light]{
-  color-scheme: light;
-  --pico-background-color: oklch(98.7% 0.002 197.1);
-  --pico-color: oklch(14.8% 0.004 228.8);
-  --pico-primary: oklch(56% 0.021 213.5);
-  --pico-primary-background: oklch(56% 0.021 213.5);
-}
-[data-color="mist"][data-theme=dark]{
-  color-scheme: dark;
-  --pico-background-color: oklch(14.8% 0.004 228.8);
-  --pico-color: oklch(98.7% 0.002 197.1);
-  --pico-primary: oklch(56% 0.021 213.5);
-  --pico-primary-background: oklch(56% 0.021 213.5);
-}
-[data-color="olive"][data-theme=light]{
-  color-scheme: light;
-  --pico-background-color: oklch(98.8% 0.003 106.5);
-  --pico-color: oklch(15.3% 0.006 107.1);
-  --pico-primary: oklch(58% 0.031 107.3);
-  --pico-primary-background: oklch(58% 0.031 107.3);
-}
-[data-color="olive"][data-theme=dark]{
-  color-scheme: dark;
-  --pico-background-color: oklch(15.3% 0.006 107.1);
-  --pico-color: oklch(98.8% 0.003 106.5);
-  --pico-primary: oklch(58% 0.031 107.3);
-  --pico-primary-background: oklch(58% 0.031 107.3);
-}
+/* Base 500 */
+:root[data-color="orange"] {--color-brand: oklch(70.5% 0.213 47.604);}
+:root[data-color="lime"] {--color-brand: oklch(76.8% 0.233 130.85);}
+:root[data-color="green"] {--color-brand: oklch(72.3% 0.219 149.579);}
+:root[data-color="cyan"] {--color-brand: oklch(71.5% 0.143 215.221);}
+:root[data-color="blue"] {--color-brand: oklch(62.3% 0.214 259.815);}
+:root[data-color="indigo"] {--color-brand: oklch(58.5% 0.233 277.117);}
+:root[data-color="purple"] {--color-brand: oklch(62.7% 0.265 303.9);}
+:root[data-color="fuchsia"] {--color-brand: oklch(66.7% 0.295 322.15);}
+:root[data-color="pink"] {--color-brand: oklch(65.6% 0.241 354.308);}
+:root[data-color="rose"] {--color-brand: oklch(64.5% 0.246 16.439);}
+:root[data-color="slate"] {--color-brand: oklch(55.4% 0.046 257.417);}
+:root[data-color="zinc"] {--color-brand: oklch(55.2% 0.016 285.938);}
+:root[data-color="taupe"] {--color-brand: oklch(54.7% 0.021 43.1);}
+:root[data-color="mauve"] {--color-brand: oklch(54.2% 0.034 322.5);}
+:root[data-color="mist"] {--color-brand: oklch(56% 0.021 213.5);}
+:root[data-color="olive"] {--color-brand: oklch(58% 0.031 107.3);}

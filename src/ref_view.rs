@@ -204,8 +204,6 @@ pub fn Ref_main() -> impl IntoView {
                                 .filter_map(|name| table_meta.fields.get(name))
                                 .map(|field_def| field_def.name.clone())
                                 .collect();
-                            log::debug!("table_meta: {:?}", &table_meta);
-                            log::debug!("names: {:?} sorted: {:?}", &table_meta.names, &sorted_search);
                             view! {
                                 <div class="header-row gr">
                                     <button on:click=move |_| st.selected.update(|c| c.refer = None)>"←"</button>
@@ -307,7 +305,6 @@ pub fn Ref_main() -> impl IntoView {
                                                         key=|rec: &DataRecord| rec.id
                                                         children=move |rec: DataRecord| {
                                                             let search_fields_info = meta.search_config.clone();
-                                                            log::debug!("rec: {:?} sfi:{:?}", &rec,search_fields_info);
                                                             view! {
                                                                 <button
                                                                     class="row"
@@ -885,21 +882,6 @@ pub fn transform_fields(
 /*fn f_sort(orig: &Vec<String>, sorted: &Vec<String>) {
     sorted.sort_by_key(|item| orig.iter().position(|&x| x == item.id).unwrap_or(usize::MAX))
 }*/
-
-// Обобщённая функция сортировки
-// T — тип вашей структуры, F — функция/замыкание, извлекающее ключ
-fn sort_f<T, F>(items: &mut [T], sample: &[String], get_key: F)
-where
-    F: Fn(&T) -> &str,
-{
-    items.sort_by_key(|item| {
-        let key = get_key(item);
-        sample
-            .iter()
-            .position(|sample_str| sample_str == key)
-            .unwrap_or(usize::MAX)
-    });
-}
 
 /*
 Было:
