@@ -1,6 +1,6 @@
 [build]
 target = "./index.html"
-minify = "on_release"
+minify = "always"
 
 [watch]
 ignore = ["./src-tauri", "./NOTES.md"]

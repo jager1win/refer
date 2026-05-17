@@ -138,8 +138,8 @@ pub fn Ref_el_edit() -> impl IntoView {
                 </div>
             </div>
             <div class="gr bfc flex_wrap2 m04">
-                <button on:click=move |_| save("delete")>
-                    <span class="error">"🗑️ "{t!(i18n, all.del)}" "{t!(i18n, all.element)}</span>
+                <button class="error" on:click=move |_| save("delete")>
+                    <span>"🗑️ "{t!(i18n, all.del)}" "{t!(i18n, all.element)}</span>
                 </button>
                 <button disabled=move || !can_save() on:click=move |_| save("update")>
                     "💾 "
