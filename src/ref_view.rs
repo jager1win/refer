@@ -80,7 +80,7 @@ pub fn Ref_main() -> impl IntoView {
         } else {
             meta_data.search_config.push(field);
         }
-        // "правильно" сортируем вектор 
+        // "правильно" сортируем вектор
         meta_data
             .search_config
             .sort_by_key(|item| meta_data.names.iter().position(|x| *x == *item).unwrap_or(usize::MAX));
@@ -596,38 +596,36 @@ pub fn Ref_el() -> impl IntoView {
                                     <button on:click=move |_| edit_el.set(true)>"🔧"</button>
                                 </div>
 
-                                <Show when=move || data.get().is_some() fallback=|| view! { <div>"No data"</div> }>
-                                    <div class="grid2 gr">
-                                        {move || {
-                                            let d = data.get().unwrap();
-                                            let m = st.meta.get().unwrap();
-                                            let mut items: Vec<_> = d.fields.iter().collect();
-                                            items.sort_by_key(|(k, _)| *k);
-                                            items
-                                                .into_iter()
-                                                .map(|(k, v)| {
-                                                    let display_name = m
-                                                        .fields
-                                                        .iter()
-                                                        .find(|(field_key, _)| *field_key == k)
-                                                        .map(|(_, field_def)| field_def.name.clone())
-                                                        .unwrap_or_else(|| k.clone());
-                                                    view! {
-                                                        <span>{display_name}</span>
-                                                        <span>{v.to_string()}</span>
-                                                    }
-                                                })
-                                                .collect_view()
-                                        }}
-                                    </div>
-                                </Show>
+                                <div class="grid2 gr">
+                                    {move || {
+                                        let d = data.get().unwrap();
+                                        let m = st.meta.get().unwrap();
+                                        let mut items: Vec<_> = d.fields.iter().collect();
+                                        items.sort_by_key(|(k, _)| *k);
+                                        items
+                                            .into_iter()
+                                            .map(|(k, v)| {
+                                                let display_name = m
+                                                    .fields
+                                                    .iter()
+                                                    .find(|(field_key, _)| *field_key == k)
+                                                    .map(|(_, field_def)| field_def.name.clone())
+                                                    .unwrap_or_else(|| k.clone());
+                                                view! {
+                                                    <span>{display_name}</span>
+                                                    <span>{v.to_string()}</span>
+                                                }
+                                            })
+                                            .collect_view()
+                                    }}
+                                </div>
 
                                 <Show
                                     when=move || !st.meta.get().unwrap().operations.is_empty()
-                                    fallback=|| {
+                                    fallback=move || {
                                         view! {
                                             <div class="gr">
-                                                <h5>"No saved operations"</h5>
+                                                <h5 class="m0">{t_string!(i18n, ref_main.no_saved_operations)}</h5>
                                             </div>
                                         }
                                     }

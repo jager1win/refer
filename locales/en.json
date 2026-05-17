@@ -88,6 +88,7 @@
     "column_value": "value",
     "column_in_search": "in search",
     "operations": "Operations",
-    "prec": "Precision"
+    "prec": "Precision",
+    "no_saved_operations": "No saved operations"
   }
 }
