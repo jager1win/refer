@@ -1,7 +1,9 @@
 [package]
 name = "refer-ui"
-version = "1.0.0"
-edition = "2024"
+version.workspace = true
+authors.workspace = true
+edition.workspace = true
+license.workspace = true
 build = "build.rs"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
@@ -38,6 +40,13 @@ locales = ["en", "ru"]
 [workspace]
 members = ["src-tauri","."]
 resolver = "2"
+
+# ← Единственный источник правды для всего проекта!
+[workspace.package] 
+version = "0.2.0" 
+edition = "2024"
+authors = ["Yuriy (Jager) Lysov"]
+license = "GPL-3.0"
 
 [profile.release]
 opt-level = "z" # Maximum optimization by size
