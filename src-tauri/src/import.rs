@@ -1,23 +1,11 @@
 use std::collections::HashMap;
-use std::path::PathBuf;
-use crate::sql::FieldDef;
+use crate::sql::{FieldDef,create_empty_database};
 use crate::{commands::CreateForm, sql};
 use calamine::{Data, Reader, open_workbook_auto};
 use rusqlite::{Connection, params};
 use csv::ReaderBuilder;
 
-pub struct DeleteOnDrop {
-    pub path: PathBuf,
-}
-
-impl Drop for DeleteOnDrop {
-    fn drop(&mut self) {
-        // Игнорируем ошибку, если файл уже был удален вручную
-        let _ = std::fs::remove_file(&self.path);
-    }
-}
-
-pub fn create_from_csv_file(val: &CreateForm) -> Result<(), String> {
+/*pub fn create_from_csv_file(val: &CreateForm) -> Result<(), String> {
     // Создаем пустую базу данных
     sql::create_empty_database(&val.db_name)?;
     let mut conn = Connection::open(&val.db_name).map_err(|e| e.to_string())?;
@@ -173,6 +161,224 @@ pub fn create_from_csv_file(val: &CreateForm) -> Result<(), String> {
     .map_err(|e| e.to_string())?;
 
     Ok(())
+}
+*/
+
+pub fn create_from_csv_file(val: &CreateForm) -> Result<(), String> {
+    // Создаем пустую базу данных
+    create_empty_database(&val.db_name)?;
+    let mut conn = Connection::open(&val.db_name).map_err(|e| e.to_string())?;
+    
+    // Читаем файл в байты
+    let file_path = val.file_path.as_ref().unwrap();
+    let raw_bytes = std::fs::read(file_path).map_err(|e| e.to_string())?;
+    
+    // Определяем и конвертируем кодировку в UTF-8
+    let utf8_content = detect_and_convert_to_utf8_string(&raw_bytes)?;
+    
+    // Для Android - используем память, а не временный файл
+    // Просто работаем со строкой через CSV reader из памяти
+    let delimiter = if val.file_extension.to_lowercase() == "tsv" {
+        b'\t'
+    } else {
+        detect_delimiter(&utf8_content)
+    };
+    
+    // Читаем CSV из строки в памяти (Android friendly)
+    let mut rdr = ReaderBuilder::new()
+        .has_headers(false)
+        .delimiter(delimiter)
+        .flexible(true)
+        .from_reader(utf8_content.as_bytes());
+    
+    // Читаем все строки из CSV
+    let mut all_rows: Vec<csv::StringRecord> = Vec::new();
+    for result in rdr.records() {
+        all_rows.push(result.map_err(|e| e.to_string())?);
+    }
+    
+    if all_rows.is_empty() {
+        return Ok(());
+    }
+    
+    // Разделяем заголовки и данные
+    let (headers, data_rows) = if val.has_header {
+        let headers = all_rows[0].iter().map(|s| s.to_string()).collect();
+        let data_rows = &all_rows[1..];
+        (headers, data_rows)
+    } else {
+        (Vec::new(), &all_rows[..])
+    };
+    
+    if data_rows.is_empty() {
+        return Ok(());
+    }
+
+    // Определяем количество колонок
+    let col_count = data_rows[0].len();
+
+    // Подготавливаем информацию о полях
+    let mut fields_map = HashMap::new();
+
+    for i in 0..col_count {
+        let first_value = data_rows[0].get(i).unwrap_or("");
+        let field_type = if first_value.parse::<f64>().is_ok() {
+            "number"
+        } else {
+            "text"
+        };
+
+        let display_name = if val.has_header && i < headers.len() {
+            headers[i].clone()
+        } else {
+            format!("Field {}", i + 1)
+        };
+
+        let field_name = format!("f_{}", i);
+        fields_map.insert(
+            field_name.clone(),
+            FieldDef {
+                name: display_name,
+                ftype: field_type.to_string(),
+            },
+        );
+    }
+
+    // Добавляем колонки в таблицу data
+    for i in 0..col_count {
+        let field_name = format!("f_{}", i);
+        let sql = format!("ALTER TABLE data ADD COLUMN {} TEXT", field_name);
+        conn.execute(&sql, []).map_err(|e| e.to_string())?;
+    }
+
+    // Импортируем данные в отдельном блоке
+    {
+        let tx = conn.transaction().map_err(|e| e.to_string())?;
+
+        // Подготавливаем запросы
+        let mut insert_stmt = tx
+            .prepare("INSERT INTO data DEFAULT VALUES")
+            .map_err(|e| e.to_string())?;
+
+        let mut update_stmts = Vec::with_capacity(col_count);
+        for i in 0..col_count {
+            let field_name = format!("f_{}", i);
+            let sql = format!("UPDATE data SET {} = ?1 WHERE id = ?2", field_name);
+            let stmt = tx.prepare(&sql).map_err(|e| e.to_string())?;
+            update_stmts.push(stmt);
+        }
+
+        // Импортируем данные
+        for row in data_rows {
+            insert_stmt.execute([]).map_err(|e| e.to_string())?;
+            let record_id = tx.last_insert_rowid();
+
+            for (i, value) in row.iter().enumerate() {
+                if let Some(stmt) = update_stmts.get_mut(i) {
+                    stmt.execute(params![value, record_id]).map_err(|e| e.to_string())?;
+                }
+            }
+        }
+
+        // Явно уничтожаем Statement перед коммитом
+        drop(insert_stmt);
+        drop(update_stmts);
+
+        tx.commit().map_err(|e| e.to_string())?;
+    }
+
+    // Обновляем meta таблицу
+    let fields_json = serde_json::to_string(&fields_map).map_err(|e| e.to_string())?;
+    let search_config_json = serde_json::to_string(&vec!["f_0"]).map_err(|e| e.to_string())?;
+
+    conn.execute("UPDATE meta SET value = ?1 WHERE key = 'fields'", params![fields_json])
+        .map_err(|e| e.to_string())?;
+
+    conn.execute(
+        "UPDATE meta SET value = ?1 WHERE key = 'search_config'",
+        params![search_config_json],
+    )
+    .map_err(|e| e.to_string())?;
+
+    Ok(())
+}
+
+use chardetng::{EncodingDetector, Iso2022JpDetection, Utf8Detection};
+use encoding_rs::{
+    BIG5, EUC_KR, GBK, SHIFT_JIS, WINDOWS_1251, WINDOWS_1252, WINDOWS_1256,
+};
+
+fn detect_and_convert_to_utf8_string(content: &[u8]) -> Result<String, String> {
+    // Проверка BOM
+    if content.starts_with(&[0xEF, 0xBB, 0xBF]) {
+        let without_bom = &content[3..];
+        return String::from_utf8(without_bom.to_vec()).map_err(|e| e.to_string());
+    }
+
+    // 1. Создаём детектор под API 1.0.0
+    let mut detector = EncodingDetector::new(Iso2022JpDetection::Deny);
+
+    // 2. Кормим детектор байтами
+    detector.feed(content, true);
+
+    // 3. Получаем предполагаемую кодировку с новым enum Utf8Detection
+    let encoding = detector.guess(None, Utf8Detection::Allow);
+
+    // 4. Декодируем (метод возвращает (Cow<str>, &Encoding, bool))
+    let (decoded, _encoding_used, had_errors) = encoding.decode(content);
+
+    // В encoding_rs флаг равен true, если ошибки БЫЛИ (поэтому !had_errors)
+    if !had_errors && !decoded.contains('\u{FFFD}') {
+        if encoding.name() != "UTF-8" {
+            println!("Info: Detected encoding: {}", encoding.name());
+        }
+        // Переводим Cow<str> в String через into_owned()
+        return Ok(decoded.into_owned());
+    }
+
+    // Fallback: пробуем популярные кодировки
+    let fallbacks = [
+        (WINDOWS_1251, "Windows-1251"),
+        (WINDOWS_1252, "Windows-1252"),
+        (WINDOWS_1256, "Windows-1256"),
+        (GBK, "GBK"),
+        (BIG5, "Big5"),
+        (SHIFT_JIS, "Shift_JIS"),
+        (EUC_KR, "EUC-KR"),
+    ];
+
+    for (enc, name) in fallbacks {
+        let (decoded, _, had_errors) = enc.decode(content);
+        if !had_errors && !decoded.contains('\u{FFFD}') {
+            println!("Info: Fallback encoding: {}", name);
+            return Ok(decoded.into_owned());
+        }
+    }
+
+    Err("Unable to detect encoding. Please save file as UTF-8.".to_string())
+}
+
+fn detect_delimiter(content: &str) -> u8 {
+    let first_line = content.lines().next().unwrap_or("");
+    
+    let comma_count = first_line.matches(',').count();
+    let semicolon_count = first_line.matches(';').count();
+    let pipe_count = first_line.matches('|').count();
+    let tab_count = first_line.matches('\t').count();
+    
+    let max_count = *[comma_count, semicolon_count, pipe_count, tab_count].iter().max().unwrap_or(&0);
+    
+    if max_count == 0 {
+        b','
+    } else if semicolon_count == max_count && semicolon_count > 0 {
+        b';'
+    } else if pipe_count == max_count && pipe_count > 0 {
+        b'|'
+    } else if tab_count == max_count && tab_count > 0 {
+        b'\t'
+    } else {
+        b','
+    }
 }
 
 pub fn create_from_sheet_file(val: &CreateForm) -> Result<(), String> {
