@@ -31,7 +31,7 @@
     "add": "Add",
     "title_fields_item": "Edit item fields",
     "warning_item_edit": "⚠ Here: only edit and delete item. Everything else (fields, operations, add new items) — in reference editor.",
-    "warning": "⚠ Attention!\n- Don't add items if not all fields have been created yet\n- There are 2 field types - 'text' and 'number', you can change them if you wish\n- Operations can only be performed on the 'number' type",
+    "warning": "⚠ Attention!\n- Don't add items if not all fields have been created yet\n- There are 2 field types - 'text' & 'number', you can change them if you wish\n- Operations work only with the 'number' type and apply to each item in the reference",
     "add_item_hint": "Fill what you need. Leave the rest empty.",
     "meta_hint": "Reference name and description",
     "fields_edit_hint": "Edit fields: type, name, delete",

@@ -37,4 +37,3 @@ csv = "1"
 calamine = "0.34.0"
 tauri-plugin-dialog = "2"
 tauri-plugin-fs = "2"
-

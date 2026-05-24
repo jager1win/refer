@@ -32,7 +32,7 @@ small{margin:2px;color: oklch(from currentColor l c h / 0.8);}
 .a-start{align-items:start;}
 .now{display: grid;grid-template-columns: 1fr auto;gap: 1rem;height:3rem; align-items: center; margin: 0 0.5rem;overflow-x: auto;width: 100%;}
 .now p{white-space: nowrap;margin:auto;}
-.sp_close{flex: 0 0 auto;cursor:pointer;}
+.sp_close{min-width: 2rem;cursor:pointer;}
 .ref{overflow: hidden;}
 .ar_lang, .ar_color{display:flex;gap: 1rem;flex-wrap: wrap;}
 .ar_lang button, .ar_color button{min-height: 1.2rem;min-width: 1.2rem;}
@@ -106,7 +106,7 @@ code#logs{padding:0.2rem;overflow: scroll;width: 100%;white-space: pre-line;colo
 .title-group {text-align: center;min-width: 0;}
 .info-show {display:flex; gap: 1rem;line-height: normal;}
 .info-show span:first-child{font-weight: bold;}
-.precision{max-width:max-content;display: inline-flex;margin:0;padding: 0 1.6rem 0 1rem !important;}
+.precision{max-width:max-content;display: inline-flex;margin:0 0 0 4px;padding: 0 1.6rem 0 0.4rem !important;}
 .flex_wrap2,.flex_wrap3{ display: flex;flex-wrap: wrap;gap: 1rem; align-items: center;justify-content: center;}
 .flex_wrap2 > * {flex: 0 1 calc(50% - 2rem);}
 .flex_wrap3 > * {flex: 0 0 calc(33.33% - 2rem);}
@@ -183,9 +183,10 @@ code#logs{padding:0.2rem;overflow: scroll;width: 100%;white-space: pre-line;colo
   --pico-primary-focus: color-mix(in oklch, var(--color-brand) 37.5%, transparent);
 }
 /* my */
-.error{background-color:red;}
-.warn,.modified{color: oklch(70.5% 0.213 47.604);}
-button.modified,.header-row.modified{outline: 3px oklch(70.5% 0.213 47.604) groove;outline-offset: -3px;}
+.error{color:oklch(64.5% 0.246 16.439);border-color: oklch(64.5% 0.246 16.439);}
+.warn,.modified{color: oklch(70.5% 0.213 47.604);border-color: oklch(70.5% 0.213 47.604);}
+.ok,.success{color:oklch(72.3% 0.219 149.579);border-color:oklch(72.3% 0.219 149.579)}
+/*button.modified,.header-row.modified{outline: 3px oklch(70.5% 0.213 47.604) groove;outline-offset: -3px;}*/
 [data-theme=light]{
   --pico-font-weight:550;
   span:not(.ar_color) > button{ background-color: color-mix(in srgb, var(--pico-primary), white 40%);}

@@ -9,7 +9,7 @@ use tauri::{AppHandle, Manager, State};
 use tauri_plugin_dialog::DialogExt;
 use tracing::{error, info, warn};
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CreateForm {
     pub mode: String, // "empty", "sheet", "sqlite"
     pub db_name: PathBuf,
@@ -267,8 +267,8 @@ pub async fn create_from_file(
         }
     }
 
-    val.file_path = Some(final_path.clone());
-    val.db_name = root;
+    val.file_path = Some(final_path.clone());// путь импортируемого файла
+    val.db_name = root;// путь создаваемого фала
     val.file_extension = original_ext;
 
     warn!(

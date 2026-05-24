@@ -814,7 +814,7 @@ fn Create() -> impl IntoView {
                             </span>
                         </label>
 
-                        <input type="text" name="db_name" placeholder="my_refer" required />
+                        <input type="text" name="db_name" placeholder="file name" required />
                     </div>
 
                     <div class="center">

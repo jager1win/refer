@@ -1,9 +1,21 @@
 use std::collections::HashMap;
-
+use std::path::PathBuf;
 use crate::sql::FieldDef;
 use crate::{commands::CreateForm, sql};
 use calamine::{Data, Reader, open_workbook_auto};
 use rusqlite::{Connection, params};
+use csv::ReaderBuilder;
+
+pub struct DeleteOnDrop {
+    pub path: PathBuf,
+}
+
+impl Drop for DeleteOnDrop {
+    fn drop(&mut self) {
+        // Игнорируем ошибку, если файл уже был удален вручную
+        let _ = std::fs::remove_file(&self.path);
+    }
+}
 
 pub fn create_from_csv_file(val: &CreateForm) -> Result<(), String> {
     // Создаем пустую базу данных
@@ -44,7 +56,7 @@ pub fn create_from_csv_file(val: &CreateForm) -> Result<(), String> {
     };
 
     // Открываем CSV файл с определенным разделителем
-    let mut rdr = csv::ReaderBuilder::new()
+    let mut rdr = ReaderBuilder::new()
         .has_headers(false)
         .delimiter(delimiter)
         .flexible(true)
