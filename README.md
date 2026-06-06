@@ -19,7 +19,7 @@ The application includes 6 built-in example reference books with pre-defined ope
 - **Ballistics** - Ballistic trajectory calculator for rifle calibers
 - **Deposit** - Calculate compound interest growth
 - **Geometry** - Circle and sphere dimensions — enter the radius
-- **Oscillator** - Wave value at time t — use the time hint as a reference
+- **Oscillator** - Wave value at time t — use the time hint as a reference  
 You can freely experiment with these — they can be recreated from the "Create" menu with a single click.
 
 On all operating systems, reference files are stored in the `~/Documents/refer` directory and have the `*.refer` extension. They are essentially SQLite databases with a specific structure. This means you can create a reference on one device and then transfer the ready-made file to another device. Subfolders are supported — for example, the built-in examples are created in the `refer/example` folder. The application on all operating systems only works with this folder and its subfolders and does not use the internet at all.
