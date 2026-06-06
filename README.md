@@ -4,9 +4,9 @@
 - - -
 The main purpose is to provide a fast local tool for anyone who needs not just to store data, but to perform calculations on the fly "in the field" without an internet connection.
 
-The key feature of the application is ***Operations*** (added optionally), which can turn your reference book into an engineering calculation tool.
-You create a formula with variables that can be either "number" type fields from the reference itself or manually entered values.
-Each Operation is applied to all items in the reference.
+The key feature of the application is ***Operations*** (added optionally), which can turn your reference book into an engineering calculation tool.  
+You create a formula with variables that can be either "number" type fields from the reference itself or manually entered values.  
+Each Operation is applied to all items in the reference.  
 Implemented using the exmex crate (see link below for its syntax on variables, operators, and constants).
 
 On Github, you can find versions of the application for Android, Linux, and Windows.
@@ -40,5 +40,5 @@ Enable it manually (depending on your phone):
 - Settings → Apps → Refer → Permissions → All permissions
 - Special access → All files access → Enable
 
-Created with [Rust](https://github.com/rust-lang/rust), [Tauri](https://github.com/tauri-apps/tauri), [Leptos](https://github.com/leptos-rs/leptos). Operations — [Exmex](https://github.com/bertiqwerty/exmex)
+Created with [Rust](https://github.com/rust-lang/rust), [Tauri](https://github.com/tauri-apps/tauri), [Leptos](https://github.com/leptos-rs/leptos).   Operations — [Exmex](https://github.com/bertiqwerty/exmex)  
 Open source (GPL-3.0). No ads, no data collection, no cloud services.
