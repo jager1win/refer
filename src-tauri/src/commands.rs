@@ -56,7 +56,7 @@ pub async fn get_app_info() -> Result<Vec<(String, String)>, String> {
     let result = vec![
         ("Version".to_string(), env!("CARGO_PKG_VERSION").to_string()),
         ("License".to_string(), env!("CARGO_PKG_LICENSE").to_string()),
-        ("Githab".to_string(), env!("CARGO_PKG_REPOSITORY").to_string()),
+        ("Github".to_string(), env!("CARGO_PKG_REPOSITORY").to_string()),
     ];
     Ok(result)
 }

@@ -364,7 +364,7 @@ fn Settings() -> impl IntoView {
     Effect::new(move |_| {
         let theme_value = st.settings.get().theme;
         let color_value = st.settings.get().color;
-        let dir = if st.settings.get().language == "ar" {"ltr".to_string()} else {"rtl".to_string()};
+        let dir = if st.settings.get().language == "ar" {"rtl".to_string()} else {"ltr".to_string()};
         let document = window().document().unwrap();
         let html_element = document.document_element().unwrap();
         html_element.set_attribute("data-theme", &theme_value).unwrap();

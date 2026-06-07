@@ -62,26 +62,17 @@ small{margin:2px;color: oklch(from currentColor l c h / 0.8);}
   opacity: 0;
   visibility: hidden;
   background-color: var(--pico-background-color);
-  
-  /* Изменено: окно теперь не на весь экран */
   width: 90vw;
-  max-width: 600px; /* Ограничиваем максимальную ширину */
+  max-width: 600px;
   height: 80vh;
   max-height: calc(100vh - 6rem); 
-  
-  /* Изменено: центрируем окно на экране */
   position: fixed;
   top: calc(50% + 3rem); 
   left: 50%;
   transform: translate(-50%, -50%);
-  
-  /* Новое: скругление углов для лучшего визуала */
   border-radius: 8px; 
-  
-  /* Новое: огромная тень, которая затемняет всё вокруг */
   box-shadow: 0 0 0 100vmax rgba(0, 0, 0, 0.5), 
               0 8px 32px rgba(0, 0, 0, 0.3);
-              
   overflow-y: auto;
   transition: opacity .2s, visibility .2s;
 }
@@ -144,6 +135,11 @@ code#logs{padding:0.2rem;overflow: scroll;width: 100%;white-space: pre-line;colo
   :root {
     border-radius: 0.6rem;
   }
+}
+[dir="rtl"]{
+    .required {margin-right: 0.25rem;}
+    .ml1, [data-tooltip]{margin-right: 1rem;}
+    .info::before {left: 0.1rem;right:unset;}
 }
 /* COLORS */
 /* ========================================================

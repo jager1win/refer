@@ -33,9 +33,9 @@ exmex = { version = "0.21.0", features = [] }
 [build-dependencies]
 leptos_i18n_build = { version = "0.6", features = ["csr", "pretty_print"] }
 
-[package.metadata.leptos-i18n]
-default = "en"
-locales = ["en", "ru"]
+#[package.metadata.leptos-i18n]
+#default = "en"
+#locales = ["en", "ru"]
 
 [workspace]
 members = ["src-tauri","."]
