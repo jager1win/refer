@@ -360,13 +360,16 @@ fn Settings() -> impl IntoView {
         }
     });
 
+    // set html tags 
     Effect::new(move |_| {
         let theme_value = st.settings.get().theme;
         let color_value = st.settings.get().color;
+        let dir = if st.settings.get().language == "ar" {"ltr".to_string()} else {"rtl".to_string()};
         let document = window().document().unwrap();
         let html_element = document.document_element().unwrap();
         html_element.set_attribute("data-theme", &theme_value).unwrap();
         html_element.set_attribute("data-color", &color_value).unwrap();
+        html_element.set_attribute("dir", &dir).unwrap();
     });
 
     view! {
