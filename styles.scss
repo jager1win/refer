@@ -140,9 +140,9 @@ code#logs{padding:0.2rem;overflow: scroll;width: 100%;white-space: pre-line;colo
     .ml1, [data-tooltip]{margin-right: 1rem;}
     .info::before {left: 0.1rem;right:unset;}
 }
-/* COLORS */
+/* COLORS (Автоматический расчет от --color-brand) */
 /* ========================================================
-   СВЕТЛАЯ ТЕМА (Автоматический расчет от --color-brand)
+   СВЕТЛАЯ ТЕМА 
    ======================================================== */
 [data-theme="light"],
 :root:not([data-theme="dark"]),

@@ -9,3 +9,4 @@ disabled = [
     "dead-code",
     "unused-must-use",
 ]
+
