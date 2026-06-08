@@ -478,7 +478,6 @@ fn Settings() -> impl IntoView {
         </div>
 
         <div class="gr info center">
-            <h5>"Сreated with Rust, Tauri & Leptos"</h5>
             {move || {
                 info.get()
                     .into_iter()
@@ -899,10 +898,10 @@ pub fn read_size(bytes: u64) -> String {
         format!("{} B", bytes)
     } else if b < KB * KB {
         // KiB с 1 знаком
-        format!("{:.1} KiB", b / KB)
+        format!("{:.0} KiB", b / KB)
     } else {
         // MiB с 1 знаком (и дальше можно дополнять GiB и т.д.)
-        format!("{:.1} MiB", b / (KB * KB))
+        format!("{:.0} MiB", b / (KB * KB))
     }
 }
 

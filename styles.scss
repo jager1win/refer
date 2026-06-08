@@ -121,7 +121,6 @@ code#logs{padding:0.2rem;overflow: scroll;width: 100%;white-space: pre-line;colo
 .titlebar-logo{justify-self: start;}
 .titlebar-title{justify-self: center;}
 .window-controls {justify-self: end;overflow: hidden;}
-
 .window-controls button {
   background: none;
   border: none;
@@ -163,7 +162,7 @@ code#logs{padding:0.2rem;overflow: scroll;width: 100%;white-space: pre-line;colo
   --pico-primary-focus: color-mix(in oklch, var(--color-brand) 50%, transparent);
 }
 /* ========================================================
-   ТЕМНАЯ ТЕМА (Принудительная через data-theme="dark")
+   ТЕМНАЯ ТЕМА
    ======================================================== */
 [data-theme="dark"] {
   --pico-primary: color-mix(in oklch, var(--color-brand) 75%, #000);
