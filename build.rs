@@ -15,6 +15,9 @@ fn main() -> Result<(), Box<dyn Error>> {
         .add_locale("fr")?
         .add_locale("de")?
         .add_locale("pt")?
+        .add_locale("zh")?
+        .add_locale("ja")?
+        .add_locale("ko")?
         .add_locale("ar")?;
 
     let translations_infos = TranslationsInfos::parse(cfg)?;
