@@ -11,6 +11,10 @@ fn main() -> Result<(), Box<dyn Error>> {
 
     let cfg = Config::new("en")?
         .add_locale("ru")?
+        .add_locale("es")?
+        .add_locale("fr")?
+        .add_locale("de")?
+        .add_locale("pt")?
         .add_locale("ar")?;
 
     let translations_infos = TranslationsInfos::parse(cfg)?;
