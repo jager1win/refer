@@ -33,17 +33,13 @@ exmex = { version = "0.21.0", features = [] }
 [build-dependencies]
 leptos_i18n_build = { version = "0.6", features = ["csr", "pretty_print"] }
 
-#[package.metadata.leptos-i18n]
-#default = "en"
-#locales = ["en", "ru"]
-
 [workspace]
 members = ["src-tauri","."]
 resolver = "2"
 
 # ← Единственный источник правды для всего проекта!
 [workspace.package] 
-version = "0.2.0" 
+version = "1.0.0" 
 edition = "2024"
 authors = ["Yuriy (Jager) Lysov"]
 license = "GPL-3.0"
