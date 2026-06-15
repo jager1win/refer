@@ -1,4 +1,4 @@
-[🇷🇺 Русская версия](README.ru.md)
+[Русский](README.ru.md) · [Español](README.es.md) · [العربية](README.ar.md) · [中文](README.zh.md)
 
 ### Refer - User Reference Constructor
 
